@@ -2,7 +2,28 @@
 
 Updated: October 11, 2026
 
-## T194 — saved scenario assumptions in investment maps
+## T195 — print pagination correction (release verification pending)
+
+Native Chrome Save as PDF exposed a two-page UNH v14 map with the conclusion
+and references spilling. V15 places an absent-scenario notice beside valuation,
+retaining real scenario tables at full width, and tightens print whitespace,
+peer-table padding and chart height. Existing research text and source references
+are preserved; body text sizes are unchanged. Actual private Chrome PDF exports
+of saved ABT and UNH v15 are one A4 page each, with browser headers/footers off.
+Poppler page images inspected: conclusion and references present, no clipping.
+This does not prove all report lengths fit. Both PDFs currently embed Helvetica
+fallback despite the Calibri CSS: Calibri is bundled inside installed Office but
+is not available to Chrome. Font portability remains an acceptance gap; do not
+redistribute proprietary font files in public assets. ABT research gaps remain
+explicit; this is not the separate pending rebuilt thesis or professional acceptance.
+Validation: 1063 safe backend tests, 140 frontend tests, touched Python compile,
+model policy against 75097e5 and production build passed. Bounded predeploy
+Activity returned no running/processing items and no unavailable reads; historical
+buckets are truncated. No agent code or paid research changed.
+Next: Calibri-capable export, valuation inputs/arithmetic and historical/GAAP
+reconciliation; continue the eight-phase plan without marking it complete.
+
+## T194 — saved scenario assumptions in investment maps (verified live)
 
 The renderer exposes up to three supported scenario rows with operating conditions,
 growth, margins, earnings/cash flow, multiple, implied value, dated return reference
@@ -16,7 +37,13 @@ and stacked 390px phone rows inspected with synthetic data, no horizontal overfl
 Saved ABT/UNH re-rendered privately: neither has supported scenario rows, so both
 show the explicit gap. No paid research or thesis change. 1063 backend and 140
 frontend tests, touched Python compilation, model policy against 75097e5 and
-production build passed. Deployment verification pending. This is a provenance
+production build passed. Backend e4faa84eedf05f2e9f26e33880eb9735a88a211f
+verified healthy after transient rollout 502s; Cloudflare
+d477d224-9a11-4073-8c8a-e03d4eedf514 deployed. Hosted JS/SW exact bytes
+and both production ABT/UNH v14 renders verified against private artifacts. Mac
+heartbeat 03:32:57 UTC; no unavailable reads or pending collection delivery.
+Predeploy bounded Activity showed no running/processing items; historical
+buckets are truncated and not an exhaustive inventory. This is a provenance
 and display increment, not a calibrated valuation engine or professional acceptance.
 Next: typed, dated valuation inputs with arithmetic validation, historical valuation,
 GAAP/adjusted reconciliation and actual print/export benchmark. All eight phases

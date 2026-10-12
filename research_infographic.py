@@ -11,7 +11,7 @@ from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 
-VERSION='stock-infographic-v14'
+VERSION='stock-infographic-v15'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -213,7 +213,12 @@ def render(run,assignment,fundamentals):
         pq=peer['quote'];peer_table+='<tr><td><b>'+e(peer['ticker'])+'</b>'+'</td><td>'+money(pq.get('marketCap'))+'</td><td>'+multiples(pq,'trailingPE')+'</td><td>'+multiples(pq,'forwardPE')+'</td></tr>'
     peer_table+='</tbody></table><p class="micro">'+e(profile.get('peerBasis','Peer set not curated.'))+' Quote dates matched; multiple definitions and estimate periods are provider-defined. [M]</p>'
     valuation='<div class="valuation"><div><h3>Market comparison</h3>'+peer_table+'</div><div><h3>Price sensitivity—not price targets</h3>'+sensitivity(q)+'</div></div>'
-    scenario_panel='<section class="panel scenario-panel"><header><h2>Scenario valuation assumptions</h2></header>'+scenario_valuation(ed)+'</section>'
+    scenario_content=scenario_valuation(ed)
+    scenario_panel=''
+    if '<table' in scenario_content:
+        scenario_panel='<section class="panel scenario-panel"><header><h2>Scenario valuation assumptions</h2></header>'+scenario_content+'</section>'
+    else:
+        valuation+='<div class="scenario-gap"><h3>Scenario valuation assumptions</h3>'+scenario_content+'</div>'
     kpis=structured_rows(ed,'/monitor/kpis/','metric',
                          ['metric','current','bull_threshold','bear_threshold','why_it_matters'])
     monitor_rows=''.join('<tr><th>'+ed.claim(row['metric'])+'</th><td>'+labeled_fields(ed,row,[
@@ -288,3 +293,7 @@ CSS += ".structured-field{margin-bottom:5px}.structured-field .claim{display:inl
 CSS += ".scenario-values th:first-child{width:17%}.scenario-values th:last-child{width:28%}.scenario-values{font-size:11px}@media screen and (max-width:650px){.scenario-values{font-size:12px}}"
 
 CSS += "@media screen and (max-width:650px){.scenario-values thead{display:none}.scenario-values tr,.scenario-values th,.scenario-values td{display:block;width:100%!important}.scenario-values tr{margin-bottom:10px;border:1px solid #d7e2e9}}"
+
+CSS += "@media print{@page{margin:6mm}.panel{margin-top:3px}header{margin-bottom:3px}.headline{margin-bottom:5px!important}.scenario-gap{margin-top:4px;font-size:7pt}.scenario-gap h3{font-size:7pt;margin-bottom:2px}.scenario-gap p{margin:0}.footer{margin-top:5px;padding-top:3px}}"
+
+CSS += "@media print{.peers th,.peers td{padding:2px 4px}.chart svg{max-height:40px}.footer p{margin-bottom:2px}}"
