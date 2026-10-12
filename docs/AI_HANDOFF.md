@@ -2,7 +2,27 @@
 
 Updated: October 11, 2026
 
-## T203 — pending-edition validation foundation (release verification pending)
+## T204 — durable pending edition selections (verification pending)
+
+Added private/no-store GET/POST at /api/research/assignments/<id>/onepager-editions.
+GET returns a baseline and up to 20 immutable pending records, marks changed
+report/assignment/financial baselines stale, and never creates schema or work.
+It explicitly does not reverify current original bytes or usage restrictions.
+POST locks the saved assignment, report, selected corrections and eligible original
+rows and uses the T203 contract with the full stored financial snapshot. Same-key
+concurrent submissions persist one record; identical replay returns its identity,
+changed payload conflicts, and failed validation rolls back. Stopped assignments
+cannot receive new editions. Original reports, citations, corrections, assignment
+outputs and theses remain unchanged. There is no acceptance endpoint, rendering,
+preview or UI control yet; pending selections cannot become default exports.
+1109 backend and 140 frontend tests, compilation, policy baseline 75097e5 and
+the production build passed. Deployment/read-only verification is pending.
+Five disposable-PostgreSQL tests cover read-only preparation, concurrent replay,
+restart, stale snapshots, restrictions, rollback, forged status and retained originals.
+Next: explicit edition review navigation, renderer evidence adapters and transactional
+investor decisions with separate provenance. Never accept live research for QA.
+
+## T203 — pending-edition validation foundation (verified live)
 
 Added a pure, inactive edition contract in onepager_edition_contract.py. It binds
 an explicit ordered selection of 1–20 persisted corrections to assignment/report,
@@ -17,7 +37,13 @@ that snapshot. Future persistence must lock and recheck inputs in its transactio
 Eight synthetic tests cover immutable originals, stale identities/financials/parent,
 forged status/provenance, source changes, bounded/conflicting selections and order.
 1104 backend and 140 frontend tests, Python compilation, model-policy baseline
-75097e5 and the production build passed. Deployment verification is pending.
+75097e5 and the production build passed. Backend revision
+69fc6fdf8125e8d8e967f31547bf9d492a657f62 is healthy after transient rollout
+502s. Cloudflare ddd473b0-cc28-4cac-a91d-0bd5720bc017 deployed; hosted JS
+and service worker match tested bytes. Mac last seen 09:34:12 UTC, collection
+09:34:37, pending delivery zero, unavailable reads empty. No agent change or
+restart, live research mutation, paid call or acceptance. No UI changed beyond
+the release marker, and no new visual acceptance is claimed.
 Edition persistence, investor decision UI, explicit renderer adapters, export and
 real-source acceptance remain unimplemented; this is internal foundation only.
 

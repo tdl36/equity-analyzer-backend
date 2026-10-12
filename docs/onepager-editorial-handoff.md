@@ -200,3 +200,16 @@ or investor review. This module is not wired to an endpoint, renderer or accepta
 The future persistence caller must load server records, lock the lineage, and rerun
 validation inside its transaction. Synthetic tests do not establish concurrent
 edition decisions or investor-approved research; those remain future integration.
+
+## Pending selection persistence — October 12, 10:00 UTC
+
+`onepager_editions.py` now exposes GET/POST assignment-specific pending selections.
+The server loads the full raw mp_jobs financial snapshot, locks the assignment,
+report, corrections and source rows during submission, and stores an immutable
+pending record transactionally. Its submission identity supports replay after a
+lost response; changed payloads conflict. GET is read-only and marks changed
+baselines stale, but does not claim to revalidate current source restrictions or
+bytes. No accepted lineage exists yet, so parentId must be null. Acceptance must
+add separate decision storage and lineage locking before any Apply control ships.
+There is still no edition renderer, review UI or accepted export. Do not use a
+pending record as evidence approval or modify valid_citations to accommodate it.
