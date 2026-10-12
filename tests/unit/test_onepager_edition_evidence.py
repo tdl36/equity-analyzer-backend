@@ -7,7 +7,7 @@ from stock_evidence import valid_citations
 from tests.unit.test_onepager_edition_contract import edition_fixture
 
 
-def fixture(path='/summary/earnings_direction', report=None):
+def fixture(path='/summary/earnings_direction', report=None, statement='Proposed claim'):
     args = list(edition_fixture())
     run, assignment, body, rows, docs, financials = args
     if report is not None: run['state']['report'] = report
@@ -17,6 +17,7 @@ def fixture(path='/summary/earnings_direction', report=None):
     fingerprint = preparation(run)['fingerprint']
     p = rows[0]['proposal']
     proposal_body = {key:p[key] for key in ('statement','basis','reason','sourceId','excerpt','locator')}
+    proposal_body['statement'] = statement
     proposal_body.update(requestId=rows[0]['id'], path=path, fingerprint=fingerprint)
     ident, signature, proposal = prepare(run, proposal_body, docs['fixture.txt'])
     rows[0].update(fingerprint=fingerprint, payload_hash=signature, proposal=proposal)

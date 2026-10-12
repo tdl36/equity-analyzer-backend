@@ -1,15 +1,16 @@
 """Explain missing editorial sections without changing research or accepting claims."""
+from onepager_edition_evidence import render_evidence, pending_label
 from stock_evidence import report_fields, missing_value, valid_citations
 
 
-def readiness(run, rendered):
+def readiness(run, rendered, *, preview=None):
     """Diagnose three core sections using the renderer's actual selection outcome.
 
     Returned paths are evidence identities, never claim bodies. Matching checks
     do not establish accuracy, investment materiality or investor acceptance.
     """
+    run, valid = render_evidence(run, preview)
     fields = report_fields(run.get('state', {}).get('report', {}))
-    valid = valid_citations(run)
     rows = []
     specs = [('thesis', 'Investment thesis', '/summary/investment_thesis/'),
              ('debate', 'Paired market debate', '/debates/'),
@@ -47,24 +48,28 @@ def readiness(run, rendered):
                 status, reason = 'over_budget', 'Supported paired evidence exceeds the page limits. Prepare a qualified shorter version for review.'
         else:
             status, reason = 'over_budget', 'Supported evidence exceeds the page limits. Prepare a qualified shorter version for review.'
-        rows.append(dict(section=key, label=label, status=status, reason=reason,
-                         savedPaths=present, supportedPaths=supported))
+        row = dict(section=key, label=label, status=status, reason=reason, savedPaths=present, supportedPaths=supported)
+        if preview:
+            row['pendingPaths'] = [p for p in supported if pending_label(valid[p])]
+            row['supportedPaths'] = [p for p in supported if not pending_label(valid[p])]
+            row['reason'] = reason.replace('supported', 'evidence-matched').replace('Supported', 'Evidence-matched') + ' Pending proposals are not accepted; passage matching does not establish meaning.'
+        rows.append(row)
     return rows
 
 
-def scenario_readiness(run):
+def scenario_readiness(run, *, preview=None):
     """Expose bounded per-row repair paths, never rejected financial statements.
 
     This is evidence readiness, independent of page selection or scenario labels.
     Financial fields never borrow support from another case.
     """
     from scenario_arithmetic import check
+    run, valid = render_evidence(run, preview)
     report = run.get('state', {}).get('report', {})
     raw = report.get('scenarios', [])
     entries = list(enumerate(raw)) if isinstance(raw, list) else list(raw.items()) if isinstance(raw, dict) else []
     entries = [(str(i), row) for i, row in entries if str(i).isdigit() and isinstance(row, dict)]
     fields = report_fields(report)
-    valid = valid_citations(run)
     specs = [('business_conditions', 'Operating assumptions'), ('revenue_growth', 'Growth'),
              ('operating_margin', 'Margin'), ('eps_or_fcf', 'Earnings / cash flow'),
              ('valuation_multiple', 'Valuation multiple'), ('implied_value', 'Implied value'),
@@ -76,6 +81,7 @@ def scenario_readiness(run):
         for key, label in specs:
             path = root + key
             status = 'absent' if missing_value(fields.get(path)) else 'supported' if path in valid else 'unmatched'
+            if path in valid and pending_label(valid[path]): status = 'pending'
             checks.append(dict(path=path, label=label, status=status))
         arithmetic = check({key: valid.get(root + key) for key, _ in specs})
         rows.append(dict(path=root.rstrip('/'), fields=checks, arithmetic=arithmetic))

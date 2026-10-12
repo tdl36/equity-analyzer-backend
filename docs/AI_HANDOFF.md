@@ -2,7 +2,31 @@
 
 Updated: October 11, 2026
 
-## T206 — isolated pending-preview evidence adapter (verification pending)
+## T207 — explicit pending renderer context (release prepared)
+
+Both brief and illustrated renderers now accept a typed pending edition only via
+an explicit internal argument. Ordinary render calls retain identical HTML in
+synthetic baseline comparisons. The shared valid_citations gate stays unchanged.
+Each proposed claim, including direct titles/timing, carries pending provenance;
+print-visible notices retain edition/report identity and deny acceptance. Readiness
+separates pending paths from model-supported paths and does not borrow scenario
+inputs across cases. Original report, context contents, assignment inputs and the
+illustrated financial snapshot are checked before rendering. Long illustrated
+claims remain omitted whole and diagnosed, while brief claims retain full wording.
+Five additional synthetic tests cover both renderers, the brief's illustrated
+forwarding path, stale/tampered context, financial drift, direct headlines, escaping,
+readiness and whole-claim omission. Synthetic desktop and 390px mobile HTML were
+visually inspected: pending labels/readiness are present, with no horizontal
+page overflow. No actual PDF or investor quality acceptance is claimed.
+1118 backend and 143 frontend tests, Python compilation, model policy against
+75097e5 and the production build passed. Deployment verification follows.
+No production route consumes this context yet; the next step is a private,
+explicit edition preview route that locks/reloads server evidence in one transaction,
+plus review UI navigation. Accepted decisions/lineage and revised exports remain
+unimplemented. Original/default outputs and thesis handoffs are unchanged. Do not
+broaden shared evidence rules or accept live proposals to validate this feature.
+
+## T206 — isolated pending-preview evidence adapter (verified live)
 
 Added onepager_edition_evidence.py as an internal, currently unused adapter.
 It revalidates a server-loaded pending edition and its current original evidence,
@@ -14,7 +38,12 @@ changed wording. Canonical array/escaped-key paths preserve same-case identity.
 Four synthetic tests cover isolation, original retention, shared-gate exclusion,
 source/report drift, tampered/accepted records and exact pointer replacement.
 1113 backend and 143 frontend tests, compilation, model-policy baseline 75097e5
-and the production build passed; hosted verification is pending.
+and the production build passed. Backend revision
+37ba7197a700dbacff79048c5ae8049b69a3a4b3 verified healthy after transient
+rollout 502s. Cloudflare f1cdaec9-73f7-43c2-b80b-401d3a3b35ab deployed;
+hosted JS/service-worker bytes match the tested build. Mac last seen 11:04:13
+UTC, collection 11:04:25, pending delivery zero, unavailable empty. No agent
+change/restart, paid call or live research mutation. No new UI/print claim.
 No renderer or endpoint consumes this adapter yet. Pending-preview layout, evidence
 readiness, footer labels and both render entry points still require integration;
 there is no new export, investor decision or source refresh in this increment.

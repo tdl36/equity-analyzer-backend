@@ -1,11 +1,12 @@
 """Explicit pending-preview evidence, isolated from the shared original gate.
 
-This adapter is not installed in a renderer or endpoint yet. Its claims are
+Renderers consume this adapter only through an explicit typed argument. Its claims are
 pending editorial proposals, never model-supported or investor-accepted claims.
 """
 import copy
 from dataclasses import dataclass
 from onepager_edition_contract import prepare_edition
+from onepager_corrections import digest
 from stock_evidence import valid_citations, report_fields
 
 
@@ -17,6 +18,9 @@ class PendingEditionEvidence:
     correction_ids: tuple
     source_fingerprint: str
     financial_digest: str
+    assignment_digest: str
+    render_input_digest: str
+    content_digest: str
     label: str = 'Pending editorial preview — not accepted'
 
 
@@ -69,4 +73,50 @@ def pending_evidence(run, assignment, record, corrections, documents, financials
         }
     return PendingEditionEvidence(checked['id'], derived, claims,
                                   tuple(checked['correctionIds']),
-                                  checked['fingerprint'], checked['fundamentalsDigest'])
+                                  checked['fingerprint'], checked['fundamentalsDigest'],
+                                  digest(assignment['input']),
+                                  digest({'assignment': assignment['input'], 'financials': financials}),
+                                  digest({'run': derived, 'claims': claims}))
+
+
+def render_evidence(run, preview=None):
+    """Resolve only explicit server context; ordinary and thesis gates stay intact."""
+    if preview is None:
+        return run, valid_citations(run)
+    from onepager_corrections import preparation
+    if type(preview) is not PendingEditionEvidence:
+        raise ValueError('Preview requires a validated pending edition context.')
+    if preparation(run)['fingerprint'] != preview.source_fingerprint:
+        raise ValueError('The preview report changed. Prepare a new edition.')
+    if digest({'run': preview.run, 'claims': preview.claims}) != preview.content_digest:
+        raise ValueError('The pending preview context changed. Reload validated evidence.')
+    return preview.run, preview.claims
+
+
+def pending_label(claim):
+    return 'Pending editorial proposal — not accepted' if claim and claim.get('reviewOrigin') == 'pending_editorial' else ''
+
+
+def labeled_statement(claim):
+    label = pending_label(claim)
+    return (label + ': ' if label else '') + claim['statement']
+
+
+def preview_notice(preview, run):
+    """Print-visible provenance, with no claim of a decision or source refresh."""
+    if preview is None:
+        return ''
+    import html
+    return ('<p class="footnote micro edition-notice"><b>' + html.escape(preview.label) +
+            '</b> · Edition ' + html.escape(preview.edition_id) +
+            ' · Report ' + html.escape(run['id']) +
+            '. Proposed wording requires investor review. Original research and financial snapshot retained.</p>')
+
+
+def check_render_inputs(run, assignment, fundamentals, preview):
+    if preview is None:
+        return
+    render_evidence(run, preview)
+    inputs = {k:v for k,v in assignment.items() if k != '_visualFundamentals'}
+    if digest(inputs) != preview.assignment_digest or (fundamentals is not None and digest({'assignment': inputs, 'financials': fundamentals}) != preview.render_input_digest):
+        raise ValueError('Preview assignment or financial snapshot changed. Reload the saved inputs.')

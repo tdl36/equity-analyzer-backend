@@ -235,3 +235,17 @@ yet connected to either renderer. Integration must preserve pending labels on
 individual claims and the printed page, update readiness using the same explicit
 context, and keep original/default/thesis paths unchanged. Accepted decisions,
 accepted lineage, API preview and version-specific export remain unimplemented.
+
+
+## Pending renderer integration — October 12, 11:30 UTC
+
+The brief and illustrated render functions accept explicit typed pending evidence.
+They retain original/default behavior, print pending edition/report notices, label
+proposed claims and distinguish pending readiness from model-supported evidence.
+The adapter checks the original report, nested context contents and render inputs;
+it is not an authorization substitute. Future routes must load and revalidate the
+saved record and current source eligibility/bytes under transaction locks before
+constructing this context. No public/client preview flag enables the adapter.
+Synthetic HTML desktop/mobile checks and tests cover this internal integration;
+actual PDF, explicit preview route/UI navigation, investor decisions, accepted
+lineage and accepted exports remain future work.

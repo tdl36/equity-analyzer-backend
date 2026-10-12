@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
+from onepager_edition_evidence import render_evidence, pending_label, labeled_statement, preview_notice, check_render_inputs
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
@@ -26,11 +27,12 @@ def numeric(value):
 
 class Editor:
     """Retain saved research order and whole claims within the page budget."""
-    def __init__(self,run):
+    def __init__(self,run, *, preview=None):
+        run, claims = render_evidence(run, preview)
         self.report=run.get('state',{}).get('report',{})
         self.sources=run.get('sources',[])
         self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
-        self.cs=valid_citations(run)
+        self.cs=claims
         self.used=[];self.used_refs=set();self.omitted=set()
     def get(self,path):return self.cs.get(path)
     def fits(self,c,limit):
@@ -51,11 +53,13 @@ class Editor:
     def refs_html(self,c):
         ids=sorted({self.refs[x['sourceId']] for x in c.get('evidence',[]) if x.get('matched') and x.get('sourceId') in self.refs})
         self.used_refs.update(ids)
-        return '<sup>'+','.join(f'<a href="#source-{n}">{n}</a>' for n in ids)+'</sup>'
+        pending = '<span class="basis"> '+e(pending_label(c))+'</span>' if pending_label(c) else ''
+        return pending+'<sup>'+','.join(f'<a href="#source-{n}">{n}</a>' for n in ids)+'</sup>'
     def claim(self,c,remember=False):
         if not c:return '<span class="missing">Evidence needed</span>'
         if remember:self.used.append(statement_identity(c['statement']))
         basis={'broker_estimate':'Estimate','broker estimate':'Estimate','interpretation':'Interpretation'}.get(c.get('basis'),'Source view')
+        if pending_label(c): basis=str(c.get('basis', '')).replace('_', ' ')
         return '<p class="claim"><span class="basis">'+basis+'</span> '+e(c['statement'])+self.refs_html(c)+'</p>'
 
 def structured_rows(ed, prefix, anchor, fields, limit=2, budget=600):
@@ -162,9 +166,10 @@ def sensitivity(q):
 def section(n,title,body,sub=''):
     return f'<section class="panel"><header><span class="number">{n}</span><h2>{e(title)}</h2><span class="sub">{e(sub)}</span></header>{body}</section>'
 
-def render(run,assignment,fundamentals):
+def render(run,assignment,fundamentals, *, preview=None):
+    check_render_inputs(run, assignment, fundamentals, preview)
     f=fundamentals;rows=f.get('annuals',[]);latest=rows[-1] if rows else {};q=f.get('quote') or {};ticker=run['ticker'];profile=PROFILES.get(ticker,{})
-    ed=Editor(run);money=lambda value:'$'+format(value/1e9,'.1f')+'bn' if numeric(value) else 'Not available'
+    ed=Editor(run, preview=preview);money=lambda value:'$'+format(value/1e9,'.1f')+'bn' if numeric(value) else 'Not available'
     val=lambda k:latest.get(k,{}).get('value')
     headline=ed.get('/infographic/headline')
     if not ed.fits(headline,180):headline=None
@@ -201,7 +206,7 @@ def render(run,assignment,fundamentals):
         if len(debates)>=2:break
         if size>debate_budget or not ed.fits(a,350) or not ed.fits(b,350):
             ed.omitted.update([a['statement'],b['statement']]);continue
-        title=name['statement'] if ed.fits(name,55) else f'Debate {len(debates)+1}'
+        title=labeled_statement(name) if ed.fits(name,55) else f'Debate {len(debates)+1}'
         debates.append((a,b,title));debate_budget-=size
         ed.used.extend([statement_identity(a['statement']),statement_identity(b['statement'])])
         if ed.fits(resolution,min(220,monitor_budget)):
@@ -293,12 +298,15 @@ def render(run,assignment,fundamentals):
         details+='<h3>Historical public supplement [H]</h3><p>'+e(financial_context['summary'])+' '+e(financial_context['detail'])+' '+e(financial_context['caveat'])+'</p><p>'+link(financial_context['sourceUrl'],financial_context['locator'])+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+' · SHA-256 '+financial_context['sourceHash']+'. Added public context, not part of the original frozen research pack.</p>'
     details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
     from onepager_readiness import readiness, scenario_readiness
-    checks=readiness(run,{'thesis':bool(thesis_claims),'debate':bool(debates),'view':bool(bottom_claim)})
+    checks=readiness(run,{'thesis':bool(thesis_claims),'debate':bool(debates),'view':bool(bottom_claim)}, preview=preview)
     readiness_html='<details class="evidence-readiness"><summary>Evidence readiness — investment argument and scenarios</summary><p>Read-only checks of saved evidence and page selection. These do not certify investment accuracy or completeness of other sections.</p>'
     for item in checks:
         readiness_html+='<h3>'+e(item['label'])+'</h3><p data-readiness="'+e(item['status'])+'">'+e(item['reason'])+'</p>'
         readiness_html+='<p>Saved claim paths: '+e(', '.join(item['savedPaths']) or 'None')+'</p><p>Paths passing evidence checks: '+e(', '.join(item['supportedPaths']) or 'None')+'</p>'
-    scenario_checks=scenario_readiness(run)
+        if preview:
+            readiness_html+='<p>Pending proposal paths: '+e(', '.join(item['pendingPaths']) or 'None')+'</p>'
+    scenario_checks=scenario_readiness(run, preview=preview)
+    if preview: readiness_html+='<p>Pending fields contain proposed wording, not model-supported or investor-accepted claims. Arithmetic is only a calculation check.</p>'
     readiness_html+='<h3>Scenario input repair checklist</h3><p>Each saved case is checked separately. Supported means the saved field passes evidence matching, not that the assumption is sound or appears on the page. Absent fields need evidence; unmatched fields need source-passage review. Case names do not establish financial inputs.</p>'
     if not scenario_checks['rows']:
         readiness_html+='<p>No saved scenario rows to inspect.</p>'
@@ -307,7 +315,8 @@ def render(run,assignment,fundamentals):
     if scenario_checks['omittedRows']:
         readiness_html+='<p>'+str(scenario_checks['omittedRows'])+' additional saved cases are outside this 20-row checklist. Review the complete saved report.</p>'
     details=readiness_html+'</details>'+details
-    body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+footer
+    notice=preview_notice(preview, run)
+    body=head+notice+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+notice+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 
 CSS='''
