@@ -57,7 +57,12 @@ instruction, not a promise of instantaneous browser collection or source availab
 
 ## Current phase
 
-Phase 1 in progress. T168–T175 protect/restore single and batch execution,
-submission identity and visibility. Interrupted-attempt reconciliation and
-operational recovery controls are next. Later phases and the complete
-one-click refresh experience are not yet accepted as complete.
+Phase 1 acceptance remains open. T168–T190 protect single/batch submission and
+execution, retain ambiguous attempts, expose recovery evidence and worker reporting,
+and support an audited unresolved disposition for legacy jobs. Disposable database
+and hard subprocess-interruption checks cover reservation/recovery behavior without
+provider calls. These do not settle the legacy WELL provider outcome or prove a
+live end-to-end interruption. Phase 2 saved-output audit found substantive ABT
+one-pager gaps; T191 exposes them and removes a misleading thesis fallback.
+Follow docs/onepager-acceptance-audit.md for the next editorial and valuation work.
+No later phase or complete one-click refresh acceptance is claimed.

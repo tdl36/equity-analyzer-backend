@@ -2,7 +2,27 @@
 
 Updated: October 11, 2026
 
-## T191 — incomplete one-pager detection (release verification pending)
+## Phase-1 process-interruption acceptance — October 12, 02:00 UTC
+
+Added real subprocess death/concurrency tests around the production reservation,
+recovery and worker-presence functions, using only a disposable PostgreSQL cluster
+on a private temporary Unix socket. No Flask application startup, model adapter,
+production DB access or paid call. Four checks cover: death before reservation
+recovers exactly once with frozen inputs; hard death after reservation leaves the
+attempt uncertain and its batch slot occupied while unrelated work can recover;
+four independent claimants cannot reserve the same run twice; separate processes
+share the batch concurrency limit. Reporter expiry is evaluated using a supplied
+future clock, not a 90-second sleep, and cannot authorize takeover. This extends
+the earlier thread-level tests to OS process interruption; it is still synthetic
+provider evidence, not proof of live provider cancellation or bill reconciliation.
+All 1054 backend tests passed, including these four subprocess checks; the new
+test module compiles. No runtime behavior or frontend assets changed; this is a
+test/documentation increment. Keep T191 as the product release. The legacy WELL
+provider outcome and user-driven end-to-end live acceptance remain unresolved.
+Continue the one-pager editorial/valuation work recorded in the saved-output audit;
+do not replace missing investment content with more success labels.
+
+## T191 — incomplete one-pager detection (verified live)
 
 Read-only review of the saved ABT and UNH investment maps exposed a material
 ABT quality failure: missing company description, paired debate and investment
@@ -20,7 +40,11 @@ proposal is unaffected. Phone inspection found and fixed ticker wrapping.
 without new model calls. ABT notice inspected at desktop and 390px; no horizontal
 overflow, ticker remains unbroken. Predeploy bounded Activity snapshot has no
 running/processing/analyzing items and no unavailable reads; truncated history
-is not proof that all jobs were inventoried. Deployment verification remains pending.
+is not proof that all jobs were inventoried. Backend revision
+7b9afd85cc4f293314768bf3e2265f9f014d8cae verified healthy after transient
+rollout 502s. Cloudflare aaf301c3-1fb4-473e-a8f1-1d7a75be292d deployed;
+hosted JS/SW exact bytes verified. Production ABT v11 HTML matches the privately
+inspected artifact exactly. Mac heartbeat 01:37:26 UTC, no unavailable reads.
 See docs/onepager-acceptance-audit.md for the next content/valuation work.
 No paid research or approvals. Phase 1 operational acceptance remains open;
 this bounded phase-2 audit does not mark the eight priorities complete.
