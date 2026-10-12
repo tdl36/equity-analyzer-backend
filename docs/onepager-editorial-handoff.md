@@ -187,3 +187,16 @@ T202 currently captures one existing field with one source. New rows, compound
 scenario packages, multi-source support, specific edition navigation and a private
 preparation helper remain unimplemented. No investor acceptance is implied by
 this checkpoint.
+
+## Pending-edition contract implementation — October 12, 09:30 UTC
+
+`onepager_edition_contract.py` now provides pure baseline and preparation functions
+for a bounded ordered selection of persisted T202 corrections. It binds the full
+saved financial data separately from the assignment's vintage-only metadata and
+rechecks the original proposal, payload digest, source bytes, eligibility and quote.
+Same-path selections conflict; changed report, assignment input, snapshot or parent
+requires new preparation. The output is pending and contains no fabricated model
+or investor review. This module is not wired to an endpoint, renderer or acceptance.
+The future persistence caller must load server records, lock the lineage, and rerun
+validation inside its transaction. Synthetic tests do not establish concurrent
+edition decisions or investor-approved research; those remain future integration.

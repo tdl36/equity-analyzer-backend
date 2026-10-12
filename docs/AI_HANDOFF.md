@@ -2,6 +2,25 @@
 
 Updated: October 11, 2026
 
+## T203 — pending-edition validation foundation (release verification pending)
+
+Added a pure, inactive edition contract in onepager_edition_contract.py. It binds
+an explicit ordered selection of 1–20 persisted corrections to assignment/report,
+full saved financial snapshot plus vintage, frozen assignment input and parent.
+It revalidates current original bytes, restrictions, passage matching and the
+entire saved proposal/payload identity; duplicate paths and unrelated/stale records
+fail closed. Only pending records are returned. This module has no route, database
+write, renderer integration, acceptance action or provider call. Existing exports
+and pending corrections are unchanged. The full saved financial snapshot must be
+loaded by the future caller; assignment visualFundamentals metadata alone is not
+that snapshot. Future persistence must lock and recheck inputs in its transaction.
+Eight synthetic tests cover immutable originals, stale identities/financials/parent,
+forged status/provenance, source changes, bounded/conflicting selections and order.
+1104 backend and 140 frontend tests, Python compilation, model-policy baseline
+75097e5 and the production build passed. Deployment verification is pending.
+Edition persistence, investor decision UI, explicit renderer adapters, export and
+real-source acceptance remain unimplemented; this is internal foundation only.
+
 ## Accepted-edition adapter checkpoint — October 12, 09:00 UTC
 
 Traced the original-evidence gate across the brief/illustrated renderers,
