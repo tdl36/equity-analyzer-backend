@@ -50,3 +50,33 @@ def readiness(run, rendered):
         rows.append(dict(section=key, label=label, status=status, reason=reason,
                          savedPaths=present, supportedPaths=supported))
     return rows
+
+
+def scenario_readiness(run):
+    """Expose bounded per-row repair paths, never rejected financial statements.
+
+    This is evidence readiness, independent of page selection or scenario labels.
+    Financial fields never borrow support from another case.
+    """
+    from scenario_arithmetic import check
+    report = run.get('state', {}).get('report', {})
+    raw = report.get('scenarios', [])
+    entries = list(enumerate(raw)) if isinstance(raw, list) else list(raw.items()) if isinstance(raw, dict) else []
+    entries = [(str(i), row) for i, row in entries if str(i).isdigit() and isinstance(row, dict)]
+    fields = report_fields(report)
+    valid = valid_citations(run)
+    specs = [('business_conditions', 'Operating assumptions'), ('revenue_growth', 'Growth'),
+             ('operating_margin', 'Margin'), ('eps_or_fcf', 'Earnings / cash flow'),
+             ('valuation_multiple', 'Valuation multiple'), ('implied_value', 'Implied value'),
+             ('upside_downside', 'Dated price return'), ('major_risks', 'Failure conditions')]
+    rows = []
+    for index, _ in entries[:20]:
+        root = '/scenarios/' + index + '/'
+        checks = []
+        for key, label in specs:
+            path = root + key
+            status = 'absent' if missing_value(fields.get(path)) else 'supported' if path in valid else 'unmatched'
+            checks.append(dict(path=path, label=label, status=status))
+        arithmetic = check({key: valid.get(root + key) for key, _ in specs})
+        rows.append(dict(path=root.rstrip('/'), fields=checks, arithmetic=arithmetic))
+    return dict(rows=rows, omittedRows=max(0, len(entries)-20))

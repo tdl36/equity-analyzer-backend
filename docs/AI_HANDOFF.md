@@ -2,7 +2,26 @@
 
 Updated: October 11, 2026
 
-## T200 — distinguish case labels from financial claims (release pending)
+## T201 — scenario evidence repair checklist (release prepared)
+
+The one-pager's collapsed Evidence readiness disclosure now lists the saved
+scenario row and exact paths for eight operating, valuation and failure-condition
+fields. Missing/placeholder, unmatched/stale and supported inputs are distinct.
+Readiness is independent of label eligibility and page selection; no research is
+changed. Existing conservative arithmetic checks run only on supported fields
+from the same case. The first 20 saved numeric rows are inspected with an explicit
+omitted-row count. Rejected claim bodies are not exposed. Long paths wrap and the
+entire disclosure remains outside the print page. This is a repair checklist,
+not new evidence, accepted valuation, or completion of the professional one-pager
+phase. Source-checked editorial handoff and investor acceptance remain open.
+Four additional tests cover exact field state, stale evidence, same-case arithmetic,
+array/object input, bounds and no mutation. 1089 backend and 140 frontend tests
+pass, along with compilation, policy baseline 75097e5 and production build.
+Desktop Chrome disclosure inspected. ABT/UNH print bodies are byte-identical
+after normalizing only the renderer version; no new PDF or mobile inspection.
+Deployment verification follows this commit.
+
+## T200 — distinguish case labels from financial claims (verified live)
 
 The saved ABT review identified scenario names as hypotheses with no factual
 claim to verify. Canonical Bear/Base/Bull names now act as structural labels
@@ -16,6 +35,13 @@ core fields, same-row identity, limits and no mutation. Synthetic desktop layout
 inspected; fixed label/explanation separation. Existing ABT/UNH still lack
 complete core inputs and correctly retain their scenario gap. This fixes a
 rendering eligibility issue, not their substantive scenario deficiencies.
+1085 backend and 140 frontend tests passed; Python compilation, model-policy
+baseline 75097e5 and production frontend build passed. Backend
+ebcbe70a9a72913fd105c3d7f8d4a1831c8ef5f9 verified healthy after rollout 502s;
+Cloudflare a263573e-eb5f-47a3-bc90-3a285e7597e4 live. Hosted JS/SW and
+ABT/UNH v20 renders match local bytes. Mac heartbeat 07:04:22 UTC, collection
+07:04:35, pending delivery zero and unavailable reads empty. No agent change,
+paid model run, source refresh, thesis approval or original mutation.
 
 ## T199 — core editorial readiness explanations (verified live)
 
