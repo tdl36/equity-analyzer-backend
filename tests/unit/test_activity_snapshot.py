@@ -49,6 +49,12 @@ class ActivityTests(unittest.TestCase):
   self.assertNotIn('executionUnconfirmed',fresh)
   done=assemble([{**base,'status':'complete','last_log_at':NOW.isoformat()}],{},NOW)[0]
   self.assertEqual(done['bucket'],'recent');self.assertNotIn('executionUnconfirmed',done)
+ def test_recorded_legacy_outcome_stays_visible_even_when_old(self):
+  r={**row(),'source':'agent_runs','stage':None,'status':'attention','legacy_unresolved':True,'updated_at':NOW-timedelta(days=200)}
+  item=assemble([r],{},NOW)[0]
+  self.assertEqual(item['bucket'],'attention')
+  self.assertEqual(item['step'],'Legacy outcome unresolved')
+  self.assertIn('No cancellation or retry',item['warning'])
  def test_timestamps_are_utc(self):
   self.assertEqual(stamp(NOW.replace(tzinfo=None)),NOW.isoformat());self.assertEqual(stamp(NOW.timestamp()),NOW.isoformat());self.assertIsNone(stamp('invalid'))
 

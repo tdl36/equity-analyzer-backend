@@ -15,7 +15,7 @@ SOURCES = [
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
  ('investment_committee_runs','Investment committee','portfolio',"NULL::text AS step",'updated_at'),
  ('analysis_jobs','Thesis processing','portfolio','progress AS step','updated_at'),
- ('agent_runs','Analyst team','desk',"NULL::text AS step, logs->-1->>'ts' AS last_log_at, (status='queued' AND completed_at IS NULL AND logs @> '[{\"event\":\"execution_queued\"}]'::jsonb AND NOT logs @> '[{\"event\":\"execution_started\"}]'::jsonb) AS pending_start, (logs @> '[{\"event\":\"recover_single_v1\"}]'::jsonb OR logs @> '[{\"event\":\"batch_enrolled_v1\"}]'::jsonb) AS start_recovery",'COALESCE(completed_at,created_at)'),
+ ('agent_runs','Analyst team','desk',"NULL::text AS step, logs->-1->>'ts' AS last_log_at, (status='queued' AND completed_at IS NULL AND logs @> '[{\"event\":\"execution_queued\"}]'::jsonb AND NOT logs @> '[{\"event\":\"execution_started\"}]'::jsonb) AS pending_start, (logs @> '[{\"event\":\"recover_single_v1\"}]'::jsonb OR logs @> '[{\"event\":\"batch_enrolled_v1\"}]'::jsonb) AS start_recovery, (logs @> '[{\"event\":\"legacy_outcome_unverified_v1\"}]'::jsonb) AS legacy_unresolved",'COALESCE(completed_at,created_at)'),
  ('transcription_jobs','Audio processing','summary','progress AS step','updated_at'),
 ]
 
@@ -52,6 +52,7 @@ def assemble(rows, collection, now):
             createdAt=stamp(r.get('created_at')),updatedAt=(stamp(r.get('last_log_at')) or stamp(r.get('updated_at'))) if r['source']=='agent_runs' and status in ACTIVE else stamp(r.get('updated_at')),
             pendingStart=bool(r.get('pending_start')) if r['source']=='agent_runs' else False,
             startRecovery=bool(r.get('start_recovery')) if r['source']=='agent_runs' else False,
+            legacyUnresolved=r['source']=='agent_runs' and status=='attention' and bool(r.get('legacy_unresolved')),
             view='stockanalysis' if is_parent else r['view']))
     for r in (collection or {}).get('requests',[]):
         if r.get('id') in refreshes:continue
@@ -76,7 +77,10 @@ def assemble(rows, collection, now):
             item['step']='Execution needs reconciliation'
             item['warning']='The saved run is unfinished, but current execution is not confirmed. Preserve its logs and check the backend/provider outcome before retrying; a retry may create another charge.'
             item['stale']=age is None or age>900
-        if not item.get('pendingStart') and not item.get('executionUnconfirmed') and item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
+        if item.get('legacyUnresolved'):
+            item['step']='Legacy outcome unresolved'
+            item['warning']='Recorded for reconciliation; prior evidence is preserved. Provider outcome remains unknown. No cancellation or retry was performed.'
+        if not item.get('legacyUnresolved') and not item.get('pendingStart') and not item.get('executionUnconfirmed') and item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
     items.sort(key=lambda r:({'attention':0,'active':1,'recent':2,'older':3}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
     return items
 
