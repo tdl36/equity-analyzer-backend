@@ -125,3 +125,32 @@ above. The next implementation is the versioned editorial handoff specified in
 `docs/onepager-editorial-handoff.md`, rather than further renderer exceptions.
 Its persistence, source-validation adapter, investor review and UI are planned,
 not implemented. No saved claim or review status changed in this checkpoint.
+
+## Real-original editorial checkpoint — October 12, 19:24 UTC wake
+
+Read-only fresh preparation of the ABT assignment froze its current report, financial
+snapshot and accepted parent. All eight originals were retrieved through the
+verified source route and independently matched to their frozen SHA-256 values.
+Private receipts and assessment are retained outside the repository at
+`/Users/tonydlee/.charlie-workspaces/onepager-abt-20261012-source-review`.
+No original, report, correction, edition or thesis was changed or submitted.
+
+Substantive review covered page 1 of three originals: the issuer Q2 results
+summary, July 28 broker view and October 2 update from the same broker. Remaining
+pages and five other originals are unreviewed. Extraction/availability is not review.
+The private assessment records a candidate central question and these controls:
+
+- Successive views from one broker are a dated change in opinion, not independent
+  contemporaneous consensus and variant evidence. Preserve the chronology.
+- Unannounced portfolio restructuring remains conditional, separate from base-case
+  operating execution.
+- A DCF-derived target cannot fill a missing P/E scenario derivation merely because
+  the source also quotes a forward multiple.
+- Comparable sales and reported growth have different acquisition/currency/payment
+  bases. Adjusted EPS and GAAP EPS/guidance must remain distinct.
+
+This is assistant editorial assessment, not investor scoring or full factual
+certification. Next: read the remaining eligible originals and restrictions, find
+independent contrary evidence and prospective signposts, then prepare a complete
+source-checked pending edition and inspect its actual render. No paid QA or
+approval was performed. All eight priority acceptance criteria remain open.

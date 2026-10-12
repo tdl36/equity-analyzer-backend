@@ -2,7 +2,17 @@
 
 Updated: October 12, 2026
 
-## T223 — missing investment-section proposals (release prepared)
+## Real-source editorial review — October 12, 19:24 UTC wake
+
+Production remains T223. Read-only ABT preparation and exact-byte retrieval of
+all eight frozen originals succeeded. Substantive page-level review covered only
+three pages across three originals; the private assessment identifies chronology,
+valuation-method and accounting-basis distinctions that a proposed one-pager must
+preserve. See docs/onepager-acceptance-audit.md for proof boundaries and private
+artifact location. No new research, proposal submission or approval; no deployment.
+Real-source work remains incomplete and must continue before quality acceptance.
+
+## T223 — missing investment-section proposals (verified live)
 
 The existing source-checked editorial workflow can now propose missing company
 one-liner, central investment question, investment view, up to three ownership
@@ -21,7 +31,13 @@ malformed/forbidden structures. Isolated Chrome verified a missing ownership cla
 with two originals, submission payload and saved pending display at desktop/mobile
 widths (fixture CSS only). No live claim, thesis or edition was changed or approved.
 Real-source quality, investor acceptance and all eight priorities remain open.
-Deployment verification follows this source commit.
+Backend ed2b834d0823fefa00c56af2d216e0d85f87a601 verified healthy after rollout;
+Cloudflare 27ef78d0-e4ab-49b3-a653-fcf67e83032b deployed; hosted JS/service-worker
+exact bytes verified. Activity returned current Mac/collection snapshots with zero
+pending deliveries and no unavailable sources. No agent source change/restart.
+Receipt retained for next source commit. Next phase-2 work should use the now
+available editorial path to assess source-backed real examples; do not equate
+more authoring controls with real-source quality acceptance.
 
 ## T222 — independent meeting/thesis output recovery (verified live)
 
