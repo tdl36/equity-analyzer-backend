@@ -1,8 +1,34 @@
 # Charlie AI engineering handoff
 
-Updated: October 11, 2026
+Updated: October 12, 2026
 
-## T208 — revalidated pending preview access (release prepared)
+## T208 print verification checkpoint — October 12, 12:35 UTC
+
+Native Chrome Save as PDF was exercised through supported computer-use controls
+for the synthetic pending investment map and brief. Both HTML files were compared
+with fresh current-code renders and matched exactly. Both actual PDFs are one A4
+page, embed only Calibri variants, retain the complete proposed claim, show three
+not-accepted labels and two edition/report notices, and contain only black text.
+Poppler page renders were visually inspected: no overlapping or clipped text in
+these sparse fixtures; extracted character boxes remain within the page. Default
+margins, headers/footers off, background graphics off. The temporary Chrome tab
+was closed and existing tabs preserved.
+Evidence is retained outside the repository and watched original folders at
+`/Users/tonydlee/Charlie-private/onepager-review-20261012/pending-print-T208/`:
+`pending-map-T208.pdf` SHA-256
+`224cb9642be6580256831a8edb4adb61d6c96dc3117310ce796cea1b798304f7`;
+`pending-brief-T208.pdf` SHA-256
+`3774d03ca7c922bbadae40da6c57fcca66d93e770599d370629f0fdc549b42b7`.
+This closes only sparse synthetic pending-print inspection. It does not verify
+dense multi-correction pagination, real-source investor quality acceptance,
+a production PDF export, accepted edition decisions/lineage or accepted exports.
+Next implementation remains transactional investor decisions with exact parent
+and evidence checks, followed by explicit accepted rendering/export; automation
+must never approve a live edition. No code or live research changed in this
+checkpoint, so tests/build/release markers were not repeated. T208 remains the
+latest product release; its deployment receipts are recorded below.
+
+## T208 — revalidated pending preview access (verified live)
 
 Saved editions now expose Preview pending investment map and Preview pending
 brief. The private/no-store GET route names both assignment and edition and rejects
@@ -23,6 +49,12 @@ hard-break spaces in an unrelated template literal. Synthetic desktop and
 390px mobile UI opened/switched both layouts against the real blueprint backed by
 an isolated disposable database; reload clears the previous preview. Outer mobile
 page width remained 390px. Evidence: /tmp/charlie-t208-ui/preview-desktop.png.
+Backend f78b1c108fca575d9cad05b4e0c4d2433c92242b verified healthy after
+transient rollout 502s. Cloudflare 2c893413-f80e-48ae-94df-dcbfbf9d10b9
+deployed; hosted JS/service-worker bytes match the tested build. Authenticated
+missing-edition preview returns 404/private no-store without creating data. Mac
+last seen 12:07:44 UTC, collection 12:06:36, pending delivery zero, unavailable
+empty. No agent change/restart.
 The test server and temporary browser tab were closed. No live proposal was created
 or approved. Actual PDF acceptance, investor decisions/lineage, accepted exports,
 new rows and multi-source correction packages remain unfinished. This is preview

@@ -262,3 +262,15 @@ HTML. Reads do not create schema or work. The review UI offers both pending layo
 in a sandboxed frame and checks the returned identity. Original/default artifact
 routes remain unchanged. No accepted decision, default promotion, revised export,
 private authoring helper, new rows or actual PDF acceptance is implemented.
+
+
+## Pending print inspection — October 12, 12:35 UTC
+
+The T208 sparse synthetic pending map and brief were printed using native Chrome
+Save as PDF and inspected as rasterized PDFs. Both use one A4 page, embedded
+Calibri variants and black text. Claim wording and pending edition/report notices
+survive printing without clipping in these fixtures. Saved HTML matched fresh
+current-code renderer output. Private evidence paths and hashes are in AI_HANDOFF.
+This is not a production export feature or investor acceptance. Dense selections,
+real-source quality, accepted decisions/lineage and accepted exports still need
+implementation and separate verification. No live approval was performed.
