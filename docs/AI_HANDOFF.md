@@ -2,7 +2,7 @@
 
 Updated: October 12, 2026
 
-## T214 — fail closed on unavailable startup inventory (verification pending)
+## T214 — fail closed on unavailable startup inventory (verified live)
 
 A Mac restart during the T213 backend rollout exposed an existing recovery bug:
 non-200 document inventories were treated as empty, triggering duplicate original
@@ -18,7 +18,14 @@ Startup writes additionally use insert-only conflict handling, preserving bytes
 and policy metadata if a document arrives after inventory. Counts come from the
 server receipt. Four focused synthetic/disposable-DB tests exercise HTTP/auth errors,
 timeout, malformed inventories, existing-file suppression and preservation.
-Full safe suites/release verification follows.
+1154 backend tests, 146 frontend tests, focused preservation tests, touched Python
+compilation, model-policy baseline 75097e5 and required production build passed.
+Backend 30fbe2ccde05e29879a8280f01597d427b844cdd verified healthy after rollout
+502s. Cloudflare 2084d522-9b90-44f3-a6ce-6735f62dfe36 deployed; hosted JS and
+service-worker bytes match. Agent 14:49:10 UTC, collection 14:48:50, no pending
+deliveries/unavailable workflows or active jobs. Agent was explicitly restarted
+after rollout; the normal collector still reports incomplete catalyst sources,
+which are not treated as research completion.
 
 ## T213 — shared-report meeting questions (verified live)
 

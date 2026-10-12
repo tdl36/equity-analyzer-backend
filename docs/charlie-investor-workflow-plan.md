@@ -66,3 +66,13 @@ live end-to-end interruption. Phase 2 saved-output audit found substantive ABT
 one-pager gaps; T191 exposes them and removes a misleading thesis fallback.
 Follow docs/onepager-acceptance-audit.md for the next editorial and valuation work.
 No later phase or complete one-click refresh acceptance is claimed.
+
+## October 12 implementation checkpoint
+
+T212 ships explicit investor edition review/decisions and version-specific printable
+exports. T213 ships optional meeting questions copied from the same frozen research
+report with original-byte/policy checks and durable handoff identity. T214 hardens
+Mac startup imports against failed inventory reads and concurrent existing files.
+These are partial implementations, not completion of any acceptance criterion.
+Origin-specific refresh submission/context and real-source quality benchmarking
+remain open. See AI_HANDOFF for exact release and validation receipts.
