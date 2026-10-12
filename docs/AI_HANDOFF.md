@@ -2,7 +2,25 @@
 
 Updated: October 12, 2026
 
-## T213 — shared-report meeting questions (release verification pending)
+## T214 — fail closed on unavailable startup inventory (verification pending)
+
+A Mac restart during the T213 backend rollout exposed an existing recovery bug:
+non-200 document inventories were treated as empty, triggering duplicate original
+uploads; non-200 note lookups other than actual absence also attempted imports.
+Stopped that startup pass, preserved originals, and changed both import paths to
+abort on unavailable/unexpected inventories. Only the exact known note-not-found
+response permits a note scan. Document inventories require a complete list with
+valid filenames. No original bytes are read on inventory failure. Existing files
+are not renamed, removed or mass-reprocessed for validation. The affected startup
+logged some duplicate uploads before it was stopped; no claim that all source
+metadata was audited. Agent resumed with the fix once T213 backend was healthy.
+Startup writes additionally use insert-only conflict handling, preserving bytes
+and policy metadata if a document arrives after inventory. Counts come from the
+server receipt. Four focused synthetic/disposable-DB tests exercise HTTP/auth errors,
+timeout, malformed inventories, existing-file suppression and preservation.
+Full safe suites/release verification follows.
+
+## T213 — shared-report meeting questions (verified live)
 
 Added an optional fifth assignment output with frozen meeting date/type. Existing
 four-output defaults stay unchanged. Supported questions are copied verbatim from
@@ -15,8 +33,11 @@ This is a question transfer, not the full generated meeting-preparation workflow
 No live approval or paid QA run occurred. Synthetic browser submission verified
 required date, meeting type, five selected outputs and queued persistence.
 Focused tests cover source restriction/byte changes and interrupted handoff recovery.
-Full backend/frontend suites passed; release verification is recorded below when
-complete. The Mac agent must reload the updated shared plan module safely.
+1150 backend and 146 frontend tests passed, along with compile, model-policy and
+production build checks. Backend cd25e96eb769eb3ddb35de1e47228f43a202d789 verified
+healthy after rollout 502s; Cloudflare a9384702-6bb2-4a05-8326-553c9f051f6c and
+hosted JS/service-worker bytes verified. Mac reload exposed the T214 startup bug
+below; reload completed with its fix. Browser proof: /tmp/charlie-t213-meeting.png.
 All eight priorities remain open against the acceptance plan; continue real-source
 one-pager quality and origin-specific latest-source refresh after this increment.
 

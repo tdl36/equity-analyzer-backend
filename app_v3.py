@@ -15526,6 +15526,9 @@ def save_documents():
         data = request.json
         ticker = data.get('ticker', '').upper()
         documents = data.get('documents', [])
+        preserve_existing = data.get('preserveExisting', False)
+        if not isinstance(preserve_existing, bool):
+            return jsonify({'error': 'Invalid preservation option'}), 400
         
         if not ticker:
             return jsonify({'error': 'Ticker is required'}), 400
@@ -15548,18 +15551,18 @@ def save_documents():
                 # Calculate approximate file size (base64 is ~1.33x original)
                 file_size = len(file_data) * 3 // 4
 
-                cur.execute('''
-                    INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (ticker, filename)
-                    DO UPDATE SET
+                conflict = 'DO NOTHING' if preserve_existing else '''DO UPDATE SET
                         file_data = EXCLUDED.file_data,
                         file_type = EXCLUDED.file_type,
                         mime_type = EXCLUDED.mime_type,
                         metadata = EXCLUDED.metadata,
-                        file_size = EXCLUDED.file_size
-                ''', (ticker, filename, file_data, file_type, mime_type, json.dumps(metadata), file_size))
-                saved_count += 1
+                        file_size = EXCLUDED.file_size'''
+                cur.execute('''
+                    INSERT INTO document_files (ticker, filename, file_data, file_type, mime_type, metadata, file_size)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticker, filename)
+                ''' + conflict, (ticker, filename, file_data, file_type, mime_type, json.dumps(metadata), file_size))
+                saved_count += cur.rowcount
 
         return jsonify({'success': True, 'savedCount': saved_count})
     except Exception as e:

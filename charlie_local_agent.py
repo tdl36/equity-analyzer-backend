@@ -634,8 +634,12 @@ def import_existing_notes() -> None:
             r = requests.get(f"{CHARLIE_API}/api/notes/{ticker}", headers=_agent_headers(), timeout=10)
             if r.status_code == 200:
                 continue  # Already has a note, skip
+            if r.status_code != 404 or r.json() != {'error': 'No note found'}:
+                log.warning("Existing-note inventory unavailable; startup import deferred without reading originals")
+                return
         except Exception:
-            continue
+            log.warning("Existing-note inventory unavailable; startup import deferred without reading originals")
+            return
 
         # Find _Note_ .md file
         note_files = sorted(ticker_dir.glob(f"{ticker}_Note_*.md"))
@@ -731,11 +735,18 @@ def import_existing_documents() -> None:
                 headers=_agent_headers(),
                 timeout=15,
             )
-            if r.status_code == 200:
-                for doc in r.json().get("documents", []):
-                    existing_filenames.add(doc.get("filename", ""))
+            if r.status_code != 200:
+                log.warning("Document inventory unavailable; startup import deferred without reading originals")
+                return
+            inventory = r.json()
+            docs = inventory.get("documents") if isinstance(inventory, dict) else None
+            if not isinstance(docs, list) or any(not isinstance(doc, dict) or not isinstance(doc.get("filename"), str) or not doc["filename"] for doc in docs):
+                log.warning("Document inventory incomplete; startup import deferred without reading originals")
+                return
+            existing_filenames = {doc["filename"] for doc in docs}
         except Exception:
-            pass
+            log.warning("Document inventory unavailable; startup import deferred without reading originals")
+            return
 
         # Scan main folder + Processed/ + any subfolders for source docs
         dirs_to_scan = [ticker_dir]
@@ -787,14 +798,18 @@ def import_existing_documents() -> None:
                 try:
                     resp = requests.post(
                         f"{CHARLIE_API}/api/documents/save",
-                        json={"ticker": ticker, "documents": documents},
+                        json={"ticker": ticker, "documents": documents, "preserveExisting": True},
                         headers=_agent_headers(),
                         timeout=120,
                     )
                     if resp.status_code == 200:
-                        uploaded += len(documents)
-                        for d in documents:
-                            log.info(f"  Uploaded: {ticker}/{d['filename']}")
+                        saved = resp.json().get('savedCount')
+                        if type(saved) is not int or not 0 <= saved <= len(documents):
+                            log.warning("Startup import receipt incomplete; inspect saved inventory before retrying")
+                            return
+                        uploaded += saved
+                        skipped += len(documents) - saved
+                        log.info(f"  Startup import {ticker}: {saved} saved, {len(documents) - saved} already present")
                 except Exception as e:
                     log.warning(f"  Upload failed for {ticker}: {e}")
 
