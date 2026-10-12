@@ -2,7 +2,22 @@
 
 Updated: October 11, 2026
 
-## T199 — core editorial readiness explanations (release pending)
+## T200 — distinguish case labels from financial claims (release pending)
+
+The saved ABT review identified scenario names as hypotheses with no factual
+claim to verify. Canonical Bear/Base/Bull names now act as structural labels
+only when the same row has evidence-checked earnings/cash flow, multiple and
+implied value. A label cannot promote unsupported financial inputs, combine
+cases, bypass space limits or imply arithmetic verification. Arbitrary names
+and duplicate canonical labels are not rescued. Existing supported-name rows
+retain their behavior. No citation, review status or original report is changed.
+Four added tests cover array/object rows, unknown/duplicate labels, incomplete
+core fields, same-row identity, limits and no mutation. Synthetic desktop layout
+inspected; fixed label/explanation separation. Existing ABT/UNH still lack
+complete core inputs and correctly retain their scenario gap. This fixes a
+rendering eligibility issue, not their substantive scenario deficiencies.
+
+## T199 — core editorial readiness explanations (verified live)
 
 Added read-only diagnosis for investment thesis, paired market debate and
 investment view. Missing saved fields, unmatched/stale evidence, incomplete
@@ -19,6 +34,12 @@ Saved ABT diagnoses unmatched thesis/view and incomplete debate pairs; UNH's thr
 core sections render. Desktop Chrome disclosure inspected; ABT print preview
 remains one A4 page with the disclosure excluded. No mobile viewport inspection
 in this increment; existing wrapping and responsive styles are unchanged.
+1081 backend and 140 frontend tests, touched Python compilation, model policy
+against 75097e5 and production build passed. Backend revision
+6847b7ce11477706e1466926e095cf4b72fa01cb healthy after transient rollout
+502; Cloudflare 2ef3deb6-0628-41e5-bb29-68d6f5d1e3ed deployed. Hosted
+JS/SW and live ABT/UNH v19 HTML match local bytes. Mac heartbeat 06:33:10 UTC,
+collection snapshot 06:33:09, pending delivery zero, unavailable reads empty.
 
 ## Reference benchmark and evidence diagnosis — October 12, 05:56 UTC wake
 

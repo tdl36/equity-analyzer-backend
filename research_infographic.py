@@ -12,7 +12,7 @@ from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v19'
+VERSION='stock-infographic-v20'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -27,6 +27,7 @@ def numeric(value):
 class Editor:
     """Retain saved research order and whole claims within the page budget."""
     def __init__(self,run):
+        self.report=run.get('state',{}).get('report',{})
         self.sources=run.get('sources',[])
         self.refs={s['id']:i+1 for i,s in enumerate(self.sources)}
         self.cs=valid_citations(run)
@@ -84,11 +85,32 @@ def scenario_valuation(ed):
     fields=['name','business_conditions','revenue_growth','operating_margin',
             'eps_or_fcf','valuation_multiple','implied_value','upside_downside','major_risks']
     rows=structured_rows(ed,'/scenarios/','name',fields,limit=3,budget=1500)
+    # A canonical case label is structure, not a source-certified financial fact.
+    # Only rescue a label when all three core valuation fields pass existing checks.
+    raw=ed.report.get('scenarios',[])
+    entries=list(enumerate(raw)) if isinstance(raw,list) else list(raw.items()) if isinstance(raw,dict) else []
+    names=[str(item.get('name','')).strip().casefold() for _,item in entries if isinstance(item,dict)]
+    remaining=1500-sum(len(c['statement']) for row in rows for c in row.values() if c)
+    for i,item in entries:
+        if len(rows)>=3:break
+        if not isinstance(item,dict) or not str(i).isdigit():continue
+        name=str(item.get('name','')).strip().casefold()
+        root=f'/scenarios/{i}/'
+        if name not in ('bear','base','bull') or names.count(name)!=1 or ed.get(root+'name'):continue
+        row={key:ed.get(root+key) for key in fields}
+        if not all(row[key] for key in ('eps_or_fcf','valuation_multiple','implied_value')):continue
+        claims=[c for c in row.values() if c]
+        size=sum(len(c['statement']) for c in claims)+len(name)
+        if size>remaining or any(len(c['statement'])>240 for c in claims):
+            ed.omitted.update(c['statement'] for c in claims);continue
+        row['_label']=name.title();rows.append(row);remaining-=size
+
     if not rows:
         return '<p class="missing">Source-supported scenario inputs unavailable. Mechanical sensitivity is not a bull/base/bear valuation.</p>'
     body=''
     for row in rows:
-        body+='<tr><th>'+ed.claim(row['name'])+'</th><td>'+labeled_fields(ed,row,[
+        name_html=(e(row['_label'])+'<br><small>Scenario label, not a source claim</small>') if '_label' in row else ed.claim(row['name'])
+        body+='<tr><th>'+name_html+'</th><td>'+labeled_fields(ed,row,[
             ('business_conditions','Operating assumptions'),('revenue_growth','Growth'),
             ('operating_margin','Margin'),('eps_or_fcf','Earnings / cash flow'),
             ('valuation_multiple','Valuation multiple'),('major_risks','Failure conditions')])+'</td><td>'+labeled_fields(ed,row,[

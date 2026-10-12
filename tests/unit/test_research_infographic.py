@@ -235,3 +235,46 @@ class EditorialTests(unittest.TestCase):
         h=render(self.run,{},self.f)
         self.assertNotIn('EPS × P/E and price return agree',h)
         self.assertIn('Arithmetic unverified:',h)
+
+    def canonical_case(self,name='Base'):
+        self.add('/scenarios/0/name',name,review='needs_review')
+        for key,value in {'eps_or_fcf':'FY2027 adjusted diluted EPS USD 6.00/share',
+                          'valuation_multiple':'18.0x FY2027 adjusted diluted EPS; rationale: peer recovery',
+                          'implied_value':'USD 108.00/share'}.items():
+            self.add('/scenarios/0/'+key,value)
+
+    def test_canonical_label_is_structure_with_supported_core_inputs(self):
+        self.canonical_case();before=copy.deepcopy(self.run)
+        h=render(self.run,{},self.f)
+        self.assertIn('Base<br><small>Scenario label, not a source claim</small>',h)
+        self.assertIn('USD 108.00/share<sup>',h)
+        self.assertEqual(self.run,before)
+        # Real saved reports use arrays; test helper also supports object indices.
+        self.run['state']['report']['scenarios']=[self.run['state']['report']['scenarios']['0']]
+        self.assertIn('Scenario label, not a source claim',render(self.run,{},self.f))
+
+    def test_canonical_label_never_promotes_unsupported_core_values(self):
+        self.canonical_case()
+        self.add('/scenarios/0/implied_value','UNSUPPORTED VALUE',review='needs_review')
+        h=render(self.run,{},self.f)
+        self.assertNotIn('<table class="scenario-values">',h)
+        self.assertNotIn('UNSUPPORTED VALUE',h)
+
+    def test_arbitrary_or_duplicate_labels_are_not_rescued(self):
+        for name in ('Guaranteed upside','<script>Base</script>','Base case'):
+            self.canonical_case(name)
+            self.assertNotIn('<table class="scenario-values">',render(self.run,{},self.f))
+        self.canonical_case()
+        self.add('/scenarios/1/name','BASE',review='needs_review')
+        self.assertNotIn('<table class="scenario-values">',render(self.run,{},self.f))
+
+    def test_structural_label_never_combines_rows_or_bypasses_length_budget(self):
+        self.canonical_case()
+        self.add('/scenarios/0/implied_value','Unavailable')
+        self.add('/scenarios/1/implied_value','USD 108.00/share')
+        self.assertNotIn('<table class="scenario-values">',render(self.run,{},self.f))
+        self.canonical_case()
+        self.add('/scenarios/0/eps_or_fcf','LONG QUALIFIED ASSUMPTION '*30)
+        h=render(self.run,{},self.f)
+        self.assertNotIn('<table class="scenario-values">',h)
+        self.assertIn('Some supported text omitted for length',h)
