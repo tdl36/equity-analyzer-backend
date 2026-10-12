@@ -320,3 +320,24 @@ research/thesis gates and default artifacts are unchanged. Complete selections
 show removed prior corrections before acknowledgement. Prior accepted versions
 remain exportable only while their evidence remains valid. Synthetic UI, PDF and
 authorization checks are not real-source investor acceptance.
+
+## Private assistant handoff — T216
+
+`onepager_handoff.py prepare --assignment UUID --workspace /private/local/path`
+freezes the report, financial inputs and current accepted parent before authoring.
+It saves permitted existing scalar paths and frozen source identities, plus an empty
+`proposal.json`. The workspace must be outside this repository and cloud/watched
+folders. Inspect the registered originals separately; preparation is not review.
+Fill `claims` with 1–20 objects containing exactly `path`, `statement`, `basis`,
+`reason`, `sourceId`, `excerpt`, `locator`. Use the existing correction limits and
+basis vocabulary; the server matches passages and rechecks bytes/usage. New rows
+and multiple sources per claim are still unsupported; do not fabricate paths.
+
+`onepager_handoff.py submit --workspace /private/local/path` journals identities
+before posting pending corrections and a complete pending edition selection.
+Partial correction receipts survive failures. Retry the same workspace after a lost
+response; changed content requires a new preparation. The selected corrections are
+the entire edition selection, not an implicit inheritance of the accepted version.
+Inspect removed prior corrections in the investor review UI. Server checks remain
+mandatory, and no acceptance, model call or original research mutation is performed.
+The result includes the assignment review destination and exact edition ID.

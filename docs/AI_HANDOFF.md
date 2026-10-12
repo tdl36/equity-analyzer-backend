@@ -2,7 +2,25 @@
 
 Updated: October 12, 2026
 
-## T215 — bounded metadata recovery (release verification pending)
+## T216 — resumable private editorial handoff (verification pending)
+
+Added onepager_handoff.py prepare/submit using fixed authenticated correction and
+edition routes. Private local preparation freezes report, financials and accepted
+parent; no approval route, model call, original download or source-review claim.
+The bounded proposal selects existing scalar fields with one frozen source each.
+Journaling precedes writes, retains partial receipts, rejects changed submissions,
+and reconciles a lost edition response even after the parent advances. Server
+validation remains authoritative. Complete selections do not inherit old claims.
+Read-only live preparation succeeded for the saved ABT assignment: 268 permitted
+scalar fields, retained privately in ~/.charlie-workspaces/onepager-abt-t216.
+The proposal remains empty; no live correction was submitted and no sources were
+claimed as reviewed. 1162 backend and 146 frontend tests, compile, model-policy
+baseline 75097e5 and production frontend build passed.
+Seven synthetic tests cover pending handoff, lost responses, stale baselines,
+changed content, prohibited fields/locations and receipt mismatch. New scenario
+rows, multi-source claims and real-source quality acceptance remain open.
+
+## T215 — bounded metadata recovery (verified live)
 
 Audited the eight acknowledged startup uploads from 10:41 EDT. Two Agilent
 originals have empty cloud metadata but retained eligible collector records and
@@ -17,7 +35,15 @@ restrictions remain untouched. Exact metadata replay succeeds without mutation;
 missing/different originals fail. Local source policy and original checks still
 apply before any recovery submission. Automatic import behavior is unchanged.
 Focused tests cover restoration, idempotency, restrictions, other metadata and
-missing/changed bytes. Recovery of the two known records is pending deployment.
+missing/changed bytes. Both Agilent records were recovered through the authenticated endpoint after
+local policy checks; server exact-byte receipts and independent metadata reads
+verified their provenance. Private audit: AlphaSense/startup-upload-audit-20261012.json
+under Charlie Application Support. ABBV prior metadata remains unknown.
+1155 backend and 146 frontend tests, Python compilation, model policy and build
+passed. Backend b2782091b854150f7be7c9fe76be4465d14bdc4e verified; Cloudflare
+841b6082-f63d-4dda-84f1-f5400dbdf77f and hosted asset bytes verified. No agent
+source change/restart in this increment. Post-deployment receipts are kept here
+for the next source commit to avoid an extra docs-only backend restart.
 All eight priorities remain incomplete. Next return to the one-pager quality and
 origin-specific refresh work after verifying the bounded recovery.
 
