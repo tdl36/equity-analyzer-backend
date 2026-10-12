@@ -2,6 +2,29 @@
 
 Updated: October 12, 2026
 
+## T209 — decision identity contract (release verification pending)
+
+Added an internal pure validator for future explicit accept/reject decisions.
+It binds the exact edition, ordered corrections, report, financial snapshot and
+expected accepted parent, rebuilds the pending record from server-loaded evidence,
+and verifies every frozen original including unchanged-claim sources. Both actions
+fail on stale/restricted/missing evidence. The returned intent has no accepted
+status, human-review provenance or renderer claims; original records remain pending.
+Six synthetic tests cover identity/flag rejection, changed parent, stale/tampered
+records, complete-pack byte/policy checks and action-bound replay digests.
+This is not connected to an endpoint or UI and cannot record investor decisions.
+Next: authorized transactional decision persistence, idempotency and concurrent
+parent locking, then accepted-context rendering and explicit version exports.
+The persistence caller must check prior decision replay/conflict before fresh
+validation, lock/reload the accepted lineage and all evidence, and commit its
+separate decision plus accepted pointer atomically. A rejected edition never
+advances the pointer. Selection semantics are a complete selection against the
+original saved report, never an implicit merge of parent corrections. A future
+review UI must make removed prior corrections explicit before acceptance.
+1128 backend and 144 frontend tests passed, along with Python compilation,
+model policy against 75097e5 and the required frontend build. No product UI changed.
+No live edition approval, research mutation or model call was performed.
+
 ## T208 print verification checkpoint — October 12, 12:35 UTC
 
 Native Chrome Save as PDF was exercised through supported computer-use controls

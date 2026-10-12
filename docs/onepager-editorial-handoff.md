@@ -274,3 +274,20 @@ current-code renderer output. Private evidence paths and hashes are in AI_HANDOF
 This is not a production export feature or investor acceptance. Dense selections,
 real-source quality, accepted decisions/lineage and accepted exports still need
 implementation and separate verification. No live approval was performed.
+
+
+## Decision intent contract — October 12, 13:00 UTC
+
+`onepager_decision_contract.validate_decision` checks a server-loaded pending
+edition against an exact accept/reject request and current server parent. It
+rebuilds the selection and checks all frozen originals for exact bytes and eligible
+usage, including unchanged claims' sources. The result is only a bounded intent;
+it has no accepted status, decision timestamp, investor provenance or claim map.
+It is not wired into persistence or an endpoint. Six synthetic tests exercise
+staleness, identity, payload replay digests and both actions' complete-pack checks.
+Future persistence must authorize the investor, resolve durable decision replay
+and conflict, lock lineage/evidence and atomically record the decision and pointer.
+New editions are complete selections against the original report: parent identity
+provides concurrency control, not implicit inheritance. Show any correction removed
+from the prior accepted selection explicitly in the future review comparison.
+No live approval or accepted-render/export behavior is available from this module.
