@@ -98,6 +98,22 @@ class AssignmentPostgresTests(unittest.TestCase):
         p={**P,'ticker':self.ticker,'requestId':self.ident}
         if outputs:p['outputs']=outputs
         r=self.client.post('/api/research/assignments',json=p);self.assertEqual(r.status_code,202,r.json);return p
+    def test_origin_rejection_and_exact_retry_after_baseline_changes(self):
+        origin={'kind':'onepager','assignmentId':str(uuid.uuid4()),'runId':str(uuid.uuid4()),'ticker':self.ticker,'fingerprint':'a'*64,'fundamentalsDigest':'b'*64,'parentId':None}
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'origin':origin}
+        with patch('research_assignment_origin.verify',side_effect=ValueError('Baseline changed')):
+            self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,409)
+        self.assertIsNone(self.co.read(self.ident))
+        with self.db() as (_,cur):
+            cur.execute('SELECT id FROM mp_jobs WHERE id=%s',(child(self.ident,'collection'),));self.assertIsNone(cur.fetchone())
+        with patch('research_assignment_origin.verify') as checked:
+            self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+            checked.assert_called_once()
+        self.assertEqual(self.co.read(self.ident)['input']['origin'],origin)
+        with patch('research_assignment_origin.verify',side_effect=AssertionError('Replay must retain frozen origin')):
+            self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+        changed={**body,'origin':{**origin,'parentId':str(uuid.uuid4())}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=changed).status_code,409)
     def collected(self,sha=None):
         with self.db(True) as (_,cur):
             cur.execute("UPDATE mp_jobs SET status='applied',result=%s::jsonb WHERE id=%s",(json.dumps({'refreshRequestId':self.ident}),child(self.ident,'collection')))

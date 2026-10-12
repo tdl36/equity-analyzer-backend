@@ -10,7 +10,8 @@ export function ResearchAssignment({
   onReport,
   disabled,
   focusId = '',
-  onClearFocus
+  onClearFocus,
+  origin = null
 }) {
   var [since, setSince] = React.useState(() => {
       var d = new Date();
@@ -18,7 +19,7 @@ export function ResearchAssignment({
       return date(d);
     }),
     [until, setUntil] = React.useState(() => date(new Date())),
-    [chosen, setChosen] = React.useState(outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
+    [chosen, setChosen] = React.useState(origin ? ['visual'] : outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
     [horizon, setHorizon] = React.useState('12–24 months'),
     [instruction, setInstruction] = React.useState(''),
     [visualFundamentals, setVisualFundamentals] = React.useState(true),
@@ -56,6 +57,7 @@ export function ResearchAssignment({
     return d;
   };
   React.useEffect(() => {
+    if (origin) return;
     var live = true;
     request('assignment-defaults').then(d => {
       if (live) {
@@ -126,6 +128,9 @@ export function ResearchAssignment({
       ticker,
       since,
       until,
+      ...(origin ? {
+        origin
+      } : {}),
       outputs: [...chosen].sort(),
       horizon,
       instruction,
@@ -154,7 +159,7 @@ export function ResearchAssignment({
   return /*#__PURE__*/React.createElement("section", {
     className: "sa-prepare",
     "aria-label": "End-to-end research"
-  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, "One research assignment"), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), focusId && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, origin ? 'Refresh this one-pager from recent sources' : 'One research assignment'), origin && /*#__PURE__*/React.createElement("p", null, "Starting from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report; compare and review the resulting draft."), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), focusId && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Opened saved assignment ", focusId.slice(0, 8), ". ", /*#__PURE__*/React.createElement("button", {
     onClick: onClearFocus
@@ -185,6 +190,7 @@ export function ResearchAssignment({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: chosen.includes(id),
+    disabled: !!origin && id === 'visual',
     onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
   }), title))), chosen.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
@@ -231,7 +237,7 @@ export function ResearchAssignment({
     className: "sa-primary",
     disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, "Start research for ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
+  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error), /*#__PURE__*/React.createElement("p", {
     role: "status"
@@ -246,7 +252,9 @@ export function ResearchAssignment({
       paddingTop: 12,
       marginTop: 12
     }
-  }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
+    href: routeHash('stockanalysis', j.ticker, 'stock-analysis', 'assignment:' + j.input.origin.assignmentId)
+  }, "saved one-pager"), " \xB7 ", j.input.origin.parentId ? 'accepted edition ' + j.input.origin.parentId.slice(0, 8) : 'original report ' + j.input.origin.runId.slice(0, 8), ". Outputs are separate drafts for review."), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, j.result.delayWarning), /*#__PURE__*/React.createElement("small", null, "Saved update: ", parseTimestamp(j.updated_at)?.toLocaleString() || 'Unavailable', j.result.macReportedAt ? ' · Mac report: ' + parseTimestamp(j.result.macReportedAt)?.toLocaleString() || 'Unavailable' : ''), j.result.sources && /*#__PURE__*/React.createElement("p", null, j.result.sources.length, " originals verified \xB7 ", j.result.researchStages || 0, "/12 research stages"), j.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"

@@ -1,3 +1,4 @@
+import {ResearchAssignment} from './research-assignment';
 import * as React from 'react';
 import {editionSelection,claimLabel,basisLabel,verifiedEditionPreview,editionReviewState,editionDecision,removedEditionClaims} from './onepager-edition-model.mjs';
 
@@ -43,6 +44,7 @@ export function OnepagerEditions({api,run,assignmentId,onOriginal}){
  <button disabled={busy} onClick={reload}>Reload editions and corrections</button>
  {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
  {!pack?<p>{busy?'Loading saved editions…':'Saved editions unavailable.'}</p>:<>
+ <details><summary>Refresh this one-pager from recent sources</summary><ResearchAssignment key={pack.fingerprint+pack.fundamentalsDigest+pack.parentId} api={api} ticker={run.ticker} origin={{kind:'onepager',...Object.fromEntries(['assignmentId','runId','ticker','fingerprint','fundamentalsDigest','parentId'].map(k=>[k,pack[k]]))}} onReport={id=>{window.location.hash='view=stockanalysis&ticker='+encodeURIComponent(run.ticker)+'&section=stock-analysis&work=analysis%3A'+encodeURIComponent(id);}}/></details>
  <h4>Choose proposed changes</h4><p>Create corrections in “Propose a correction for review” above, then reload here. Showing up to 50 recent corrections; select at most 20, with one change per claim.</p>
  <fieldset disabled={busy}>{rows.map(c=><article key={c.id}>
  <label className="sa-check"><input type="checkbox" checked={selected.includes(c.id)} disabled={c.stale||c.fingerprint!==pack.fingerprint||(!selected.includes(c.id)&&selected.length>=20)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id))}/><span>{claimLabel(c.proposal.path)}{c.stale||c.fingerprint!==pack.fingerprint?' · Baseline changed; prepare again':''}</span></label>

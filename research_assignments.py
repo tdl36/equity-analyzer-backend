@@ -214,6 +214,10 @@ class Coordinator:
                     cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('assignment-ticker:'+p['ticker'],))
                     cur.execute("SELECT id FROM mp_jobs WHERE ticker=%s AND stage=%s AND status IN ('queued','running','attention')",(p['ticker'],STAGE))
                     if cur.fetchone():return jsonify(error='An assignment for this ticker is unfinished. Resume or stop it first.'),409
+                    if p.get('origin'):
+                        from research_assignment_origin import verify
+                        try:verify(cur,p['origin'])
+                        except (ValueError,TypeError,KeyError) as exc:return jsonify(error=str(exc)),409
                     cur.execute('SELECT value FROM app_settings WHERE key=%s',(SOURCE_KEY,));r=cur.fetchone();p['sourcePolicy']=obj(r['value']) if r else DEFAULT
                     cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,STAGE,p['ticker'],json.dumps(p),json.dumps({'step':'Waiting for Mac collection'})))
                     command={'action':'research_assignment','payload':{k:v for k,v in p.items() if k not in ('thesisBaseline','caseRevision','fingerprint')}}

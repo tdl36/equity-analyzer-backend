@@ -1,3 +1,4 @@
+import { ResearchAssignment } from './research-assignment';
 import * as React from 'react';
 import { editionSelection, claimLabel, basisLabel, verifiedEditionPreview, editionReviewState, editionDecision, removedEditionClaims } from './onepager-edition-model.mjs';
 export function OnepagerEditions({
@@ -220,7 +221,18 @@ export function OnepagerEditions({
     role: "alert"
   }, error), notice && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, notice), !pack ? /*#__PURE__*/React.createElement("p", null, busy ? 'Loading saved editions…' : 'Saved editions unavailable.') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "Choose proposed changes"), /*#__PURE__*/React.createElement("p", null, "Create corrections in \u201CPropose a correction for review\u201D above, then reload here. Showing up to 50 recent corrections; select at most 20, with one change per claim."), /*#__PURE__*/React.createElement("fieldset", {
+  }, notice), !pack ? /*#__PURE__*/React.createElement("p", null, busy ? 'Loading saved editions…' : 'Saved editions unavailable.') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Refresh this one-pager from recent sources"), /*#__PURE__*/React.createElement(ResearchAssignment, {
+    key: pack.fingerprint + pack.fundamentalsDigest + pack.parentId,
+    api: api,
+    ticker: run.ticker,
+    origin: {
+      kind: 'onepager',
+      ...Object.fromEntries(['assignmentId', 'runId', 'ticker', 'fingerprint', 'fundamentalsDigest', 'parentId'].map(k => [k, pack[k]]))
+    },
+    onReport: id => {
+      window.location.hash = 'view=stockanalysis&ticker=' + encodeURIComponent(run.ticker) + '&section=stock-analysis&work=analysis%3A' + encodeURIComponent(id);
+    }
+  })), /*#__PURE__*/React.createElement("h4", null, "Choose proposed changes"), /*#__PURE__*/React.createElement("p", null, "Create corrections in \u201CPropose a correction for review\u201D above, then reload here. Showing up to 50 recent corrections; select at most 20, with one change per claim."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy
   }, rows.map(c => /*#__PURE__*/React.createElement("article", {
     key: c.id

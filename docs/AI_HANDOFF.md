@@ -2,7 +2,27 @@
 
 Updated: October 12, 2026
 
-## T219 — scenario arithmetic in edition review (release prepared)
+## T220 — one-pager refresh origin (release prepared)
+
+Saved one-pager edition history now opens a coordinated recent-source refresh,
+with visual output required and optional shared-pack outputs. Submission freezes
+origin assignment/report, report fingerprint, financial snapshot digest and current
+accepted edition. Locked server reads reject a changed origin before queuing any
+collection command. Exact request replay retains the original baseline even after
+it changes; conflicting reuse fails. The saved assignment links back to its origin.
+Existing originals, reports and editions remain unchanged. Prior editorial wording
+is not automatically merged into generated research; the UI states this explicitly.
+The existing unfinished-company guard remains, including attention assignments.
+
+1175 backend and 146 frontend tests passed, plus Python compile, model-policy
+baseline 75097e5 and production build. Synthetic Chrome desktop/mobile form checks
+verified visual-only defaults, frozen origin payload and exact lost-response retry;
+fixture CSS only, not full workspace visual acceptance. No paid research or live
+submission/approval. Thesis/meeting origin entry points, editorial carry-forward,
+real-source quality and unattended full-path acceptance remain open. All eight
+priorities remain incomplete. Deployment verification follows this source commit.
+
+## T219 — scenario arithmetic in edition review (verified live)
 
 Edition history and the explicit investor decision panel now display P/E scenario
 arithmetic diagnostics with inspectable EPS, multiple, implied value and dated
@@ -17,7 +37,11 @@ frontend tests, compile, model-policy baseline 75097e5 and build passed. Synthet
 Chrome desktop/mobile review displayed a mismatch and its inputs without any
 write or decision; fixture CSS is not full workspace visual acceptance.
 Real-source one-pager quality and origin-specific refresh remain open. All eight
-priorities remain incomplete. Deployment pending.
+priorities remain incomplete. Backend c536d101381e743c297c835c5c985fd59e21eb98
+verified healthy after rollout 502s. Cloudflare 35583a46-4f4c-4611-872f-9fe9bba8e95a
+deployed; hosted JS/service-worker exact bytes verified. Mac heartbeat and collection
+snapshot current with zero pending delivery and no unavailable sources. No agent
+change/restart. This receipt is retained for the next source commit.
 
 ## T218 — bounded missing scenario inputs (verified live)
 

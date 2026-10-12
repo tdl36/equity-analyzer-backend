@@ -33,4 +33,7 @@ def plan(data):
     elif data.get('meeting') is not None:
         raise ValueError('Select meeting preparation before supplying meeting settings.')
     if supplement:result['visualFundamentals']=True
+    if 'origin' in data:
+        from research_assignment_origin import validate
+        result['origin']=validate(data['origin'],ticker,outputs)
     return result
