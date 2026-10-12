@@ -177,6 +177,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
     version = studio_version if studio else "investment-committee-v1" if committee else VERSION
     worker_kind = "stock-analysis" if studio else "investment-committee" if committee else "company-research"
     bp=Blueprint('stock_analysis' if studio else 'investment_committee' if committee else 'company_research',__name__);lock=threading.Lock();ready=False;slots=threading.BoundedSemaphore(1)
+    from research_source_restriction import register as register_restriction
+    register_restriction(bp, get_db, table, route)
     def ensure():
         nonlocal ready
         with lock:

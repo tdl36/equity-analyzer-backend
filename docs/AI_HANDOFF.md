@@ -2,6 +2,31 @@
 
 Updated: October 12, 2026
 
+## T224 — exact-original restriction recording (release verification pending)
+
+ABT original-source review found an explicit third-party AI restriction in the
+October 2 JPMorgan preview (disclosures, PDF page 10), while current cloud metadata
+marked it usage=research. Original SHA-256 matches the frozen report. Further use
+of this source for the editorial draft stopped. This is a newly observed source
+restriction, not a change to the source bytes or a new research-quality judgment.
+
+Added authenticated POST research/<workflow>-run/<id>/source/<sourceId>/restrict,
+requiring frozen SHA-256, bounded reason and locator. It locks the saved report and
+original, verifies exact bytes, and adds aiAllowed=false with a dated observation.
+It preserves all prior metadata, original bytes and research. Concurrent/repeated
+requests retain the first restriction; no unrestrict/approval operation is provided.
+Existing eligible() gates reject the resulting metadata. No paid replay is allowed.
+
+1181 backend and 148 frontend tests passed, including disposable PostgreSQL
+concurrent restriction/replay and invalid hash/bytes/body checks. Python compile,
+model-policy baseline 75097e5 and production build passed. No running/processing
+activity was observed before release. Release and live restriction receipt must
+be verified before calling this resolved.
+Saved ABT outputs may already contain this source; they are not silently removed or
+rewritten. New proposed editions using the full pack should fail current-policy
+checks. Recovery requires resolving permission or explicitly preparing a new
+eligible source pack through the established workflow; no ambiguous/paid retry.
+
 ## Real-source editorial review — October 12, 19:24 UTC wake
 
 Production remains T223. Read-only ABT preparation and exact-byte retrieval of
