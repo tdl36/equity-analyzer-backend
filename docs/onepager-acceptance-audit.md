@@ -154,3 +154,39 @@ certification. Next: read the remaining eligible originals and restrictions, fin
 independent contrary evidence and prospective signposts, then prepare a complete
 source-checked pending edition and inspect its actual render. No paid QA or
 approval was performed. All eight priority acceptance criteria remain open.
+
+## Historical valuation implementation boundary — October 12, 23:26 UTC
+
+Read-only code audit after T229: `stock_visual_fundamentals.collect` freezes five
+annual SEC observations selected from the latest filings available at retrieval.
+Its `historyBasis` explicitly permits restatements. `quote` collects only a current
+market snapshot, with provider-defined trailing/forward multiples. There is no
+historical price series or dated estimate vintage in this adapter. Therefore neither
+current forward EPS nor the annual chart can supply historical P/E denominators.
+No live data fetch, model call, financial snapshot mutation or valuation claim was
+made during this audit.
+
+The next bounded valuation change should introduce a separately versioned,
+source-checked historical valuation supplement, rather than modify an existing
+assignment's frozen fundamentals. Before rendering any observation it must retain:
+
+- Exact issuer/security identity, currency, observed trading date, unadjusted close,
+  corporate-action treatment, original source URL and response hash.
+- Explicit trailing GAAP diluted EPS period, units, filing accession and publication
+  date, with a consistent share basis. A later restatement cannot be portrayed as
+  information available on an earlier price date. Forward or adjusted denominators
+  require their own dated estimate/reconciliation evidence and are out of the
+  initial trailing-GAAP scope.
+- A calculated multiple only for a positive denominator; zero/negative earnings,
+  unavailable inputs, incompatible share bases and conflicting observations remain
+  explicit gaps. No interpolation or copying today's multiple into prior years.
+- A frozen supplement identity/digest linked to the pending edition and covered by
+  stale-baseline checks and investor review. Source-register provenance must survive
+  preview, acceptance and export without rewriting earlier editions.
+
+Acceptance fixtures should exercise publication-after-price look-ahead, restatements,
+splits, currency/security mismatches, zero/negative earnings, duplicates and missing
+trading days. Real acceptance then requires original price/filing evidence plus
+visible date/basis labels, calculation reconciliation and print inspection. This is
+a concrete implementation boundary, not a shipped valuation feature. Historical
+valuation, fundamental scenarios and investor-scored one-page quality remain open.

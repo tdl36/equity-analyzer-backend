@@ -2,7 +2,17 @@
 
 Updated: October 12, 2026
 
-## T229 — print continuation review status (verification pending)
+## Next valuation increment — October 12, 23:26 UTC audit
+
+Confirmed the current fundamentals adapter has no historical price/estimate-vintage
+series and selects potentially restated annual observations. It cannot safely supply
+historical point-in-time P/E. The concrete supplement/evidence/acceptance boundary is
+recorded in `docs/onepager-acceptance-audit.md`. No live source or snapshot changes,
+paid calls or new valuation feature in this documentation-only checkpoint. Next work
+is the versioned historical supplement with publication-date and share-basis checks;
+T229 remains the verified production release. All eight acceptance phases remain open.
+
+## T229 — print continuation review status (verified live)
 
 Illustrated renderer v24 repeats a pending/not-accepted review header and page X
 of Y in A4 print margin boxes. Ordinary report prints carry a research-review-draft
@@ -16,6 +26,12 @@ production build passed. Desktop/phone screenshots were pixel-identical to T228.
 Activity showed no running/processing jobs before release.
 No paid research, source changes or investor decisions. Further editorial reduction
 requires preserving the conditional arguments; do not hide content to force a page.
+
+Backend 080aca3c79caa5e5f3212f2807ee6e903e1e14e7 verified healthy; Cloudflare
+108c60ab-e36a-4933-a4ae-ab25f11449a5 deployed, hosted assets match exact bytes.
+Live ABT preview remains pending; its two-page PDF has the pending header and
+correct pagination on both pages. Mac snapshot available, no pending delivery;
+agent unchanged. Post-release receipt retained for the next source commit.
 
 ## T228 — pending illustrated review layout (verified live)
 
