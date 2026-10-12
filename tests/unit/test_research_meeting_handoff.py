@@ -99,3 +99,20 @@ class HandoffPostgresTests(unittest.TestCase):
             c.execute('SELECT generation_tokens,topics_json FROM mp_question_sets');q=c.fetchone();self.assertEqual(q['generation_tokens'],0);self.assertEqual(json.loads(q['topics_json'])[0]['questions'][0]['question'],run['state']['report']['diligence_questions'][0])
         with self.db(True) as (_,c):c.execute('DELETE FROM mp_meetings WHERE id=%s',(a['meetingId'],))
         app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));r=app.test_client().post(f'/api/research/stock-analysis-run/{RID}/meeting-prep',json=data(run));self.assertEqual(r.status_code,400);self.assertIn('deleted',r.json['error'])
+
+    def test_shared_pack_policy_and_bytes_checked_before_writes(self):
+        import json,base64,hashlib
+        from research_assignment_meeting import selection
+        run=fixture();run['id']='a977b8d3-e286-5848-b377-159dcbfc0f21';run['ticker']='PACK'
+        raw=b'Synthetic original';run['sources'][0]['originalHash']=hashlib.sha256(raw).hexdigest()
+        with self.db(True) as (_,c):
+            c.execute('INSERT INTO stock_analysis_runs(id,ticker,status,state,sources) VALUES(%s,%s,%s,%s::jsonb,%s::jsonb)',(run['id'],run['ticker'],run['status'],json.dumps(run['state']),json.dumps(run['sources'])))
+            c.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s::jsonb)',('PACK','synthetic.txt',base64.b64encode(raw).decode(),'{"usage":"reference_only"}'))
+        app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));client=app.test_client()
+        body=selection(run,{'date':'2026-10-20','type':'management'});url=f'/api/research/stock-analysis-run/{run["id"]}/meeting-prep'
+        response=client.post(url,json=body);self.assertEqual(response.status_code,400);self.assertIn('restricted',response.json['error'])
+        with self.db(True) as (_,c):c.execute("UPDATE document_files SET metadata='{}',file_data=%s WHERE ticker='PACK'",(base64.b64encode(b'changed').decode(),))
+        response=client.post(url,json=body);self.assertEqual(response.status_code,400);self.assertIn('changed',response.json['error'])
+        with self.db(True) as (_,c):c.execute("UPDATE document_files SET file_data=%s WHERE ticker='PACK'",(base64.b64encode(raw).decode(),))
+        response=client.post(url,json=body);self.assertEqual(response.status_code,200,response.json)
+        self.assertTrue(client.post(url,json=body).json['reused'])

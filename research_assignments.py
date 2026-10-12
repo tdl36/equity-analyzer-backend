@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint,jsonify,request,Response
 
 STAGE='research_assignment'
-from research_assignment_plan import plan,OUTPUTS
-DEFAULTS={'outputs':list(OUTPUTS),'horizon':'12–24 months'}
+from research_assignment_plan import plan,OUTPUTS,DEFAULT_OUTPUTS
+DEFAULTS={'outputs':list(DEFAULT_OUTPUTS),'horizon':'12–24 months'}
 KEY='research_assignment_defaults_v1'
 
 
@@ -134,10 +134,21 @@ class Coordinator:
                 from research_assignment_outputs import note,thesis
                 artifacts=state.setdefault('artifacts',{})
                 for kind in p['outputs']:
-                    if kind=='thesis':continue
+                    if kind in ('thesis','meeting_prep'):continue
                     if kind not in artifacts:
                         artifacts[kind]={'html':note(report,kind,{**p,'_visualFundamentals':state.get('visualFundamentals')}),'reviewRequired':True}
                         state['step']='Preparing requested deliverables';self.store(ident,state,'running')
+                if 'meeting_prep' in p['outputs'] and not state.get('meetingId'):
+                    from research_assignment_meeting import selection
+                    if not state.get('meetingSelection'):
+                        state['meetingSelection']=selection(report,p['meeting'])
+                        state['step']='Preparing meeting questions from the shared research pack'
+                        self.store(ident,state,'running')
+                    meeting=self.call('research_meeting_handoff.handoff','POST',state['meetingSelection'],rid=report_id)
+                    if not isinstance(meeting.get('meetingId'),int) or not isinstance(meeting.get('questionSetId'),int):
+                        raise ValueError('Meeting receipt is incomplete. Inspect saved meetings before retrying.')
+                    state.update(meetingId=meeting['meetingId'],meetingQuestionSetId=meeting['questionSetId'])
+                    self.store(ident,state,'running')
                 if 'thesis' in p['outputs'] and not state.get('thesisDraftId'):
                     if report.get('baselineStale'):raise ValueError('The saved investment case changed during research. Other outputs are retained; review the completed report and start a new assignment for thesis delivery.')
                     if not state.get('thesisPackage'):
@@ -158,7 +169,7 @@ class Coordinator:
                 error='The bounded thesis quality retry is exhausted. Review the saved research and prepare a separate source-checked proposal in Import & review thesis. Originals and completed outputs are retained; no further automatic paid retry is available.'
         if s.get('visualFundamentals'):
             f=s['visualFundamentals'];s['visualFundamentals']={k:f.get(k) for k in ('version','asOf','retrievedAt','gaps')}
-        s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
+        s.pop('meetingSelection',None);s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
         return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
@@ -169,7 +180,7 @@ class Coordinator:
             with self.db(request.method=='PUT') as (_,cur):
                 if request.method=='PUT':
                     d=request.get_json(silent=True) or {}
-                    try:p=plan({**d,'ticker':'TEST','since':'2026-01-01','until':'2026-01-01'})
+                    try:p=plan({**d,'ticker':'TEST','since':'2026-01-01','until':'2026-01-01',**({'meeting':{'date':'2026-01-01','type':'management'}} if 'meeting_prep' in d.get('outputs',[]) else {})})
                     except (ValueError,TypeError,AttributeError):return jsonify(error='Invalid research defaults.'),400
                     value={k:p[k] for k in ('outputs','horizon')}
                     cur.execute('INSERT INTO app_settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()',(KEY,json.dumps(value)))

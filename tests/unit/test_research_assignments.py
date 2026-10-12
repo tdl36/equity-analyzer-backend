@@ -362,3 +362,28 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(risk['id'],old['analysis']['threats'][0]['id']);self.assertIn('Not recorded',risk['triggerPoints'])
         with self.db() as (_,cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(self.ticker,));self.assertEqual(cur.fetchone()['analysis'],old['analysis'])
+
+    def test_shared_meeting_output_recovers_lost_receipt_without_new_research(self):
+        original_report=self.report
+        def report():
+            run=original_report();question='What supports the revenue outlook?'
+            run['state']['report']['diligence_questions']=[question]
+            run['state']['citations']['/diligence_questions/0']={**copy.deepcopy(run['state']['citations']['/summary/one_liner']),'statement':question}
+            return run
+        self.report=report
+        requests=[];original_invoke=self.co.invoke
+        def invoke(endpoint,method,body,params):
+            if endpoint=='research_meeting_handoff.handoff':
+                requests.append(copy.deepcopy(body))
+                if len(requests)==1:return {'error':'Synthetic lost local meeting receipt'},503
+                return {'meetingId':45,'questionSetId':46,'reused':True},200
+            return original_invoke(endpoint,method,body,params)
+        self.co.invoke=invoke
+        p={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['visual','meeting_prep'], 'meeting':{'date':'2026-10-20','type':'management'}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=p).status_code,202)
+        self.collected();row=self.advance();self.assertEqual(row['status'],'attention')
+        self.assertIn('visual',row['result']['artifacts']);self.assertIn('meetingSelection',row['result'])
+        self.co.store(self.ident,row['result'],'running');row=self.advance()
+        self.assertEqual(row['status'],'complete',row['error']);self.assertEqual(row['result']['meetingId'],45)
+        self.assertEqual(requests[0],requests[1]);self.assertEqual(len(self.submits),1)
+        self.assertNotIn('meetingSelection',self.co.public(row)['result'])

@@ -31,6 +31,11 @@ def prepare(run,data):
     if not isinstance(data,dict):raise ValueError('Select questions and a meeting date.')
     pack=preview(run)
     if data.get('fingerprint')!=pack['fingerprint']:raise ValueError('The saved questions changed. Reload before copying them.')
+    if 'expectedSources' in data:
+        expected=data['expectedSources']
+        actual=[{k:s.get(k) for k in ('filename','originalHash')} for s in run.get('sources',[])]
+        if not isinstance(expected,list) or not expected or expected!=actual:
+            raise ValueError('The shared research source pack changed. Inspect the saved assignment.')
     indices=data.get('indices')
     if not isinstance(indices,list) or not 1<=len(indices)<=10 or any(type(i) is not int for i in indices) or len(set(indices))!=len(indices):
         raise ValueError('Select 1–10 distinct saved questions.')
@@ -52,7 +57,7 @@ def prepare(run,data):
         'follow_up_angle':'Record the actual answer, supporting evidence and any unresolved follow-up.',
         'research_origin':{'runId':pack['runId'],'ticker':pack['ticker'],'path':q['path'],'createdAt':pack['createdAt']}
     } for q in selected]}]
-    identity={'runId':pack['runId'],'fingerprint':pack['fingerprint'],'indices':sorted(indices),'meetingDate':when,'meetingType':kind}
+    identity={'runId':pack['runId'],'fingerprint':pack['fingerprint'],'indices':sorted(indices),'meetingDate':when,'meetingType':kind, **({'expectedSources':data['expectedSources']} if 'expectedSources' in data else {})}
     return digest(identity),identity,topics
 
 
@@ -87,13 +92,24 @@ def create_blueprint(get_db):
         except (ValueError,TypeError):return jsonify(error='Invalid saved report.'),400
         try:
             with get_db(commit=request.method=='POST') as (_,cur):
-                cur.execute('SELECT id,ticker,status,state,sources,created_at FROM stock_analysis_runs WHERE id=%s',(rid,))
+                cur.execute('SELECT id,ticker,status,state,sources,created_at FROM stock_analysis_runs WHERE id=%s FOR SHARE',(rid,))
                 row=cur.fetchone()
                 if not row:return jsonify(error='Saved report not found.'),404
                 run=dict(row)
                 if request.method=='GET':return jsonify(preview(run))
                 # Schema setup and all writes are in the same transaction. Reads never create work.
-                prepare(run,request.get_json(silent=True))
+                body=request.get_json(silent=True)
+                prepare(run,body)
+                if 'expectedSources' in body:
+                    from company_research import eligible
+                    from research_originals import verified_original
+                    for source in run['sources']:
+                        cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s FOR SHARE',(run['ticker'],source['filename']))
+                        originals=cur.fetchall()
+                        if len(originals)!=1 or not eligible(originals[0].get('metadata') or {}):
+                            raise ValueError('A shared-pack original is missing or restricted. Meeting preparation was not saved.')
+                        verified_original(source,dict(originals[0]),source['originalHash'])
+
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext('research-meeting-schema'))")
                 cur.execute('''CREATE TABLE IF NOT EXISTS research_meeting_handoffs (
                     id TEXT PRIMARY KEY,run_id TEXT NOT NULL,meeting_id INTEGER REFERENCES mp_meetings(id) ON DELETE SET NULL,

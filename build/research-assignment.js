@@ -2,7 +2,7 @@ import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-d
 import * as React from 'react';
 import { parseTimestamp, routeHash } from './workspace-model.mjs';
 import { downloadText } from './stock-analysis-model.mjs';
-var outputs = [['summary_note', 'Summary note'], ['stock_summary', 'Stock summary'], ['thesis', 'Thesis draft / update'], ['visual', 'Visual one-pager draft']];
+var outputs = [['summary_note', 'Summary note'], ['stock_summary', 'Stock summary'], ['thesis', 'Thesis draft / update'], ['visual', 'Visual one-pager draft'], ['meeting_prep', 'Meeting questions from this research']];
 var date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export function ResearchAssignment({
   api,
@@ -18,10 +18,12 @@ export function ResearchAssignment({
       return date(d);
     }),
     [until, setUntil] = React.useState(() => date(new Date())),
-    [chosen, setChosen] = React.useState(outputs.map(x => x[0])),
+    [chosen, setChosen] = React.useState(outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
     [horizon, setHorizon] = React.useState('12–24 months'),
     [instruction, setInstruction] = React.useState(''),
-    [visualFundamentals, setVisualFundamentals] = React.useState(true);
+    [visualFundamentals, setVisualFundamentals] = React.useState(true),
+    [meetingDate, setMeetingDate] = React.useState(''),
+    [meetingType, setMeetingType] = React.useState('management');
   var [jobs, setJobs] = React.useState([]),
     [loaded, setLoaded] = React.useState(false),
     [busy, setBusy] = React.useState(false),
@@ -127,7 +129,13 @@ export function ResearchAssignment({
       outputs: [...chosen].sort(),
       horizon,
       instruction,
-      visualFundamentals
+      visualFundamentals,
+      ...(chosen.includes('meeting_prep') ? {
+        meeting: {
+          date: meetingDate,
+          type: meetingType
+        }
+      } : {})
     };
     var signature = JSON.stringify(p);
     if (pending.current?.signature !== signature) pending.current = {
@@ -178,7 +186,24 @@ export function ResearchAssignment({
     type: "checkbox",
     checked: chosen.includes(id),
     onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
-  }), title))), chosen.includes('visual') && /*#__PURE__*/React.createElement("label", {
+  }), title))), chosen.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, /*#__PURE__*/React.createElement("label", null, "Meeting date", /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: meetingDate,
+    onChange: e => setMeetingDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Meeting type", /*#__PURE__*/React.createElement("select", {
+    value: meetingType,
+    onChange: e => setMeetingType(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "management"
+  }, "Management"), /*#__PURE__*/React.createElement("option", {
+    value: "expert"
+  }, "Expert"), /*#__PURE__*/React.createElement("option", {
+    value: "conference"
+  }, "Conference"), /*#__PURE__*/React.createElement("option", {
+    value: "other"
+  }, "Other"))), /*#__PURE__*/React.createElement("p", null, "Uses source-matched questions from the same report and originals. No separate generation call. Review their premises before the meeting.")), chosen.includes('visual') && /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -204,7 +229,7 @@ export function ResearchAssignment({
     })
   }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
     className: "sa-primary",
-    disabled: !chosen.length || !since || !until || !horizon.trim(),
+    disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
   }, "Start research for ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -273,7 +298,9 @@ export function ResearchAssignment({
       downloadText(await r.text(), `${ticker}-${a.kind}-${j.id.slice(0, 8)}.html`);
       return 'Draft exported as printable HTML.';
     })
-  }, "Export ", outputs.find(x => x[0] === a.kind)?.[1])), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
+  }, "Export ", outputs.find(x => x[0] === a.kind)?.[1])), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
+    href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
+  }, "Open meeting questions from this pack"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
   }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", {
     className: "sa-visual-preview"

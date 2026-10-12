@@ -2,7 +2,30 @@
 
 Updated: October 12, 2026
 
-## T212 — investor edition decisions and explicit exports (release prepared)
+## T213 — shared-report meeting questions (release verification pending)
+
+Added an optional fifth assignment output with frozen meeting date/type. Existing
+four-output defaults stay unchanged. Supported questions are copied verbatim from
+the same completed report, with report provenance and no extra generation call.
+The handoff locks and revalidates every frozen original's exact bytes and usage
+policy before saving. Its persisted selection and deterministic receipt recover
+an interrupted response without duplicate meetings or new research runs. Missing
+supported questions leave the assignment in attention with other artifacts saved.
+This is a question transfer, not the full generated meeting-preparation workflow.
+No live approval or paid QA run occurred. Synthetic browser submission verified
+required date, meeting type, five selected outputs and queued persistence.
+Focused tests cover source restriction/byte changes and interrupted handoff recovery.
+Full backend/frontend suites passed; release verification is recorded below when
+complete. The Mac agent must reload the updated shared plan module safely.
+All eight priorities remain open against the acceptance plan; continue real-source
+one-pager quality and origin-specific latest-source refresh after this increment.
+
+## T212 — investor edition decisions and explicit exports (verified live)
+
+Backend 4a54455a47493504354a84d7806662ed258de721 verified healthy after transient rollout 502s.
+Cloudflare faf1c078-57b6-4427-b748-8f57202d78c5 deployed; hosted JS and service-worker
+bytes match the tested build. Mac heartbeat and collection snapshot were fresh,
+no pending deliveries or active audio jobs. No agent source change/restart.
 
 Implemented the full saved-edition review/decision/export path. Only a verified
 password-investor session supplies the server principal; machine API keys, open
