@@ -22,7 +22,7 @@ RESEARCH REQUIREMENTS:
 6. Estimates: revisions over 30/90 days, guidance trajectory, beats vs expectations, where the revisions cycle stands. Flag missing paid-data sources.
 7. Management and capital allocation: promises vs results, returns, cash uses, deals, incentives, balance sheet.
 8. Valuation: choose appropriate metrics; historic multiple vs true peer context, normalization, reverse-engineered expectations.
-9. Scenarios: differentiated bull/base/bear operations (revenue/volume, margins, EPS/FCF, multiple, value and upside/downside). Use 'Unavailable' if share price or estimates missing. Explain swing factors.
+9. Scenarios: differentiated bull/base/bear operations (revenue/volume, margins, EPS/FCF, multiple, value and upside/downside). Use 'Unavailable' if share price or estimates missing. Explain swing factors. In eps_or_fcf state valuation year, units and GAAP/adjusted basis; in valuation_multiple state the metric and rationale, not an unexplained multiple. In implied_value distinguish per-share equity value from enterprise value. In upside_downside include the dated reference price and whether dividends are excluded. Never transfer a broker target or multiple across mismatched years, accounting bases or scenarios. Preserve assumptions and failure conditions; leave unavailable inputs explicit.
 10. Debate and differentiated perspective: consensus belief vs plausible alternative, evidence on each side, recognition path and falsifiers.
 11. Catalyst map, risks and timing: what can change *estimates* or valuation, confirmed vs speculative.
 12. Monitoring dashboard: current metric, bull threshold, bear threshold, reason, thesis strengtheners and breakers.

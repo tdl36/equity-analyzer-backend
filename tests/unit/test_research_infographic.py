@@ -183,3 +183,39 @@ class EditorialTests(unittest.TestCase):
         self.assertNotIn('Conditional threshold',h)
         self.assertIn('Whole metric',h)
         self.assertIn('Some supported text omitted for length',h)
+
+    def test_scenarios_keep_inputs_and_outputs_with_their_own_evidence(self):
+        for i,name in enumerate(['Bear','Base','Bull']):
+            self.add(f'/scenarios/{i}/name',name)
+            self.add(f'/scenarios/{i}/eps_or_fcf',f'FY2027 adjusted EPS ${4+i}, conditional on demand')
+            self.add(f'/scenarios/{i}/valuation_multiple',f'{15+i}x adjusted P/E')
+            self.add(f'/scenarios/{i}/implied_value',f'${(4+i)*(15+i)} per share')
+        self.add('/scenarios/1/upside_downside','10% versus $72.73 on 2026-10-01; excludes dividends')
+        before=copy.deepcopy(self.run);h=render(self.run,{},self.f)
+        self.assertIn('FY2027 adjusted EPS $5, conditional on demand<sup>',h)
+        self.assertIn('10% versus $72.73 on 2026-10-01; excludes dividends<sup>',h)
+        self.assertIn('Returns are not rebased',h)
+        self.assertIn('arithmetic is not independently verified',h)
+        self.assertEqual(self.run,before)
+        scenario=h.split('<table class="scenario-values">')[1].split('</table>')[0]
+        rows=scenario.split('<tbody>')[1].split('</tr>')[:3]
+        for i,row in enumerate(rows):
+            self.assertIn(f'${(4+i)*(15+i)} per share',row)
+            self.assertIn(f'FY2027 adjusted EPS ${4+i}',row)
+
+    def test_scenarios_do_not_infer_values_or_render_orphan_outputs(self):
+        self.add('/scenarios/0/name','Bear')
+        self.add('/scenarios/0/eps_or_fcf','FY2027 EPS $4')
+        self.add('/scenarios/0/valuation_multiple','15x')
+        self.add('/scenarios/0/implied_value','UNREVIEWED VALUE',review='needs_review')
+        self.add('/scenarios/1/implied_value','ORPHAN VALUE')
+        h=render(self.run,{},self.f)
+        for value in ['UNREVIEWED VALUE','ORPHAN VALUE','$60']:
+            self.assertNotIn(value,h)
+        self.assertIn('Not established in saved evidence',h)
+
+    def test_empty_scenario_section_is_not_filled_by_mechanical_sensitivity(self):
+        self.f['quote']={'price':100,'forwardPE':10}
+        h=render(self.run,{},self.f)
+        self.assertIn('Source-supported scenario inputs unavailable.',h)
+        self.assertIn('Mechanical sensitivity is not a bull/base/bear valuation.',h)

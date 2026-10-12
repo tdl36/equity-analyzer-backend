@@ -11,7 +11,7 @@ from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 
-VERSION='stock-infographic-v13'
+VERSION='stock-infographic-v14'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -77,6 +77,26 @@ def labeled_fields(ed,row,labels):
                    (ed.claim(row[key]) if row.get(key) else
                     '<span class="missing">Not established in saved evidence</span>')+
                    '</div>' for key,label in labels)
+
+
+def scenario_valuation(ed):
+    fields=['name','business_conditions','revenue_growth','operating_margin',
+            'eps_or_fcf','valuation_multiple','implied_value','upside_downside','major_risks']
+    rows=structured_rows(ed,'/scenarios/','name',fields,limit=3,budget=1500)
+    if not rows:
+        return '<p class="missing">Source-supported scenario inputs unavailable. Mechanical sensitivity is not a bull/base/bear valuation.</p>'
+    body=''
+    for row in rows:
+        body+='<tr><th>'+ed.claim(row['name'])+'</th><td>'+labeled_fields(ed,row,[
+            ('business_conditions','Operating assumptions'),('revenue_growth','Growth'),
+            ('operating_margin','Margin'),('eps_or_fcf','Earnings / cash flow'),
+            ('valuation_multiple','Valuation multiple'),('major_risks','Failure conditions')])+'</td><td>'+labeled_fields(ed,row,[
+            ('implied_value','Implied value'),('upside_downside','Return versus saved reference price')])+'</td></tr>'
+    return ('<table class="scenario-values"><thead><tr><th>Scenario</th><th>Assumptions and inputs</th><th>Saved valuation</th></tr></thead><tbody>'+body+
+            '</tbody></table><p class="micro">Conditional source-backed scenarios, not assigned probabilities or approved targets. '
+            'Values are reproduced from the saved research; arithmetic is not independently verified here. '
+            'Keep the cited valuation year, accounting basis, units and reference-price date together; '
+            'missing details require review. Returns are not rebased to the market snapshot above.</p>')
 
 
 def metric_change(points,metric):
@@ -193,6 +213,7 @@ def render(run,assignment,fundamentals):
         pq=peer['quote'];peer_table+='<tr><td><b>'+e(peer['ticker'])+'</b>'+'</td><td>'+money(pq.get('marketCap'))+'</td><td>'+multiples(pq,'trailingPE')+'</td><td>'+multiples(pq,'forwardPE')+'</td></tr>'
     peer_table+='</tbody></table><p class="micro">'+e(profile.get('peerBasis','Peer set not curated.'))+' Quote dates matched; multiple definitions and estimate periods are provider-defined. [M]</p>'
     valuation='<div class="valuation"><div><h3>Market comparison</h3>'+peer_table+'</div><div><h3>Price sensitivity—not price targets</h3>'+sensitivity(q)+'</div></div>'
+    scenario_panel='<section class="panel scenario-panel"><header><h2>Scenario valuation assumptions</h2></header>'+scenario_valuation(ed)+'</section>'
     kpis=structured_rows(ed,'/monitor/kpis/','metric',
                          ['metric','current','bull_threshold','bear_threshold','why_it_matters'])
     monitor_rows=''.join('<tr><th>'+ed.claim(row['metric'])+'</th><td>'+labeled_fields(ed,row,[
@@ -234,8 +255,8 @@ def render(run,assignment,fundamentals):
     if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'
     for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
-    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Scenario forecasts and calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
-    body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+section(9,'The investment view',bottom)+footer
+    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; arithmetic and calibrated price targets are not independently established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
+    body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 
 CSS='''
@@ -263,3 +284,7 @@ CSS += '.coverage-note{background:#f6f2e6;border-left:3px solid #b4a575;padding:
 CSS += '.title{gap:12px}.title h1{min-width:0}.symbol{flex-shrink:0;white-space:nowrap}'
 
 CSS += ".structured-field{margin-bottom:5px}.structured-field .claim{display:inline}.structured-field>b{font-size:inherit}"
+
+CSS += ".scenario-values th:first-child{width:17%}.scenario-values th:last-child{width:28%}.scenario-values{font-size:11px}@media screen and (max-width:650px){.scenario-values{font-size:12px}}"
+
+CSS += "@media screen and (max-width:650px){.scenario-values thead{display:none}.scenario-values tr,.scenario-values th,.scenario-values td{display:block;width:100%!important}.scenario-values tr{margin-bottom:10px;border:1px solid #d7e2e9}}"

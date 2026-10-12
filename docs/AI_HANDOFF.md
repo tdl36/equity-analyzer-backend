@@ -2,7 +2,27 @@
 
 Updated: October 11, 2026
 
-## T193 — structured risk and monitoring evidence
+## T194 — saved scenario assumptions in investment maps
+
+The renderer exposes up to three supported scenario rows with operating conditions,
+growth, margins, earnings/cash flow, multiple, implied value, dated return reference
+and failure conditions. Every field retains its citation, complete qualifications
+and row identity; missing/unreviewed fields remain missing. No derived numbers,
+rebasing to current prices, probabilities or arithmetic certification. Mechanical
+sensitivity remains separate. Future research instructions require valuation year,
+accounting basis, units, multiple rationale and dated return reference within the
+existing schema; no pinned jobs, models or caps changed. Full-width desktop table
+and stacked 390px phone rows inspected with synthetic data, no horizontal overflow.
+Saved ABT/UNH re-rendered privately: neither has supported scenario rows, so both
+show the explicit gap. No paid research or thesis change. 1063 backend and 140
+frontend tests, touched Python compilation, model policy against 75097e5 and
+production build passed. Deployment verification pending. This is a provenance
+and display increment, not a calibrated valuation engine or professional acceptance.
+Next: typed, dated valuation inputs with arithmetic validation, historical valuation,
+GAAP/adjusted reconciliation and actual print/export benchmark. All eight phases
+remain incomplete; legacy WELL outcome remains unverified.
+
+## T193 — structured risk and monitoring evidence (verified live)
 
 One-pagers now render supported risk rows with their own earnings impact, timing
 and early warning, plus supported KPI rows with baseline, positive/negative
@@ -18,7 +38,13 @@ at desktop and 390px, with no horizontal overflow. Saved ABT/UNH privately
 re-rendered without model calls or research changes. ABT loses the misleading
 historical monitoring fallback and remains incomplete; this does not repair its
 missing thesis or certify either example. Print pagination still unverified.
-Deployment verification pending below. Next: explicit scenario valuation inputs,
+Backend d47b477e02afc41507c9f7e8a1935a3803f31498 verified healthy after
+transient rollout 502s. Cloudflare df7ae8c0-ae49-4e3e-aaf3-54c1a8c1110f
+deployed; hosted JS/SW exact bytes verified. Production ABT and UNH v13
+artifacts exactly match private re-renders. Mac heartbeat 03:04:14 UTC,
+no unavailable Activity reads or pending collection delivery. Predeploy bounded
+Activity contained no running/processing stages; truncated buckets remain
+non-exhaustive. Next: explicit scenario valuation inputs,
 historical valuation and financial reconciliation, then real-source benchmark
 acceptance. Phase-1 legacy WELL outcome and later phases remain open.
 
