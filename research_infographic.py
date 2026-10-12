@@ -12,7 +12,7 @@ from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v17'
+VERSION='stock-infographic-v18'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -245,6 +245,10 @@ def render(run,assignment,fundamentals):
     coverage=('<p class="coverage-note" role="status"><b>Incomplete research brief.</b> Missing from this page: '
               +e(', '.join(missing_sections))+'. Review the saved research before using this brief. '
               'Supported text may have been omitted for length.</p>') if missing_sections else ''
+    from financial_history_context import context as historical_context
+    financial_context=historical_context(f)
+    if financial_context:
+        history+='<p class="micro history-context"><b>Historical earnings context:</b> '+e(financial_context['summary'])+' '+e(financial_context['caveat'])+' <a href="'+e(financial_context['sourceUrl'])+'">[H]</a></p>'
     glossary=profile.get('glossary','EPS = earnings per share · P/E = price / earnings · FCF = free cash flow')
     def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
     source_names=[]
@@ -254,6 +258,8 @@ def render(run,assignment,fundamentals):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
         source_names.append(f'<span id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),name if len(name)<=65 else name[:62]+'…')+'</span>')
     footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights in saved research order; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
+    if financial_context:
+        footer+='<p class="micro">[H] Historical public supplement: '+link(financial_context['sourceUrl'],'Abbott FY2024 reconciliation')+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+'.</p>'
     from financial_provenance import register
     details='<details><summary>Source register, dates and calculation inputs</summary>'+register(f)
     for n,s in enumerate(ed.sources,1):details+=f'<p id="register-source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
@@ -261,6 +267,8 @@ def render(run,assignment,fundamentals):
     if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'
     for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
+    if financial_context:
+        details+='<h3>Historical public supplement [H]</h3><p>'+e(financial_context['summary'])+' '+e(financial_context['detail'])+' '+e(financial_context['caveat'])+'</p><p>'+link(financial_context['sourceUrl'],financial_context['locator'])+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+' · SHA-256 '+financial_context['sourceHash']+'. Added public context, not part of the original frozen research pack.</p>'
     details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
     body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'

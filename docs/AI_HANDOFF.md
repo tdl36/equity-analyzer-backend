@@ -2,7 +2,30 @@
 
 Updated: October 11, 2026
 
-## T197 — explicit saved-scenario arithmetic (deployment pending)
+## T198 — Abbott historical earnings reconciliation context (deployment pending)
+
+Verified Abbott's Jan 22, 2025 FY2024 release, annual reconciliation and notes 1–2.
+Added a dated public historical supplement beside the GAAP charts and in the
+source register. FY2024 diluted EPS $7.64 minus $2.97 net specified benefits equals
+issuer-adjusted $4.67. Net earnings $13.402bn minus $5.202bn equals $8.200bn;
+pretax/tax adjustments +$2.633bn/+$7.835bn reconcile the net adjustment. The
+$7.497bn non-cash tax valuation-allowance benefit is distinguished from all net
+specified items. This is issuer-defined non-GAAP, not analyst-normalized earnings.
+Exact issuer/CIK, period, units, GAAP EPS/net-income and snapshot vintage gates
+prevent attaching the note to mismatched/restated or pre-publication observations.
+GAAP data and original research are unchanged. The public supplement is explicitly
+separate from the frozen source pack, with publication/verification dates and a
+SHA-256 receipt. Original public HTML retained privately, not in watched folders.
+Source: https://abbott.mediaroom.com/2025-01-22-Abbott-Reports-Fourth-Quarter-and-Full-Year-2024-Results-Issues-2025-Financial-Outlook
+Hash: 1b9f0f60323ba6095222a988a2cb1a99d56e433e96995766f2b495459378923a
+Saved ABT v18 still prints on one A4 page in native Chrome/Calibri. UNH does not
+receive Abbott context. Four tests cover arithmetic, issuer/vintage/period/units,
+changed observations, duplicate rows and no mutation. Remaining years, historical
+valuation, ABT thesis/monitor evidence gaps and eight-phase acceptance stay open.
+1074 backend and 140 frontend tests, touched Python compilation, model policy
+against 75097e5 and production build passed.
+
+## T197 — explicit saved-scenario arithmetic (verified live)
 
 Added a conservative read-only P/E and price-return check to supported scenario
 rows. Same fiscal year, GAAP/adjusted diluted-EPS basis, currency, positive inputs,
@@ -19,7 +42,11 @@ invalid/oversized input, no mutation and supported-only renderer integration.
 1070 safe backend tests, 140 frontend tests, touched Python compilation, model
 policy against 75097e5 and production build passed. Predeploy bounded Activity
 showed no running/processing items or unavailable reads; historical buckets are
-truncated. Later typed authoring and broader valuation/reconciliation remain outstanding.
+truncated. Backend b58ed05e3b3d94c42625fb589dbea14fe1b78610 healthy after
+transient rollout 502. Cloudflare 934e4110-f066-434a-8034-d5ebd33aa541 live.
+Hosted JS/SW and ABT/UNH v17 renders verified as exact local bytes. Mac heartbeat
+05:03:48 UTC; pending delivery zero and no unavailable reads. Later typed authoring
+and broader valuation/reconciliation remain outstanding.
 
 ## T196 — Calibri export verification (verified live)
 
