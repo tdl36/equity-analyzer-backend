@@ -62,7 +62,11 @@ class ResearchTests(unittest.TestCase):
 
     def test_usage_restrictions_and_public_source_redaction(self):
         self.assertTrue(eligible({'usage':'research'}))
-        for metadata in [{'usage':'reference_only'},{'nested':{'aiAllowed':False}},{'records':[{'usage':'reference_only'}]},'broken JSON']:
+        for key in ('aiAllowed','ai_allowed','genaiAllowed'):
+            self.assertTrue(eligible({'nested':{key:False}}))
+            self.assertTrue(eligible({'records':[{key:False}]}))
+            self.assertFalse(eligible({'usage':'reference_only',key:False}))
+        for metadata in [{'usage':'reference_only'},{'records':[{'usage':'reference_only'}]},'broken JSON']:
             self.assertFalse(eligible(metadata))
         result=public_run({'sources':[SOURCE],'payload_hash':'secret','state':{}})
         self.assertNotIn('text',result['sources'][0]);self.assertIn('text',SOURCE)

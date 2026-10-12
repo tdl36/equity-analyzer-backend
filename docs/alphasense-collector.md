@@ -1,3 +1,9 @@
+> Current policy (owner instruction, October 12, 2026): AI-use notices in originals
+> are informational and do not alone require reference-only staging. Preserve
+> observations. Explicit user reference-only/excluded selections, authentication,
+> exact-byte checks and frozen request bounds still apply. This supersedes older
+> GenAI-only hold guidance below. Existing held files are not bulk moved.
+
 # AlphaSense collection pilot
 
 Charlie now has a local collection ledger, PDF/ZIP validation, duplicate detection,

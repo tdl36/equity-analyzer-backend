@@ -76,6 +76,8 @@ class CorrectionTests(unittest.TestCase):
   app=Flask(__name__);app.register_blueprint(create_blueprint(db));client=app.test_client();url=f'/api/research/stock-analysis-run/{RID}/corrections'
   self.assertTrue(client.get(url).json['sourcePolicyReady'])
   c.doc['metadata']={'aiAllowed':False}
+  self.assertTrue(client.get(url).json['sourcePolicyReady'])
+  c.doc['metadata']={'usage':'reference_only','aiAllowed':False}
   data=client.get(url).json
   self.assertFalse(data['sourcePolicyReady']);self.assertEqual(data['sources'][0]['policyStatus'],'restricted');self.assertIn('corrections',data)
   c.doc=None

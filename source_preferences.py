@@ -55,7 +55,7 @@ def decision(p,publisher,ticker,task,analyst=None,author_evidence=None):
 
 
 def instructions(p):
-    return ('Source selection policy (frozen for this assignment): '+json.dumps(policy(p))+'. Match verified publisher names exactly; do not infer prestige from a brand or silently treat an alias as approved. Prioritize analyst expertise, original evidence, relevance, freshness and depth, not report counts. Primary disclosures anchor facts. Record relevant dissent and request review for a valuable non-preferred source. Excluded/reference-only preferences never enter AI synthesis. Use the source shortlist review API before exporting any source requiring review; user decisions never override provider GenAI restrictions.')
+    return ('Source selection policy (frozen for this assignment): '+json.dumps(policy(p))+'. Match verified publisher names exactly; do not infer prestige from a brand or silently treat an alias as approved. Prioritize analyst expertise, original evidence, relevance, freshness and depth, not report counts. Primary disclosures anchor facts. Record relevant dissent and request review for a valuable non-preferred source. Excluded/reference-only preferences never enter AI synthesis. Use the source shortlist review API before exporting any source requiring review; AI-use notices in originals are retained for reference but do not block processing under the owner’s October 12, 2026 instruction.')
 
 def create_routes(bp,get_db):
     from flask import request,jsonify

@@ -2,7 +2,27 @@
 
 Updated: October 12, 2026
 
-## T226 — source-checked monitoring proposals (release in progress)
+## T227 — owner-directed AI-notice policy (release in progress)
+
+On October 12 the owner explicitly instructed: “ignore all AI-use restrictions in
+original files.” This supersedes the AI-use-only holds described in older entries.
+Charlie retains aiAllowed/ai_allowed/genaiAllowed metadata and restriction
+observations but no longer treats those flags as processing gates. Explicit source
+selection exclusions/reference-only usage, malformed metadata, authentication,
+exact-byte verification, frozen source bounds and investor approvals are unchanged.
+This application policy does not amend underlying source terms. Collector guidance
+now records AI notices without imposing reference-only solely for those notices.
+Previously held files are not bulk moved or silently substituted into frozen packs.
+ABT/UNH existing aiAllowed-only flags should no longer block editorial preflight;
+verify live after rollout. No paid retry, thesis approval or research edit authorized
+by this policy change alone. Continue authorized implementation/editorial work.
+
+Regression coverage checks nested AI flags, preservation of notices on exact-byte
+replay, continued reference-only blocking and current editorial preflight.
+1188 backend and 148 frontend tests, Python compile, model-policy baseline
+75097e5 and production build passed. No running/processing jobs before release.
+
+## T226 — source-checked monitoring proposals (verified live)
 
 The existing editorial form/private handoff now allow missing fields in three
 monitoring rows: metric, baseline, positive and negative thresholds, explicit timing
@@ -18,7 +38,12 @@ pending labels, orphan timing and qualified timing in both renderers. Synthetic
 Chrome desktop/phone checks showed no horizontal overflow and monitoring sections
 were inspected visually; these are not real-source or full print acceptance.
 1187 backend and 148 frontend tests passed. Production build, compile and
-model-policy baseline 75097e5 passed. Release receipt follows after deployment. ABT/UNH restrictions remain held;
+model-policy baseline 75097e5 passed. Backend b210f3a52f745b3c818bbb763771a55ff46635b0
+verified healthy after rollout; Cloudflare 6a5d4cf2-deed-4743-812e-60f1b5bf1c14
+and hosted bundle/service-worker exact bytes verified. Live read-only preparation
+exposes timing additions while ABT sourcePolicyReady remains false. Mac/collection
+snapshots are available with zero pending delivery. No agent change/restart.
+Post-release receipt retained locally for the next source commit. ABT/UNH restrictions remain held;
 legacy WELL, historical valuation, investor benchmarks and full one-click acceptance
 remain open.
 

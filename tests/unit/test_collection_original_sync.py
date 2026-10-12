@@ -82,9 +82,13 @@ class EndpointTests(unittest.TestCase):
         c,cur=self.client([{'file_data':self.body['fileData'],'metadata':{}}]);self.assertEqual(c.post('/api/agent/collection-original',json=self.body).status_code,200)
         self.assertFalse(any('INSERT' in x.args[0] for x in cur.execute.call_args_list))
     def test_conflict_or_existing_restriction_is_preserved(self):
-        for old in [{'file_data':base64.b64encode(b'other').decode(),'metadata':{}},{'file_data':self.body['fileData'],'metadata':{'aiAllowed':False}}]:
+        for old in [{'file_data':base64.b64encode(b'other').decode(),'metadata':{}},{'file_data':self.body['fileData'],'metadata':{'usage':'reference_only'}}]:
             c,cur=self.client([old]);self.assertEqual(c.post('/api/agent/collection-original',json=self.body).status_code,409)
             self.assertFalse(any('INSERT' in x.args[0] for x in cur.execute.call_args_list))
+    def test_ai_notice_exact_replay_preserves_original_metadata(self):
+        old={'file_data':self.body['fileData'],'metadata':{'aiAllowed':False}}
+        c,cur=self.client([old]);self.assertEqual(c.post('/api/agent/collection-original',json=self.body).status_code,200)
+        self.assertFalse(any(x.args[0].lstrip().startswith(('INSERT','UPDATE')) for x in cur.execute.call_args_list))
     def test_concurrent_insert_does_not_claim_success(self):
         c,_=self.client([None,None]);self.assertEqual(c.post('/api/agent/collection-original',json=self.body).status_code,409)
 

@@ -41,7 +41,12 @@ def bounded(value, limit=6000):
 
 
 def eligible(metadata):
-    """Explicit source restrictions are independent of user confirmation."""
+    """Honor source selection; AI-use notices are informational by user direction.
+
+    October 12, 2026: the owner explicitly requested ignoring AI-use notices
+    in originals. Retain their metadata, but do not use aiAllowed flags as gates.
+    Explicit reference-only/excluded selection and malformed metadata still fail.
+    """
     if isinstance(metadata,str):
         try: metadata=json.loads(metadata)
         except ValueError: return False
@@ -50,7 +55,6 @@ def eligible(metadata):
         if isinstance(value,dict) and not eligible(value): return False
         if isinstance(value,list) and any(isinstance(v,dict) and not eligible(v) for v in value): return False
         if key in ('usage','usagePolicy','usage_policy') and value not in (None,'','research','ai_allowed'): return False
-        if key in ('aiAllowed','ai_allowed','genaiAllowed') and value is False: return False
     return True
 
 

@@ -43,7 +43,7 @@ class RestrictionTests(unittest.TestCase):
         with self.db() as (_,c):
             c.execute('SELECT file_data,metadata FROM document_files');doc=c.fetchone()
             self.assertEqual(doc['file_data'],self.doc['file_data']);self.assertEqual(doc['metadata']['retained'],'yes')
-            self.assertEqual(doc['metadata']['usage'],'research');self.assertFalse(eligible(doc['metadata']))
+            self.assertEqual(doc['metadata']['usage'],'research');self.assertTrue(eligible(doc['metadata']));self.assertIs(doc['metadata']['aiAllowed'],False)
             self.assertEqual(doc['metadata']['restrictionObservation']['locator'],'page 2')
             c.execute('SELECT state FROM stock_analysis_runs');self.assertEqual(c.fetchone()['state'],self.run['state'])
     def test_invalid_hash_bytes_and_mutation_fields_fail_without_changes(self):
