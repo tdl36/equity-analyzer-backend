@@ -2,6 +2,19 @@
 
 Updated: October 11, 2026
 
+## T189 — audited unresolved legacy disposition
+
+Old legacy analyst runs can record an unresolved outcome from Activity's saved-run
+inspection. The server locks and rechecks the row: no recent progress within one
+day, saved output/completion, execution enrollment, reservation, graph callback or
+batch enrollment may be present. Malformed dates/logs fail closed. The action
+only sets attention and appends a fixed audit event; it preserves previous logs,
+outputs and completion fields and never retries or declares cancellation/success.
+Concurrent repeats are idempotent. Reserved batches cannot use this action or
+release a slot. Unknown provider billing remains unknown. 1044 backend and 140
+frontend tests passed; compilation, model policy against 75097e5 and production
+build passed. Deployment and live disposition verification pending.
+
 ## Phase-1 evidence review — October 11, 23:57 UTC
 
 Read the exact legacy WELL saved-run record through the authenticated inspection

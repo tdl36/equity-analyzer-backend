@@ -40,6 +40,28 @@ function AnalystRunInspection({
       controller.abort();
     };
   }, [api, row.jobId, row.ticker, revision]);
+  var [saving, setSaving] = React.useState(false),
+    [saveError, setSaveError] = React.useState('');
+  var recordUnresolved = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    var controller = new AbortController(),
+      timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      var r = await fetch(`${api}/api/activity/analyst-run/${encodeURIComponent(row.jobId)}/record-unresolved`, {
+        method: 'POST',
+        signal: controller.signal
+      });
+      if (!r.ok) throw new Error('Unable to record disposition');
+      setRevision(n => n + 1);
+    } catch (e) {
+      setSaveError('Could not confirm the saved disposition. Refresh the saved state before trying again; no research was started.');
+    } finally {
+      clearTimeout(timer);
+      setSaving(false);
+    }
+  };
   var data = state.data;
   return /*#__PURE__*/React.createElement("section", {
     className: "activity-run-inspection",
@@ -55,7 +77,14 @@ function AnalystRunInspection({
     role: "alert"
   }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Created ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.executionEvidence && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recovery evidence"), /*#__PURE__*/React.createElement("p", null, "Saved run ID: ", /*#__PURE__*/React.createElement("span", {
+  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), saveError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, saveError), data.legacyDispositionAvailable && /*#__PURE__*/React.createElement("div", {
+    className: "activity-warning"
+  }, /*#__PURE__*/React.createElement("p", null, "This legacy run has no recent saved progress or output. Record it as needing attention while preserving its unknown provider outcome. This does not cancel or restart research."), /*#__PURE__*/React.createElement("button", {
+    disabled: saving,
+    onClick: recordUnresolved
+  }, saving ? 'Recording…' : 'Record unresolved outcome')), data.executionEvidence && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recovery evidence"), /*#__PURE__*/React.createElement("p", null, "Saved run ID: ", /*#__PURE__*/React.createElement("span", {
     style: {
       overflowWrap: 'anywhere'
     }
