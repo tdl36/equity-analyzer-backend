@@ -116,7 +116,13 @@ def create_blueprint(get_db):
         entries=[dict(time=stamp(x.get('ts')),agent=str(x.get('agent') or '')[:80],message=str(x.get('message') or '')[:1000]) for x in logs[-100:] if isinstance(x,dict)]
         from agent_execution import execution_evidence
         from legacy_agent_recovery import eligible
-        response=jsonify(legacyDispositionAvailable=eligible(r),executionEvidence=execution_evidence(logs),id=str(r['id']),ticker=r['ticker'],status=r['status'],provider=r['llm_provider'],model=r['llm_model'],
+        from agent_presence import inspect
+        evidence = execution_evidence(logs)
+        try:
+            presence = inspect(get_db, run_id, evidence['reservationIds'])
+        except Exception:
+            presence = dict(state='unavailable', lastSeen=None)
+        response=jsonify(workerPresence=presence,legacyDispositionAvailable=eligible(r),executionEvidence=evidence,id=str(r['id']),ticker=r['ticker'],status=r['status'],provider=r['llm_provider'],model=r['llm_model'],
             createdAt=stamp(r['created_at']),completedAt=stamp(r['completed_at']),hasReport=has_saved_report(r['report']),hasDecision=bool(r['has_decision']),
             logs=entries,totalLogs=len(logs),truncated=len(logs)>100,asOf=datetime.now(timezone.utc).isoformat())
         response.headers['Cache-Control']='no-store'

@@ -77,7 +77,13 @@ function AnalystRunInspection({
     role: "alert"
   }, state.error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Recorded status: ", /*#__PURE__*/React.createElement("strong", null, data.status), " \xB7 ", data.model, " \xB7 Created ", activityAge(data.createdAt)), /*#__PURE__*/React.createElement("p", null, data.hasReport ? 'Report text is saved.' : 'No report text is saved.', " ", data.completedAt ? `Completion recorded ${activityAge(data.completedAt)}.` : 'No completion is recorded.'), /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), saveError && /*#__PURE__*/React.createElement("p", {
+  }, "These are saved records, not confirmation that a worker or provider request is running. Inspect the outcome before starting another paid run."), data.workerPresence && /*#__PURE__*/React.createElement("p", null, "Worker reporting: ", /*#__PURE__*/React.createElement("strong", null, {
+    reporting: 'recent heartbeat',
+    exited: 'worker exited',
+    stale: 'heartbeat expired',
+    unknown: 'not established',
+    unavailable: 'check unavailable'
+  }[data.workerPresence.state] || 'not established'), data.workerPresence.lastSeen ? ` · ${activityAge(data.workerPresence.lastSeen)}` : '', ". This describes the worker reporter, not provider completion or permission to retry."), saveError && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, saveError), data.legacyDispositionAvailable && /*#__PURE__*/React.createElement("div", {
     className: "activity-warning"

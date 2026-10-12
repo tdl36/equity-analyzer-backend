@@ -2,6 +2,21 @@
 
 Updated: October 11, 2026
 
+## T190 — run-scoped worker reporting
+
+New analyst attempts persist reporting metadata tied to their reserved execution
+identity before model work; a daemon refreshes it every 30 seconds and records
+worker exit after cleanup. Activity inspection reports recent, expired (90s), exited,
+unknown or unavailable reporter evidence. It never claims provider completion,
+cancellation or safe replay. Old runs remain unknown; identities must match saved
+reservations. UTC timestamps are explicit independent of DB session timezone.
+A blocked final heartbeat is allowed to expire instead of overwriting an exit;
+cleanup failures preserve the saved job result. No lease takeover or batch-slot
+release is introduced. Synthetic persistence/expiry/identity/failure checks added.
+1048 backend and 140 frontend tests passed; compilation, model policy against
+75097e5 and production build passed. Predeploy Activity reports no freshly
+progressing non-queued jobs in its bounded snapshot. Deployment pending.
+
 ## T189 — audited unresolved legacy disposition
 
 Old legacy analyst runs can record an unresolved outcome from Activity's saved-run
@@ -11,9 +26,22 @@ batch enrollment may be present. Malformed dates/logs fail closed. The action
 only sets attention and appends a fixed audit event; it preserves previous logs,
 outputs and completion fields and never retries or declares cancellation/success.
 Concurrent repeats are idempotent. Reserved batches cannot use this action or
-release a slot. Unknown provider billing remains unknown. 1044 backend and 140
+release a slot. Unknown provider billing remains unknown. 1045 backend and 140
 frontend tests passed; compilation, model policy against 75097e5 and production
-build passed. Deployment and live disposition verification pending.
+build passed. Final backend 1740861e7431c2e8784fb609e38d63073712833b verified
+healthy after automatic Render deployments; transient 502s cleared. Cloudflare
+3f84a317-a1c0-409e-9034-e6ee91dcafb6; hosted JS/SW exact bytes verified.
+Applied the supported action to legacy WELL through its exact saved-run UI:
+status attention, 23 logs (22 prior plus audit event), no report/decision/completion,
+provider outcome still unverified. Activity retains it in Needs you even when old;
+regression covers that visibility. Mac heartbeat 00:34:13 UTC, no unavailable reads.
+Desktop outcome inspected and saved at /tmp/charlie-t189-well-unresolved.png.
+At 390px, DOM/body/scroll width all 390 and inspection action remains available;
+mobile screenshot capture was unusually scaled, so full visual mobile acceptance
+is not claimed. No paid call, approval, cancellation or replay. The legacy run is
+honestly dispositioned, but provider billing/outcome reconciliation remains open.
+Next: durable worker-liveness evidence for new analyst runs, then professional
+one-pager acceptance; the eight-phase plan is not complete.
 
 ## Phase-1 evidence review — October 11, 23:57 UTC
 

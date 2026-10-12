@@ -3921,12 +3921,15 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
     execution_id = claim(get_db, run_id)
     if not execution_id:
         return  # Already attempted, terminal, or legacy: never replay a paid graph.
+    from agent_presence import Presence
+    presence = None
     try:
         def _append_log(agent, message):
             entry = json.dumps([{"ts": datetime.utcnow().isoformat(), "agent": agent, "message": str(message)[:500]}])
             with get_db(commit=True) as (conn, cur):
                 cur.execute("UPDATE agent_runs SET logs = logs || %s::jsonb WHERE id = %s", (entry, run_id))
 
+        presence = Presence(get_db, run_id, execution_id)
         model_registry.ensure_active(model)
         _append_log("system", f"Starting TradingAgents: {ticker} @ {date_str} using {provider}/{model}")
 
@@ -4059,6 +4062,10 @@ def _run_trading_agent(run_id, ticker, date_str, provider, model):
             cur.execute('''
                 UPDATE agent_runs SET status = 'error', decision = %s, completed_at = NOW() WHERE id = %s
             ''', (f"ERROR: {str(e)}", run_id))
+    finally:
+        if presence is not None:
+            presence.close()
+
 
 
 def _run_pipeline_batch(batch_id, tickers, job_type, api_key):
