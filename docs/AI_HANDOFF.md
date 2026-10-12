@@ -2,7 +2,31 @@
 
 Updated: October 12, 2026
 
-## T209 — decision identity contract (release verification pending)
+## T210 — internal decision persistence (release verification pending)
+
+Added an internal transaction helper for explicit investor decisions, without a
+public route, UI control or automatic caller. It serializes each assignment's
+lineage, reloads/locks the edition, report, corrections and all originals, invokes
+the T209 validator, and stores a separate immutable decision with trusted caller
+investor identity and database time. Accept advances only the separate edition
+head; reject leaves it unchanged. Original report, assignment outputs, pending
+edition and correction records remain untouched. Exact retries return the retained
+decision even after later evidence changes or successor acceptance; changed
+payload/actor or a second decision on the same edition conflicts.
+Eight disposable PostgreSQL tests cover simultaneous replay, competing accepts,
+rejection isolation, identity/scope, stale evidence, late transaction rollback,
+successor rollback/advance and source policy locks through validation. No production
+decision or schema was created. This helper is not an authentication boundary: the
+future route must obtain investor identity from trusted server authentication.
+Next integrate authenticated decision/list/preparation handling, current-parent
+selection and decided-state previews, then accepted evidence/render/export and
+investor review UI. Existing pending APIs are deliberately not wired to this store;
+never expose its write operation before those read/lineage paths are coherent.
+1136 backend and 144 frontend tests passed, plus Python compilation, model policy
+against 75097e5 and the required frontend build. No product UI changed.
+No live approval, paid call, research mutation or source changes occurred.
+
+## T209 — decision identity contract (verified live; internal only)
 
 Added an internal pure validator for future explicit accept/reject decisions.
 It binds the exact edition, ordered corrections, report, financial snapshot and
@@ -23,6 +47,11 @@ original saved report, never an implicit merge of parent corrections. A future
 review UI must make removed prior corrections explicit before acceptance.
 1128 backend and 144 frontend tests passed, along with Python compilation,
 model policy against 75097e5 and the required frontend build. No product UI changed.
+Backend 8f84de04c1c1bd042a1ce9df398863fd70c7e4b9 verified healthy at
+13:05:37 UTC after transient rollout 502s. Cloudflare
+b1b72f47-e302-4150-b9c9-ee0984a11e81 deployed; hosted JS and service-worker
+bytes match the tested build. Mac last seen 13:05:23, collection 13:05:29,
+pending delivery zero, unavailable empty. No agent change or restart.
 No live edition approval, research mutation or model call was performed.
 
 ## T208 print verification checkpoint — October 12, 12:35 UTC

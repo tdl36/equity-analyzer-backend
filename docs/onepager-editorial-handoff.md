@@ -291,3 +291,20 @@ New editions are complete selections against the original report: parent identit
 provides concurrency control, not implicit inheritance. Show any correction removed
 from the prior accepted selection explicitly in the future review comparison.
 No live approval or accepted-render/export behavior is available from this module.
+
+
+## Internal transactional decisions — October 12, 13:30 UTC
+
+`onepager_decisions.record_decision` now implements assignment-serialized decision
+storage and accepted-head updates. This is internal and has no route or caller.
+Server-loaded evidence is locked/rechecked; decisions retain investor identity and
+database decision time separately from immutable pending editions/corrections.
+Exact replay acknowledges the old decision without fresh approval; changed identity,
+actor or payload conflicts. Rejection never advances lineage. Disposable PostgreSQL
+tests cover concurrency, rollback after validation and successor pointer updates,
+source policy locks and original retention. Production schema is untouched.
+Future integration must authorize the investor using trusted server identity,
+expose decisions distinctly in list/detail/preview, use the current parent for new
+selections, and provide accepted rendering only by explicit version. Existing
+pending routes still assume no accepted lineage and must be updated before the
+internal helper becomes publicly callable. No investor approval UI is available.
