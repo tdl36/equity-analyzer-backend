@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { editionSelection, claimLabel, basisLabel, verifiedEditionPreview, editionReviewState } from './onepager-edition-model.mjs';
+import { editionSelection, claimLabel, basisLabel, verifiedEditionPreview, editionReviewState, editionDecision, removedEditionClaims } from './onepager-edition-model.mjs';
 export function OnepagerEditions({
   api,
   run,
@@ -12,10 +12,13 @@ export function OnepagerEditions({
     [error, setError] = React.useState(''),
     [notice, setNotice] = React.useState(''),
     [busy, setBusy] = React.useState(false),
-    [preview, setPreview] = React.useState(null);
+    [preview, setPreview] = React.useState(null),
+    [reviewing, setReviewing] = React.useState(null),
+    [ack, setAck] = React.useState(false);
   var alive = React.useRef(true),
     locked = React.useRef(false),
-    pending = React.useRef(null);
+    pending = React.useRef(null),
+    decisionAttempt = React.useRef(null);
   var url = api + `/api/research/assignments/${assignmentId}/onepager-editions`;
   async function read(path, body) {
     var r = await fetch(path, {
@@ -48,6 +51,8 @@ export function OnepagerEditions({
   async function reload() {
     if (locked.current) return;
     setPreview(null);
+    setReviewing(null);
+    setAck(false);
     locked.current = true;
     setBusy(true);
     setError('');
@@ -114,6 +119,66 @@ export function OnepagerEditions({
       if (alive.current) setBusy(false);
     }
   }
+  async function decide(action) {
+    if (locked.current || !reviewing || !ack) return;
+    locked.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      var body = editionDecision(reviewing, pack, action, '');
+      var signature = JSON.stringify(body);
+      if (decisionAttempt.current?.signature !== signature) decisionAttempt.current = {
+        signature,
+        body: {
+          ...body,
+          requestId: crypto.randomUUID()
+        }
+      };
+      var result = await read(url + `/${reviewing.id}/decision`, decisionAttempt.current.body);
+      if (result.decision?.editionId !== reviewing.id || result.decision?.action !== action) throw Error('Decision receipt does not match this edition. Reload saved history.');
+      if (alive.current) {
+        setNotice(action === 'accept' ? 'Editorial edition accepted. Its version-specific exports are now available. Original research and thesis are retained.' : 'Editorial edition rejected. The current accepted version is retained.');
+        setReviewing(null);
+        setPreview(null);
+        decisionAttempt.current = null;
+        await load();
+      }
+    } catch (e) {
+      if (alive.current) setError(e.message + ' Reload history before making another decision; an unchanged retry keeps its identity.');
+    } finally {
+      locked.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function exportEdition(id, layout) {
+    if (locked.current) return;
+    locked.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      var response = await fetch(url + `/${encodeURIComponent(id)}/export?layout=${layout}`, {
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!response.ok) {
+        var d = await response.json();
+        throw Error(d.error || 'Edition export unavailable');
+      }
+      if (!response.headers.get('Content-Type')?.includes('text/html')) throw Error('Unexpected export format. Reload the edition.');
+      var blob = await response.blob(),
+        link = document.createElement('a'),
+        href = URL.createObjectURL(blob);
+      link.href = href;
+      link.download = `${run.ticker}-edition-${id}-${layout}.html`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      if (alive.current) setNotice('Accepted edition downloaded as a printable HTML document. Open it in your browser and print to PDF if needed.');
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    } finally {
+      locked.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
   function evidence(p) {
     var source = run.sources.find(s => s.id === p.sourceId && s.filename === p.filename && s.originalHash === p.sha256);
     return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Inspect evidence and provenance"), /*#__PURE__*/React.createElement("p", null, basisLabel(p.basis), " \xB7 ", p.filename, " \xB7 ", p.locator), /*#__PURE__*/React.createElement("blockquote", null, p.excerpt), /*#__PURE__*/React.createElement("p", null, p.caveat), source ? /*#__PURE__*/React.createElement("button", {
@@ -129,7 +194,7 @@ export function OnepagerEditions({
   }
   return /*#__PURE__*/React.createElement("details", {
     className: "sa-prepare"
-  }, /*#__PURE__*/React.createElement("summary", null, "One-pager editions \xB7 review history"), /*#__PURE__*/React.createElement("p", null, "Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together, then open a labeled pending preview. Decision controls and revised exports are not available yet."), /*#__PURE__*/React.createElement("small", null, "Assignment ", assignmentId, " \xB7 Report ", run.id), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("summary", null, "One-pager editions \xB7 review history"), /*#__PURE__*/React.createElement("p", null, "Group source-linked corrections into a saved edition for this assignment. Review the complete wording and evidence together, then open a labeled pending preview. Investor sign-in is required to accept or reject an edition. Accepted editions have separate printable exports."), /*#__PURE__*/React.createElement("small", null, "Assignment ", assignmentId, " \xB7 Report ", run.id), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: reload
   }, "Reload editions and corrections"), error && /*#__PURE__*/React.createElement("p", {
@@ -158,18 +223,52 @@ export function OnepagerEditions({
     var review = editionReviewState(e);
     return /*#__PURE__*/React.createElement("article", {
       key: e.id
-    }, /*#__PURE__*/React.createElement("h5", null, review.label, " \xB7 ", new Date(e.created_at).toLocaleString()), /*#__PURE__*/React.createElement("small", null, "Edition ", e.id, e.stale ? ' · Baseline or parent changed; new decisions require fresh preparation' : ''), e.decision ? /*#__PURE__*/React.createElement("p", null, "Investor decision recorded ", new Date(e.decision.decidedAt).toLocaleString(), ". Original research remains unchanged. Accepted-version exports are not available yet.") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("h5", null, review.label, " \xB7 ", new Date(e.created_at).toLocaleString()), /*#__PURE__*/React.createElement("small", null, "Edition ", e.id, e.stale ? ' · Baseline or parent changed; new decisions require fresh preparation' : ''), e.decision ? /*#__PURE__*/React.createElement("p", null, "Investor decision recorded ", new Date(e.decision.decidedAt).toLocaleString(), ". Original research remains unchanged. Acceptance records editorial review; it does not certify accuracy or approve a thesis.") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
       disabled: busy || !review.canPreview,
       onClick: () => openPreview(e.id, 'illustrated')
     }, "Preview pending investment map"), /*#__PURE__*/React.createElement("button", {
       disabled: busy || !review.canPreview,
       onClick: () => openPreview(e.id, 'brief')
-    }, "Preview pending brief")), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
+    }, "Preview pending brief")), e.decision?.action === 'accept' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+      disabled: busy || e.stale,
+      onClick: () => exportEdition(e.id, 'illustrated')
+    }, "Download accepted investment map"), /*#__PURE__*/React.createElement("button", {
+      disabled: busy || e.stale,
+      onClick: () => exportEdition(e.id, 'brief')
+    }, "Download accepted brief")), review.canPreview && pack.canDecide && /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      onClick: () => {
+        setReviewing(e);
+        setAck(false);
+      }
+    }, "Review edition decision"), e.record.claims.map(c => /*#__PURE__*/React.createElement("details", {
       key: c.correctionId
     }, /*#__PURE__*/React.createElement("summary", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("div", {
       className: "sa-form-grid"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Original"), /*#__PURE__*/React.createElement("p", null, c.proposal.before)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Proposed \xB7 ", basisLabel(c.proposal.basis)), /*#__PURE__*/React.createElement("p", null, c.proposal.statement))), /*#__PURE__*/React.createElement("p", null, c.proposal.reason), evidence(c.proposal), /*#__PURE__*/React.createElement("small", null, "Correction ", c.correctionId))));
-  }), preview && /*#__PURE__*/React.createElement("section", {
+  }), reviewing && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Review editorial decision"
+  }, /*#__PURE__*/React.createElement("h4", null, "Review this exact edition"), /*#__PURE__*/React.createElement("p", null, "Edition ", reviewing.id, ". This complete selection replaces the previous editorial selection; it does not add to it. Original research and thesis stay unchanged."), reviewing.record.claims.map(c => /*#__PURE__*/React.createElement("article", {
+    key: c.correctionId
+  }, /*#__PURE__*/React.createElement("h5", null, claimLabel(c.proposal.path)), /*#__PURE__*/React.createElement("p", null, "Original: ", c.proposal.before), /*#__PURE__*/React.createElement("p", null, "Proposed: ", c.proposal.statement), evidence(c.proposal))), /*#__PURE__*/React.createElement("h5", null, "Changes removed from the previous accepted edition"), removedEditionClaims(reviewing, pack).length ? removedEditionClaims(reviewing, pack).map(c => /*#__PURE__*/React.createElement("p", {
+    key: c.correctionId
+  }, claimLabel(c.proposal.path), ": ", c.proposal.statement, ". This correction will no longer be included; the selected replacement or original wording will be used.")) : /*#__PURE__*/React.createElement("p", null, "None."), /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    disabled: busy,
+    checked: ack,
+    onChange: e => setAck(e.target.checked)
+  }), "I reviewed the wording, evidence, qualifications and any removed corrections for this exact edition."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !ack,
+    onClick: () => decide('accept')
+  }, "Accept this editorial edition"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !ack,
+    onClick: () => decide('reject')
+  }, "Reject this edition"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => setReviewing(null)
+  }, "Close review")), preview && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Pending edition preview"
   }, /*#__PURE__*/React.createElement("h4", null, "Pending preview \xB7 not accepted"), /*#__PURE__*/React.createElement("small", null, "Edition ", preview.id, " \xB7 ", preview.layout === 'brief' ? 'Brief' : 'Investment map'), /*#__PURE__*/React.createElement("p", null, preview.caveat), /*#__PURE__*/React.createElement("button", {
     onClick: () => setPreview(null)

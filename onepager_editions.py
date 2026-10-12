@@ -1,19 +1,32 @@
 """Persist explicit pending one-pager selections with explicitly selected, revalidated pending previews."""
 import json
 import uuid
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 from onepager_corrections import digest
 from onepager_edition_contract import baseline, prepare_edition
-from onepager_decisions import read_lineage
+from onepager_decisions import read_lineage, record_decision
 
 
-def create_blueprint(get_db):
+def create_blueprint(get_db, investor_identity=lambda: None):
     bp = Blueprint('onepager_editions', __name__)
 
     @bp.after_request
     def private_response(response):
         response.headers['Cache-Control'] = 'private, no-store'
         return response
+
+    @bp.post('/api/research/assignments/<aid>/onepager-editions/<eid>/decision')
+    def decide(aid, eid):
+        investor = investor_identity()
+        if not investor:
+            return jsonify(error='Sign in as the investor to record an editorial decision. Agent credentials cannot approve editions.'), 403
+        try:
+            result = record_decision(get_db, aid, eid, request.get_json(silent=True), investor_id=investor)
+            decision = result['decision']
+            return jsonify(reused=result['reused'], decision={k:decision[k] for k in
+                           ('requestId','editionId','action','decidedAt','editionDigest')})
+        except (ValueError, TypeError, AttributeError, KeyError) as exc:
+            return jsonify(error=str(exc)), 409
 
     @bp.route('/api/research/assignments/<aid>/onepager-editions', methods=['GET', 'POST'])
     def editions(aid):
@@ -75,8 +88,13 @@ def create_blueprint(get_db):
                             item['currentAccepted'] = str(item['id']) == parent
                             if item['decision'] and digest(item['record']) != item['decision']['editionDigest']:
                                 raise ValueError('The decided edition content changed. Inspect saved lineage.')
-                    return jsonify(**pack, editions=rows, limit=20, status='pending_only',
-                                   caveat='No edition can be accepted or used as an export yet. Reading does not reverify original bytes or usage restrictions.')
+                    accepted = None
+                    if parent:
+                        cur.execute('SELECT record FROM onepager_editions WHERE id=%s AND assignment_id=%s', (parent, aid))
+                        accepted = cur.fetchone()['record']
+                    return jsonify(**pack, editions=rows, acceptedEdition=accepted, limit=20, status='pending_only',
+                                   canDecide=bool(investor_identity()),
+                                   caveat='Decisions require investor sign-in and fresh evidence checks. Reading this list does not reverify original bytes or usage restrictions.')
                 ids = body.get('correctionIds')
                 if not isinstance(ids, list) or not 1 <= len(ids) <= 20:
                     raise ValueError('Select between one and twenty corrections.')
@@ -105,6 +123,13 @@ def create_blueprint(get_db):
             return jsonify(error=str(exc)), 400
     @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/preview')
     def preview(aid, eid):
+        return render_version(aid, eid, False)
+
+    @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/export')
+    def export(aid, eid):
+        return render_version(aid, eid, True)
+
+    def render_version(aid, eid, exporting):
         try:
             aid, eid = str(uuid.UUID(aid)), str(uuid.UUID(eid))
             layout = request.args.get('layout', 'illustrated')
@@ -122,7 +147,9 @@ def create_blueprint(get_db):
                     return jsonify(error='Saved assignment not found.'), 404
                 assignment = dict(assignment)
                 parent, decisions = read_lineage(cur, aid)
-                if eid in decisions:
+                if exporting and decisions.get(eid, {}).get('action') != 'accept':
+                    raise ValueError('Only an explicitly accepted edition can be exported.')
+                if not exporting and eid in decisions:
                     raise ValueError('This edition already has an investor decision. Pending preview is unavailable; inspect its saved review.')
                 cur.execute("SELECT to_regclass('onepager_editions') AS name")
                 if not cur.fetchone()['name']:
@@ -167,13 +194,20 @@ def create_blueprint(get_db):
                     documents[filename] = document
                 for source in sources:
                     verified_original(source, documents[source['filename']], (run.get('input', {}).get('hashes') or {}).get(source['filename']))
-                from onepager_edition_evidence import pending_evidence
+                from onepager_edition_evidence import pending_evidence, accepted_evidence
                 from research_onepager import render as brief
                 from research_infographic import render as illustrated
                 financials = result.get('visualFundamentals')
-                context = pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=parent)
+                context = (accepted_evidence(run, assignment, record, corrections, documents, financials, decision=decisions[eid]) if exporting else
+                           pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=parent))
                 html = (illustrated(run, assignment['input'], financials, preview=context) if layout == 'illustrated'
                         else brief(run, assignment['input'], preview=context))
+                if exporting:
+                    response = Response(html, mimetype='text/html')
+                    response.headers['Content-Disposition'] = f'attachment; filename="edition-{eid}-{layout}.html"'
+                    response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; font-src data: https:"
+                    response.headers['X-Content-Type-Options'] = 'nosniff'
+                    return response
                 return jsonify(id=eid, assignmentId=aid, runId=str(rid), ticker=run['ticker'],
                                status='pending', layout=layout, html=html,
                                caveat='Pending preview only. Source bytes and usage restrictions rechecked; claim meaning still requires investor review. Original outputs remain unchanged.')

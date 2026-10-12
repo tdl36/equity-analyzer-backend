@@ -308,3 +308,15 @@ expose decisions distinctly in list/detail/preview, use the current parent for n
 selections, and provide accepted rendering only by explicit version. Existing
 pending routes still assume no accepted lineage and must be updated before the
 internal helper becomes publicly callable. No investor approval UI is available.
+
+
+## Investor decisions and version exports — October 12, T212
+
+The review UI now records explicit investor accept/reject decisions through a
+password-session-only route. API-key machines and no-auth development cannot
+approve. The accepted adapter and printable HTML exports use explicit version
+URLs, fresh original policy/byte checks and separate human provenance. Original
+research/thesis gates and default artifacts are unchanged. Complete selections
+show removed prior corrections before acknowledgement. Prior accepted versions
+remain exportable only while their evidence remains valid. Synthetic UI, PDF and
+authorization checks are not real-source investor acceptance.

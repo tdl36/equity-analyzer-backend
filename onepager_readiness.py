@@ -1,5 +1,5 @@
 """Explain missing editorial sections without changing research or accepting claims."""
-from onepager_edition_evidence import render_evidence, pending_label
+from onepager_edition_evidence import render_evidence, pending_label, editorial_label, AcceptedEditionEvidence
 from stock_evidence import report_fields, missing_value, valid_citations
 
 
@@ -51,8 +51,9 @@ def readiness(run, rendered, *, preview=None):
         row = dict(section=key, label=label, status=status, reason=reason, savedPaths=present, supportedPaths=supported)
         if preview:
             row['pendingPaths'] = [p for p in supported if pending_label(valid[p])]
-            row['supportedPaths'] = [p for p in supported if not pending_label(valid[p])]
-            row['reason'] = reason.replace('supported', 'evidence-matched').replace('Supported', 'Evidence-matched') + ' Pending proposals are not accepted; passage matching does not establish meaning.'
+            row['investorPaths'] = [p for p in supported if valid[p].get('reviewOrigin') == 'investor']
+            row['supportedPaths'] = [p for p in supported if not editorial_label(valid[p])]
+            row['reason'] = reason.replace('supported', 'evidence-matched').replace('Supported', 'Evidence-matched') + (' Investor acceptance is separate from model review and does not certify accuracy.' if type(preview) is AcceptedEditionEvidence else ' Pending proposals are not accepted; passage matching does not establish meaning.')
         rows.append(row)
     return rows
 
@@ -82,6 +83,7 @@ def scenario_readiness(run, *, preview=None):
             path = root + key
             status = 'absent' if missing_value(fields.get(path)) else 'supported' if path in valid else 'unmatched'
             if path in valid and pending_label(valid[path]): status = 'pending'
+            if path in valid and valid[path].get('reviewOrigin') == 'investor': status = 'investor_reviewed'
             checks.append(dict(path=path, label=label, status=status))
         arithmetic = check({key: valid.get(root + key) for key, _ in specs})
         rows.append(dict(path=root.rstrip('/'), fields=checks, arithmetic=arithmetic))

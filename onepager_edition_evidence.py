@@ -24,6 +24,45 @@ class PendingEditionEvidence:
     label: str = 'Pending editorial preview — not accepted'
 
 
+@dataclass(frozen=True)
+class AcceptedEditionEvidence(PendingEditionEvidence):
+    decision_id: str = ''
+    decided_at: str = ''
+    label: str = 'Investor-accepted editorial edition'
+
+
+def accepted_evidence(run, assignment, record, corrections, documents, financials, *, decision):
+    """Revalidate an explicitly named retained acceptance, never a client flag.
+
+    Caller loads the decision and edition under the assignment lock. Historical
+    editions retain their own parent; a later acceptance does not rewrite them.
+    Current source policy and exact bytes still gate access to every version.
+    """
+    from onepager_decision_contract import validate_decision
+    if not isinstance(decision, dict) or decision.get('action') != 'accept' or not decision.get('decidedAt'):
+        raise ValueError('A retained investor acceptance is required.')
+    body = {k: record.get(k) for k in ('assignmentId','runId','fingerprint','fundamentalsDigest','parentId','correctionIds','selectionDigest')}
+    body.update(requestId=decision.get('requestId'), editionId=record.get('id'), action='accept')
+    intent = validate_decision(run, assignment, record, body, corrections, documents, financials, parent_id=record.get('parentId'))
+    for key in ('requestId','editionId','editionDigest'):
+        if decision.get(key) != intent[key]:
+            raise ValueError('Saved acceptance does not match this edition.')
+    pending = pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=record.get('parentId'))
+    claims = copy.deepcopy(pending.claims)
+    for claim in claims.values():
+        if claim.get('reviewOrigin') == 'pending_editorial':
+            claim.update(reviewOrigin='investor', decisionId=intent['requestId'], decidedAt=decision['decidedAt'])
+    values = {k:getattr(pending,k) for k in PendingEditionEvidence.__dataclass_fields__ if k != 'label'}
+    values.update(claims=claims, content_digest=digest({'run':pending.run,'claims':claims}))
+    return AcceptedEditionEvidence(**values, decision_id=intent['requestId'], decided_at=decision['decidedAt'])
+
+
+def editorial_label(claim):
+    if claim and claim.get('reviewOrigin') == 'investor':
+        return 'Investor-reviewed editorial wording'
+    return pending_label(claim)
+
+
 def _replace(report, path, statement):
     """Replace one prevalidated scalar using canonical JSON pointer segments."""
     parts = [part.replace('~1', '/').replace('~0', '~') for part in path.split('/')[1:]]
@@ -84,7 +123,7 @@ def render_evidence(run, preview=None):
     if preview is None:
         return run, valid_citations(run)
     from onepager_corrections import preparation
-    if type(preview) is not PendingEditionEvidence:
+    if type(preview) not in (PendingEditionEvidence, AcceptedEditionEvidence):
         raise ValueError('Preview requires a validated pending edition context.')
     if preparation(run)['fingerprint'] != preview.source_fingerprint:
         raise ValueError('The preview report changed. Prepare a new edition.')
@@ -98,7 +137,7 @@ def pending_label(claim):
 
 
 def labeled_statement(claim):
-    label = pending_label(claim)
+    label = editorial_label(claim)
     return (label + ': ' if label else '') + claim['statement']
 
 
@@ -110,7 +149,7 @@ def preview_notice(preview, run):
     return ('<p class="footnote micro edition-notice"><b>' + html.escape(preview.label) +
             '</b> · Edition ' + html.escape(preview.edition_id) +
             ' · Report ' + html.escape(run['id']) +
-            '. Proposed wording requires investor review. Original research and financial snapshot retained.</p>')
+            ('. Decision ' + html.escape(preview.decision_id) + ' · Accepted ' + html.escape(preview.decided_at) + '. Acceptance does not certify source accuracy or approve a thesis.' if type(preview) is AcceptedEditionEvidence else '. Proposed wording requires investor review.') + ' Original research and financial snapshot retained.</p>')
 
 
 def check_render_inputs(run, assignment, fundamentals, preview):

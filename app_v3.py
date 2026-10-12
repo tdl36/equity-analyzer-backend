@@ -29324,7 +29324,15 @@ import onepager_corrections
 app.register_blueprint(onepager_corrections.create_blueprint(get_db))
 
 import onepager_editions
-app.register_blueprint(onepager_editions.create_blueprint(get_db))
+def _edition_investor_identity():
+    # Charlie currently has one password-authenticated investor account. The
+    # machine API key and open development mode cannot record review decisions.
+    header = request.headers.get('Authorization', '')
+    if CHARLIE_PASSWORD and header.startswith('Bearer ') and _verify_session_token(header[7:]):
+        return 'charlie-password-investor'
+    return None
+
+app.register_blueprint(onepager_editions.create_blueprint(get_db, _edition_investor_identity))
 
 import research_meeting_handoff
 app.register_blueprint(research_meeting_handoff.create_blueprint(get_db))

@@ -18,3 +18,12 @@ export function verifiedEditionPreview(value, editionId, assignmentId, runId, ti
  if(!value||value.id!==editionId||value.assignmentId!==assignmentId||value.runId!==runId||value.ticker!==ticker||value.status!=='pending'||!['illustrated','brief'].includes(value.layout)||typeof value.html!=='string'||!value.html.trim())throw Error('The preview does not match this pending edition. Reload the saved assignment.');
  return value;
 }
+
+export function editionDecision(edition, pack, action, requestId) {
+ if(!pack?.canDecide||edition.stale||edition.decision||edition.record.parentId!==pack.parentId||!['accept','reject'].includes(action))throw Error('Reload the edition and sign in as the investor before deciding.');
+ const r=edition.record;
+ return {requestId,editionId:edition.id,action,...Object.fromEntries(['assignmentId','runId','fingerprint','fundamentalsDigest','parentId','correctionIds','selectionDigest'].map(k=>[k,r[k]]))};
+}
+export function removedEditionClaims(edition, pack) {
+ return (pack.acceptedEdition?.claims||[]).filter(c=>!edition.record.correctionIds.includes(c.correctionId));
+}

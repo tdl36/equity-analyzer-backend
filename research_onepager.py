@@ -5,7 +5,7 @@ an identified metric or a sector multiple as company valuation.
 """
 from research_extraction import has_omissions
 from stock_evidence import valid_citations,report_fields,missing_value
-from onepager_edition_evidence import render_evidence, pending_label, labeled_statement, preview_notice, check_render_inputs
+from onepager_edition_evidence import render_evidence, editorial_label, labeled_statement, preview_notice, check_render_inputs
 import html
 import re
 from urllib.parse import urlparse
@@ -27,7 +27,7 @@ def render(run, assignment, *, preview=None):
     refs = {s['id']: i + 1 for i, s in enumerate(sources)}
 
     def valid(c):
-        return bool(c and ((c.get('review') == 'supported' and c.get('passageMatched')) or (preview is not None and pending_label(c)))
+        return bool(c and ((c.get('review') == 'supported' and c.get('passageMatched')) or (preview is not None and editorial_label(c)))
                     and c.get('statement') and any(e.get('matched') and e.get('sourceId') in refs for e in c.get('evidence', [])))
 
     def get(path):
@@ -47,7 +47,7 @@ def render(run, assignment, *, preview=None):
         # A mixed factual/conditional statement remains a source-backed view, not a certified fact.
         basis = {'broker estimate': 'Broker estimate', 'reported fact': 'Source-backed view',
                  'interpretation': 'Interpretation'}.get(str(c.get('basis', '')).replace('_', ' '), 'Source-backed view')
-        if pending_label(c): basis = pending_label(c) + ' · ' + str(c.get('basis', '')).replace('_', ' ')
+        if editorial_label(c): basis = editorial_label(c) + ' · ' + str(c.get('basis', '')).replace('_', ' ')
         return '<div class="claim">' + ('<h3>' + esc(label) + '</h3>' if label else '') + '<p>' + esc(c['statement']) + '<sup>' + ','.join(f'<a href="#source-{n}">{n}</a>' for n in ids) + '</sup></p><span class="basis">' + basis + '</span></div>'
 
     def group(prefix, limit=2):
@@ -124,7 +124,7 @@ def render(run, assignment, *, preview=None):
             + panel(8, 'Scenario & history gaps', scenario, 'scenarios'))
     partial = has_omissions(sources)
     supported_count = sum(valid(c) for c in citations.values())
-    coverage_label = 'Evidence-matched fields including pending proposals' if preview else 'Passage-matched &amp; model-supported'
+    coverage_label = 'Evidence-matched fields including editorial wording' if preview else 'Passage-matched &amp; model-supported'
     notice = preview_notice(preview, run)
     total = sum(not missing_value(v) for v in report_fields(run.get('state',{}).get('report',{})).values())
     source_rows = []

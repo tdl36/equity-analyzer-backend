@@ -94,10 +94,10 @@ class DecisionPersistenceTests(unittest.TestCase):
             c.execute("SELECT to_regclass('onepager_accepted_heads') AS name");self.assertIsNone(c.fetchone()['name'])
         self.assertFalse(self.submit()['reused'])
 
-    def test_auth_scope_and_no_public_decision_route(self):
+    def test_auth_scope_and_denied_machine_decision_route(self):
         with self.assertRaises(ValueError):self.submit(investor='')
         with self.assertRaises(ValueError):self.submit({**self.decision,'assignmentId':OTHER})
-        self.assertEqual(self.client().post(self.url+'/'+EID+'/decision',json=self.decision).status_code,404)
+        self.assertEqual(self.client().post(self.url+'/'+EID+'/decision',json=self.decision).status_code,403)
         with self.db() as (_,c):
             c.execute("SELECT to_regclass('onepager_decisions') AS name");self.assertIsNone(c.fetchone()['name'])
 
@@ -185,3 +185,35 @@ class DecisionPersistenceTests(unittest.TestCase):
             result=self.client().get(self.url)
             self.assertEqual(result.status_code,400,result.json)
             self.assertNotIn('editions',result.json)
+
+    def test_investor_route_and_version_export_preserve_originals(self):
+        from flask import Flask
+        from onepager_editions import create_blueprint
+        app=Flask(__name__);app.register_blueprint(create_blueprint(self.db, lambda:'synthetic-investor'))
+        client=app.test_client();path=self.url+'/'+EID
+        self.assertEqual(client.get(path+'/export').status_code,409)
+        result=client.post(path+'/decision',json=self.decision)
+        self.assertEqual(result.status_code,200,result.json)
+        self.assertNotIn('investorId',result.json['decision'])
+        self.assertTrue(client.post(path+'/decision',json=self.decision).json['reused'])
+        for layout in ('brief','illustrated'):
+            response=client.get(path+'/export?layout='+layout)
+            self.assertEqual(response.status_code,200,response.data[:300])
+            self.assertIn(b'Investor-accepted editorial edition',response.data)
+            self.assertIn(EID.encode(),response.data)
+            self.assertIn('attachment',response.headers['Content-Disposition'])
+            self.assertIn('no-store',response.headers['Cache-Control'])
+        self.assertEqual(client.get(path+'/preview').status_code,409)
+        with self.db(True) as (_,c):c.execute("UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb")
+        response=client.get(path+'/export')
+        self.assertEqual(response.status_code,409)
+        self.assertNotIn('html',response.json)
+
+    def test_rejected_export_and_forged_decision_fail(self):
+        from flask import Flask
+        from onepager_editions import create_blueprint
+        app=Flask(__name__);app.register_blueprint(create_blueprint(self.db, lambda:'synthetic-investor'))
+        client=app.test_client();path=self.url+'/'+EID
+        self.assertEqual(client.post(path+'/decision',json={**self.decision,'investorId':'forged'}).status_code,409)
+        self.assertEqual(client.post(path+'/decision',json={**self.decision,'action':'reject'}).status_code,200)
+        self.assertEqual(client.get(path+'/export').status_code,409)

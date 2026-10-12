@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
-from onepager_edition_evidence import render_evidence, pending_label, labeled_statement, preview_notice, check_render_inputs
+from onepager_edition_evidence import render_evidence, editorial_label, labeled_statement, preview_notice, check_render_inputs
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
@@ -53,13 +53,13 @@ class Editor:
     def refs_html(self,c):
         ids=sorted({self.refs[x['sourceId']] for x in c.get('evidence',[]) if x.get('matched') and x.get('sourceId') in self.refs})
         self.used_refs.update(ids)
-        pending = '<span class="basis"> '+e(pending_label(c))+'</span>' if pending_label(c) else ''
+        pending = '<span class="basis"> '+e(editorial_label(c))+'</span>' if editorial_label(c) else ''
         return pending+'<sup>'+','.join(f'<a href="#source-{n}">{n}</a>' for n in ids)+'</sup>'
     def claim(self,c,remember=False):
         if not c:return '<span class="missing">Evidence needed</span>'
         if remember:self.used.append(statement_identity(c['statement']))
         basis={'broker_estimate':'Estimate','broker estimate':'Estimate','interpretation':'Interpretation'}.get(c.get('basis'),'Source view')
-        if pending_label(c): basis=str(c.get('basis', '')).replace('_', ' ')
+        if editorial_label(c): basis=str(c.get('basis', '')).replace('_', ' ')
         return '<p class="claim"><span class="basis">'+basis+'</span> '+e(c['statement'])+self.refs_html(c)+'</p>'
 
 def structured_rows(ed, prefix, anchor, fields, limit=2, budget=600):
@@ -304,9 +304,9 @@ def render(run,assignment,fundamentals, *, preview=None):
         readiness_html+='<h3>'+e(item['label'])+'</h3><p data-readiness="'+e(item['status'])+'">'+e(item['reason'])+'</p>'
         readiness_html+='<p>Saved claim paths: '+e(', '.join(item['savedPaths']) or 'None')+'</p><p>Paths passing evidence checks: '+e(', '.join(item['supportedPaths']) or 'None')+'</p>'
         if preview:
-            readiness_html+='<p>Pending proposal paths: '+e(', '.join(item['pendingPaths']) or 'None')+'</p>'
+            readiness_html+='<p>Pending proposal paths: '+e(', '.join(item['pendingPaths']) or 'None')+'</p><p>Investor-reviewed paths: '+e(', '.join(item['investorPaths']) or 'None')+'</p>'
     scenario_checks=scenario_readiness(run, preview=preview)
-    if preview: readiness_html+='<p>Pending fields contain proposed wording, not model-supported or investor-accepted claims. Arithmetic is only a calculation check.</p>'
+    if preview: readiness_html+='<p>Editorial fields carry their separate pending or investor-review provenance. Arithmetic is only a calculation check.</p>'
     readiness_html+='<h3>Scenario input repair checklist</h3><p>Each saved case is checked separately. Supported means the saved field passes evidence matching, not that the assumption is sound or appears on the page. Absent fields need evidence; unmatched fields need source-passage review. Case names do not establish financial inputs.</p>'
     if not scenario_checks['rows']:
         readiness_html+='<p>No saved scenario rows to inspect.</p>'

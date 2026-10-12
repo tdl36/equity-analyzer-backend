@@ -23,3 +23,16 @@ test('pending preview identity cannot be replaced by another edition or acceptan
  assert.equal(verifiedEditionPreview(value,'e','a','r','TEST'),value);
  for(const patch of [{id:'other'},{assignmentId:'other'},{runId:'other'},{ticker:'OTHER'},{status:'accepted'},{layout:'other'},{html:''}])assert.throws(()=>verifiedEditionPreview({...value,...patch},'e','a','r','TEST'));
 });
+
+import {editionDecision,removedEditionClaims} from '../../src/onepager-edition-model.mjs';
+test('decision binds complete edition identity and explicitly shows removed corrections',()=>{
+ const p={...pack,canDecide:true,acceptedEdition:{claims:[{correctionId:'old'},{correctionId:'keep'}]}};
+ const edition={id:'e',record:{...pack,correctionIds:['keep'],selectionDigest:'s'}};
+ assert.deepEqual(removedEditionClaims(edition,p),[{correctionId:'old'}]);
+ const decision=editionDecision(edition,p,'accept','request');
+ assert.equal(decision.requestId,'request');assert.equal(decision.editionId,'e');assert.equal(decision.selectionDigest,'s');
+ assert.deepEqual(decision.correctionIds,['keep']);
+ for(const changed of [{...edition,stale:true},{...edition,decision:{action:'accept'}},{...edition,record:{...edition.record,parentId:'changed'}}])assert.throws(()=>editionDecision(changed,p,'accept','r'));
+ assert.throws(()=>editionDecision(edition,{...p,canDecide:false},'accept','r'));
+ assert.throws(()=>editionDecision(edition,p,'unknown','r'));
+});

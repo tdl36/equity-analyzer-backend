@@ -2,7 +2,39 @@
 
 Updated: October 12, 2026
 
-## T211 — edition lineage reads (release prepared)
+## T212 — investor edition decisions and explicit exports (release prepared)
+
+Implemented the full saved-edition review/decision/export path. Only a verified
+password-investor session supplies the server principal; machine API keys, open
+mode and client identity fields cannot approve editions. Review shows complete
+before/after wording and corrections removed from the prior accepted selection,
+requires explicit acknowledgement, and retains retry identity. Transactional
+accept/reject uses the existing exact evidence and concurrency gates.
+Accepted contexts revalidate the saved decision, immutable selection, all frozen
+original bytes/policies and financial inputs. Both layouts distinguish human
+editorial review from original model support; the shared evidence/thesis gate is
+unchanged. Only an explicit accepted-version URL exports printable HTML. Pending,
+rejected, changed and restricted evidence fails closed. Current/prior editions
+remain separate; no original report, default artifact or thesis is overwritten.
+Synthetic disposable-DB UI acceptance advanced the pointer and retained the prior
+version; the browser downloaded its brief. Native Chrome printed both sparse
+accepted layouts as one A4 page, visually inspected without clipping; Calibri
+fonts retained. Desktop and 390px history layouts checked. Evidence remains in
+/tmp/charlie-t207-preview/accepted-*-T212.*, with the downloaded synthetic brief
+in Downloads and /tmp/charlie-t212-review.png. These are synthetic fixtures,
+not investor quality acceptance or a live approval. No paid calls were made.
+1145 backend tests and 146 frontend tests passed; focused suites, touched Python
+compilation, model policy against 75097e5 and production frontend build passed.
+Next continue the actual real-source one-pager quality gaps and cross-workspace
+latest-source refresh; the eight acceptance criteria remain open.
+
+## T211 — edition lineage reads (verified live; decision writes internal)
+
+Commit 2c035aa pushed to main. Cloudflare a9b25dd3-bcce-4dfc-976f-b254a1cccd61
+deployed; hosted /dist/app.js and service-worker bytes match. Render returned transient HTTP 502 during rollout, then verified healthy at
+revision 2c035aace572eed027fb1291502f22319dddf451.
+Mac last seen 14:09:03 UTC, collection 14:08:25, pending delivery zero and
+unavailable empty. No active audio items observed; no agent change/restart.
 
 Edition listing and preparation now read the separate decision history under the
 assignment lock, carry the current accepted parent, and fail closed on missing or
