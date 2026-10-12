@@ -12,7 +12,7 @@ from stock_evidence import valid_citations
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v18'
+VERSION='stock-infographic-v19'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -184,7 +184,7 @@ def render(run,assignment,fundamentals):
         ed.used.extend([statement_identity(a['statement']),statement_identity(b['statement'])])
         if ed.fits(resolution,min(220,monitor_budget)):
             monitor.append((title,resolution));monitor_budget-=len(resolution['statement'])
-    debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence unavailable at one-page length; inspect the full research.</p>'
+    debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence not rendered; see Evidence readiness below.</p>'
     # A supported operating driver is not an ownership argument. Missing or
     # overlong thesis claims must remain a visible gap, not be silently replaced.
     thesis_claims=ed.select(['/summary/investment_thesis/'],2,budget=380)
@@ -244,7 +244,7 @@ def render(run,assignment,fundamentals):
     if not bottom_claim:missing_sections.append('investment view')
     coverage=('<p class="coverage-note" role="status"><b>Incomplete research brief.</b> Missing from this page: '
               +e(', '.join(missing_sections))+'. Review the saved research before using this brief. '
-              'Supported text may have been omitted for length.</p>') if missing_sections else ''
+              'See Evidence readiness below for specific repair needs.</p>') if missing_sections else ''
     from financial_history_context import context as historical_context
     financial_context=historical_context(f)
     if financial_context:
@@ -270,6 +270,13 @@ def render(run,assignment,fundamentals):
     if financial_context:
         details+='<h3>Historical public supplement [H]</h3><p>'+e(financial_context['summary'])+' '+e(financial_context['detail'])+' '+e(financial_context['caveat'])+'</p><p>'+link(financial_context['sourceUrl'],financial_context['locator'])+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+' · SHA-256 '+financial_context['sourceHash']+'. Added public context, not part of the original frozen research pack.</p>'
     details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
+    from onepager_readiness import readiness
+    checks=readiness(run,{'thesis':bool(thesis_claims),'debate':bool(debates),'view':bool(bottom_claim)})
+    readiness_html='<details class="evidence-readiness"><summary>Evidence readiness — core investment argument</summary><p>Read-only checks of saved evidence and page selection. These do not certify investment accuracy or completeness of other sections.</p>'
+    for item in checks:
+        readiness_html+='<h3>'+e(item['label'])+'</h3><p data-readiness="'+e(item['status'])+'">'+e(item['reason'])+'</p>'
+        readiness_html+='<p>Saved claim paths: '+e(', '.join(item['savedPaths']) or 'None')+'</p><p>Paths passing evidence checks: '+e(', '.join(item['supportedPaths']) or 'None')+'</p>'
+    details=readiness_html+'</details>'+details
     body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 

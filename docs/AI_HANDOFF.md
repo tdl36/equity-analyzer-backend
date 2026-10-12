@@ -2,6 +2,24 @@
 
 Updated: October 11, 2026
 
+## T199 — core editorial readiness explanations (release pending)
+
+Added read-only diagnosis for investment thesis, paired market debate and
+investment view. Missing saved fields, unmatched/stale evidence, incomplete
+same-row debate pairs, pairs outside the renderer's bounded rows and supported
+text omitted for space have distinct repair explanations and exact claim paths.
+The collapsed Evidence readiness section does not reproduce rejected claims,
+change source matching, edit research or certify accuracy/materiality. Coverage
+and debate gap messages now point to the diagnosis instead of implying that all
+missing debates are length failures. Other section completeness, scenario
+composition and source-checked editorial replacement remain outstanding.
+Seven new synthetic tests cover missing/stale evidence, no cross-pairing, bounds,
+placeholders, no claim-body disclosure, no input mutation and renderer integration.
+Saved ABT diagnoses unmatched thesis/view and incomplete debate pairs; UNH's three
+core sections render. Desktop Chrome disclosure inspected; ABT print preview
+remains one A4 page with the disclosure excluded. No mobile viewport inspection
+in this increment; existing wrapping and responsive styles are unchanged.
+
 ## Reference benchmark and evidence diagnosis — October 12, 05:56 UTC wake
 
 Compared the user's DE reference image/calibration with saved ABT/UNH v18
