@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
 
-VERSION='stock-infographic-v10'
+VERSION='stock-infographic-v11'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -155,7 +155,9 @@ def render(run,assignment,fundamentals):
         if ed.fits(resolution,min(220,monitor_budget)):
             monitor.append((title,resolution));monitor_budget-=len(resolution['statement'])
     debate='<table class="debates"><thead><tr><th>Market argument</th><th>Counterpoint</th></tr></thead><tbody>'+''.join('<tr><td><h3>'+e(title)+'</h3>'+ed.claim(a)+'</td><td>'+ed.claim(b)+'</td></tr>' for a,b,title in debates)+'</tbody></table>' if debates else '<p>Paired evidence unavailable at one-page length; inspect the full research.</p>'
-    thesis_claims=ed.select(['/summary/investment_thesis/','/summary/top_drivers/'],2,budget=380,prefer_prefix=True)
+    # A supported operating driver is not an ownership argument. Missing or
+    # overlong thesis claims must remain a visible gap, not be silently replaced.
+    thesis_claims=ed.select(['/summary/investment_thesis/'],2,budget=380)
     question=ed.get('/summary/core_question')
     question_html='<div class="question"><b>Investment question</b>'+ed.claim(question)+'</div>' if ed.fits(question,180) else ''
     thesis=question_html+(''.join(ed.claim(c) for c in thesis_claims) or '<p>Source-supported thesis evidence unavailable.</p>')
@@ -182,6 +184,15 @@ def render(run,assignment,fundamentals):
     bottom_claim=ed.get('/summary/earnings_direction')
     if not ed.fits(bottom_claim,240):bottom_claim=None
     bottom=ed.claim(bottom_claim)
+    missing_sections=[]
+    if not profile.get('overview') and not ed.get('/summary/one_liner'):missing_sections.append('company description')
+    if not thesis_claims:missing_sections.append('investment thesis')
+    if not debates:missing_sections.append('paired market debate')
+    if not monitor_rows:missing_sections.append('monitoring evidence')
+    if not bottom_claim:missing_sections.append('investment view')
+    coverage=('<p class="coverage-note" role="status"><b>Incomplete research brief.</b> Missing from this page: '
+              +e(', '.join(missing_sections))+'. Review the saved research before using this brief. '
+              'Supported text may have been omitted for length.</p>') if missing_sections else ''
     glossary=profile.get('glossary','EPS = earnings per share · P/E = price / earnings · FCF = free cash flow')
     def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
     source_names=[]
@@ -199,7 +210,7 @@ def render(run,assignment,fundamentals):
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'
     for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
     details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Scenario forecasts and calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
-    body=head+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+section(9,'The investment view',bottom)+footer
+    body=head+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+section(9,'The investment view',bottom)+footer
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+e(ticker)+' · Investment map</title><style>'+CSS+'</style><body><main data-render-version="'+VERSION+'">'+body+'</main>'+details+'</body></html>'
 
 CSS='''
@@ -221,3 +232,7 @@ CSS += '@media print{.panel{margin-top:2px}header{margin-bottom:2px}.footer{padd
 CSS += '@media print{.company-hero .value-chain{height:72px;max-height:72px;object-fit:cover;object-position:center 50%}.mast{padding-bottom:3px}.headline{margin-bottom:4px!important}}'
 
 CSS += '.lower-grid{column-gap:10px;row-gap:0}.lower-grid>.panel:nth-child(2){grid-column:2;grid-row:1 / span 2}.lower-grid>.panel:nth-child(3){grid-column:1;grid-row:2}'
+
+CSS += '.coverage-note{background:#f6f2e6;border-left:3px solid #b4a575;padding:8px;font-size:12px;line-height:1.35;margin:8px 0}@media print{.coverage-note{font-size:8pt;padding:4px;margin:4px 0}}'
+
+CSS += '.title{gap:12px}.title h1{min-width:0}.symbol{flex-shrink:0;white-space:nowrap}'

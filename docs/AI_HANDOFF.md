@@ -2,6 +2,29 @@
 
 Updated: October 11, 2026
 
+## T191 — incomplete one-pager detection (release verification pending)
+
+Read-only review of the saved ABT and UNH investment maps exposed a material
+ABT quality failure: missing company description, paired debate and investment
+view, plus a short operating driver substituted for the investment thesis.
+The renderer now selects thesis claims only from investment-thesis evidence;
+it flags missing rendered core sections prominently, including supported claims
+omitted by length constraints. This is a completeness check, not a semantic
+quality score or certification. Both saved examples were re-rendered privately
+without changing original artifacts, research, sources or accepted theses.
+ABT correctly shows four missing sections; UNH has the core sections, but its
+professional-quality acceptance is still open. The separate rebuilt ABT thesis
+proposal is unaffected. Phone inspection found and fixed ticker wrapping.
+1050 backend and 140 frontend tests passed; compilation, model policy against
+75097e5 and production build passed. Saved ABT and UNH evidence re-rendered
+without new model calls. ABT notice inspected at desktop and 390px; no horizontal
+overflow, ticker remains unbroken. Predeploy bounded Activity snapshot has no
+running/processing/analyzing items and no unavailable reads; truncated history
+is not proof that all jobs were inventoried. Deployment verification remains pending.
+See docs/onepager-acceptance-audit.md for the next content/valuation work.
+No paid research or approvals. Phase 1 operational acceptance remains open;
+this bounded phase-2 audit does not mark the eight priorities complete.
+
 ## T190 — run-scoped worker reporting
 
 New analyst attempts persist reporting metadata tied to their reserved execution
@@ -15,7 +38,15 @@ cleanup failures preserve the saved job result. No lease takeover or batch-slot
 release is introduced. Synthetic persistence/expiry/identity/failure checks added.
 1048 backend and 140 frontend tests passed; compilation, model policy against
 75097e5 and production build passed. Predeploy Activity reports no freshly
-progressing non-queued jobs in its bounded snapshot. Deployment pending.
+progressing non-queued jobs in its bounded snapshot. Backend revision
+874d9338e6c4a908cbd8031a659ca6e4979c4605 verified healthy after transient
+rollout 502s. Cloudflare 15afc2b4-3fd0-40a7-b916-9625e39b15f2 deployed;
+hosted JS/SW exact bytes verified. Mac 01:02:50 UTC, no unavailable Activity reads.
+Legacy WELL correctly returns unknown worker presence and attention; its history
+was not backfilled. Reporter persistence/expiry is synthetically verified, not a
+live paid research benchmark. No paid run or approval. Phase-1 live interruption
+acceptance and legacy provider outcome remain open; next prioritize acceptance
+evidence and professional one-pager benchmarks rather than more status copy.
 
 ## T189 — audited unresolved legacy disposition
 

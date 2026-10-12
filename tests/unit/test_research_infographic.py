@@ -83,6 +83,32 @@ class EditorialTests(unittest.TestCase):
         self.assertIn('Saved GAAP history',h)
         self.assertNotIn('Latest-filed GAAP history',h)
 
+    def test_driver_cannot_fill_missing_or_overlong_thesis(self):
+        self.add('/summary/top_drivers/0','Quarterly volume rose 5%.')
+        for statement in (None, 'Conditional ownership argument ' * 30):
+            if statement:self.add('/summary/investment_thesis/0',statement)
+            h=render(self.run,{},self.f)
+            self.assertNotIn('Quarterly volume rose 5%.',h)
+            self.assertIn('Source-supported thesis evidence unavailable.',h)
+            self.assertIn('Incomplete research brief.',h)
+            self.assertIn('company description, investment thesis, paired market debate',h)
+
+    def test_coverage_checks_rendered_sections_without_certifying_quality(self):
+        self.add('/summary/one_liner','Business description.')
+        self.add('/summary/investment_thesis/0','Margins can recover if prices exceed costs.')
+        self.add('/debates/0/market_view','The market expects sustained demand.')
+        self.add('/debates/0/alternative_view','Demand could slow after replenishment.')
+        self.add('/debates/0/resolution_signal','Watch next quarter orders versus sales.')
+        self.add('/summary/earnings_direction','Earnings depend on retained pricing.')
+        before=copy.deepcopy(self.run)
+        h=render(self.run,{},self.f)
+        self.assertNotIn('Incomplete research brief.',h)
+        self.assertIn('source matching does not establish investment accuracy',h)
+        self.assertEqual(self.run,before)
+        self.add('/summary/earnings_direction','Long statement ' * 30)
+        h=render(self.run,{},self.f)
+        self.assertIn('Missing from this page: investment view.',h)
+
     def test_printed_footer_keeps_citation_targets_and_safe_source_links(self):
         self.run['sources'][0]['sourceUrl']='https://example.com/original'
         self.add('/summary/one_liner','Complete supported statement')
