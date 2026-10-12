@@ -2,7 +2,22 @@
 
 Updated: October 11, 2026
 
-## T198 — Abbott historical earnings reconciliation context (deployment pending)
+## Reference benchmark and evidence diagnosis — October 12, 05:56 UTC wake
+
+Compared the user's DE reference image/calibration with saved ABT/UNH v18
+structure and actual v16 Calibri PDF images. Recorded an agent-assessed acceptance
+matrix in docs/onepager-acceptance-audit.md; no investor scoring or source accuracy
+certification. Calibration has no source register and must not supply financial
+facts. ABT has zero qualifying ownership-thesis fields and no complete same-row
+debate pair, so these gaps are not print-budget failures. Both companies lack
+complete supported scenario rows; do not splice isolated fields across cases or
+substitute the separate pending thesis for the frozen report. Next bounded work:
+structured readiness reasons (missing/unmatched, incomplete pair, over budget),
+then a versioned source-checked editorial handoff. No paid calls, research writes,
+approvals, runtime changes or deployments in this documentation-only increment.
+All eight-phase acceptance remains open as previously recorded.
+
+## T198 — Abbott historical earnings reconciliation context (verified live)
 
 Verified Abbott's Jan 22, 2025 FY2024 release, annual reconciliation and notes 1–2.
 Added a dated public historical supplement beside the GAAP charts and in the
@@ -23,7 +38,11 @@ receive Abbott context. Four tests cover arithmetic, issuer/vintage/period/units
 changed observations, duplicate rows and no mutation. Remaining years, historical
 valuation, ABT thesis/monitor evidence gaps and eight-phase acceptance stay open.
 1074 backend and 140 frontend tests, touched Python compilation, model policy
-against 75097e5 and production build passed.
+against 75097e5 and production build passed. Backend revision
+42144caa496f4f78ca1b709a78e760f2f63563fa healthy after transient rollout
+502s; Cloudflare 288770d8-1480-4458-9c68-8bcf6eb31ff2 live. Hosted JS/SW
+and ABT/UNH v18 match local bytes; ABT has context and UNH does not. Mac
+heartbeat 05:33:19 UTC; pending collection delivery zero and no unavailable reads.
 
 ## T197 — explicit saved-scenario arithmetic (verified live)
 
