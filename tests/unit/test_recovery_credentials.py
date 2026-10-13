@@ -18,9 +18,10 @@ class RecoveryCredentialTests(unittest.TestCase):
             yield None, cursor
         return get_db, cursor
 
-    def test_server_key_has_precedence_without_database_access(self):
+    def test_server_key_is_fallback_when_shared_setting_is_absent(self):
         with patch.dict(os.environ, {'ANTHROPIC_API_KEY': ' server-test '}):
-            self.assertEqual(anthropic_recovery_key(Mock(side_effect=AssertionError)), 'server-test')
+            db, _ = self.database(None)
+            self.assertEqual(anthropic_recovery_key(db), 'server-test')
 
     def test_saved_key_is_read_again_after_rotation_and_removal(self):
         get_db, cur = self.database({'value': ' saved-test '})
@@ -30,7 +31,7 @@ class RecoveryCredentialTests(unittest.TestCase):
             self.assertEqual(anthropic_recovery_key(get_db), 'rotated-test')
             cur.fetchone.return_value = None
             self.assertEqual(anthropic_recovery_key(get_db), '')
-        cur.execute.assert_called_with('SELECT value FROM app_settings WHERE key=%s', ('apiKey',))
+        cur.execute.assert_any_call('SELECT value FROM app_settings WHERE key=%s', ('apiKey',))
 
     def test_missing_or_invalid_settings_do_not_become_credentials(self):
         with patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}):

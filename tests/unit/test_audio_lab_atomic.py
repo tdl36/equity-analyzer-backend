@@ -22,6 +22,8 @@ class Cursor:
 
 class AtomicAudioLabTests(unittest.TestCase):
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.db = sqlite3.connect(':memory:')
         self.addCleanup(self.db.close)
         self.db.row_factory = sqlite3.Row

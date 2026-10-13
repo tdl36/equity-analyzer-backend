@@ -1,3 +1,4 @@
+from unittest.mock import patch
 """Choosing a model, and recording what every paid call cost."""
 import unittest
 from contextlib import contextmanager
@@ -15,6 +16,8 @@ OFFERED = [
 
 class Harness(unittest.TestCase):
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.inserted = []
         owner = self
 
@@ -72,6 +75,8 @@ class UsageRecordingTests(unittest.TestCase):
     """No Lab run had ever been recorded, so no experiment had a cost."""
 
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.recorded = []
 
     def run_one_call(self, **kwargs):

@@ -10,7 +10,7 @@ class ManualProfileRouteTests(unittest.TestCase):
         cur.fetchall.return_value=[{'id':2,'filename':'source.txt','doc_type':'report','file_data':None,'extracted_text':'Saved source text for this meeting.'}]
         @contextmanager
         def db(**kwargs):yield None,cur
-        thread=Mock();scope=dict(request=request,jsonify=jsonify,os=os,json=json,uuid=uuid,get_db=db,threading=Mock(Thread=thread),_run_mp_pipeline_job=Mock(),resolve_picker_model=lambda a,b:b,MEETING_PREP_DEFAULT_MODEL='model')
+        thread=Mock();scope=dict(provider_credentials=Mock(get=Mock(return_value='synthetic-shared-key')),request=request,jsonify=jsonify,os=os,json=json,uuid=uuid,get_db=db,threading=Mock(Thread=thread),_run_mp_pipeline_job=Mock(),resolve_picker_model=lambda a,b:b,MEETING_PREP_DEFAULT_MODEL='model')
         exec(compile(ast.Module(body=[node],type_ignores=[]),'app_v3.py','exec'),scope)
         app=Flask(__name__);app.add_url_rule('/run',view_func=scope['mp_run_pipeline'],methods=['POST'])
         return app.test_client(),cur,thread

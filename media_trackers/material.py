@@ -199,8 +199,8 @@ def gate_and_alert_for_episode(episode_id):
     covered = _load_coverage_universe()
     keywords = _load_watchlist_keywords()
     muted_coverage = _load_muted_coverage()
-    import os as _os
-    anthropic_key = _os.environ.get('ANTHROPIC_API_KEY', '')
+    import provider_credentials
+    anthropic_key = provider_credentials.get('anthropic')
 
     with app_v3.get_db() as (_c, cur):
         cur.execute('SELECT * FROM media_episodes WHERE id=%s', (episode_id,))

@@ -1,4 +1,5 @@
 """Opt-in Summary Lab. Independent experiments; never writes legacy Summary tables."""
+import provider_credentials
 import model_registry
 import base64
 import hashlib
@@ -561,7 +562,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
 
     def start_prepared(jid, api_key=None):
         """Start a committed experiment; existing run() ownership guards still apply."""
-        key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        key = provider_credentials.get('anthropic')
         if not isinstance(key, str) or not key.strip():
             raise ValueError('Saved Summary Lab experiment is waiting for a research API key.')
         threading.Thread(target=run, args=(jid,key,False,True), daemon=True,
@@ -611,7 +612,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
     def enqueue(summary_id, api_key=None, output_mode='english', automatic=False, title='Untitled experiment', focus='', source_job_id=None, model=None):
         """Create one durable Lab branch. Automatic branches are idempotent per saved source."""
         ensure()
-        key=api_key or os.environ.get('ANTHROPIC_API_KEY')
+        key=provider_credentials.get('anthropic')
         if not isinstance(key,str) or not key.strip(): raise ValueError('Add a research API key in Settings.')
         if output_mode not in OUTPUT_MODES: raise ValueError('Choose English, English + Korean, or Korean only.')
         if not all(isinstance(x,str) for x in (summary_id,title,focus)): raise ValueError('Summary, title and emphasis must be text.')
@@ -667,7 +668,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
     @bp.post('/api/summary-lab')
     def start():
         ensure(); body=request.get_json(silent=True) or {}
-        key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
+        key=provider_credentials.get('anthropic')
         focus=body.get('focus',''); source=body.get('source',''); title=body.get('title','Untitled experiment')
         output_mode=body.get('outputMode','english')
         try: chosen_model=resolve_model(body.get('model'))
@@ -788,7 +789,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
 
     @bp.post('/api/summary-lab/<jid>/retry')
     def retry(jid):
-        ensure(); body=request.get_json(silent=True) or {}; key=body.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY')
+        ensure(); body=request.get_json(silent=True) or {}; key=provider_credentials.get('anthropic')
         if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
         with get_db(commit=True) as (_,cur):
             cur.execute('UPDATE summary_lab_experiments SET cancel_requested=FALSE WHERE id=%s RETURNING id',(jid,))

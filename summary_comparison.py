@@ -1,4 +1,5 @@
 """Automatic, checkpointed full-transcript alternative notes. Never updates meeting_summaries."""
+import provider_credentials
 import model_registry
 import hashlib
 import json
@@ -444,7 +445,7 @@ def create_blueprint(get_db):
 
     def enqueue(sid, api_key=None, resume_id=None, automatic=False):
         ensure()
-        api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        api_key = provider_credentials.get('anthropic')
         missing_key = not isinstance(api_key, str) or not api_key.strip()
         if missing_key and not automatic:
             raise ValueError('Add your research API key in Settings.')
@@ -488,7 +489,7 @@ def create_blueprint(get_db):
     def start(sid):
         body = request.get_json(silent=True) or {}
         try:
-            return jsonify(id=enqueue(sid, body.get('apiKey'), body.get('resumeId'))), 202
+            return jsonify(id=enqueue(sid, provider_credentials.get('anthropic'), body.get('resumeId'))), 202
         except LookupError as exc:
             return jsonify(error=str(exc)), 404
         except ValueError as exc:

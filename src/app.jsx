@@ -99,7 +99,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-13T234';
+        const BUILD_VERSION = '2026-10-13T235';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -847,12 +847,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const syncSettingsToBackend = () => {
             try {
                 const settings = {};
-                const apiKey = localStorage.getItem('equity_analyzer_api_key');
-                const geminiKey = localStorage.getItem('equity_analyzer_gemini_key');
                 const googleClientId = localStorage.getItem('google_oauth_client_id');
                 const emailCreds = localStorage.getItem('emailCredentials');
-                if (apiKey) settings.apiKey = apiKey;
-                if (geminiKey) settings.geminiApiKey = geminiKey;
                 if (googleClientId) settings.googleClientId = googleClientId;
                 if (emailCreds) settings.emailCredentials = emailCreds;
                 if (Object.keys(settings).length > 0) {
@@ -861,73 +857,43 @@ Regulatory, execution, or macro risks that could derail the thesis:
             } catch(e) { console.log('Settings sync failed:', e.message); }
         };
 
-        // Simple storage helpers - try multiple methods for iOS PWA
+        // Provider secrets live on Charlie; these values are readiness flags only.
         const STORAGE_KEY = 'equity_analyzer_api_key';
-        
-        const saveApiKeyToStorage = (key) => {
-            // Save to all available storage methods
-            try { localStorage.setItem(STORAGE_KEY, key); } catch(e) { console.log('localStorage failed'); }
-            try { sessionStorage.setItem(STORAGE_KEY, key); } catch(e) { console.log('sessionStorage failed'); }
-            // Also save to IndexedDB
-            try {
-                const request = indexedDB.open('EquityAnalyzerDB', 1);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('settings')) {
-                        db.createObjectStore('settings', { keyPath: 'id' });
-                    }
-                };
-                request.onsuccess = () => {
-                    const db = request.result;
-                    const tx = db.transaction('settings', 'readwrite');
-                    tx.objectStore('settings').put({ id: 'apiKey', value: key });
-                };
-            } catch(e) { console.log('IndexedDB failed'); }
-            syncSettingsToBackend();
-        };
-
-        const loadApiKeyFromStorage = () => {
-            // Check localStorage first (sync)
-            try {
-                const key = localStorage.getItem(STORAGE_KEY);
-                if (key) return key;
-            } catch(e) {}
-            // Check sessionStorage (sync)
-            try {
-                const key = sessionStorage.getItem(STORAGE_KEY);
-                if (key) return key;
-            } catch(e) {}
-            return '';
-        };
-
-        // Gemini API key storage helpers (for audio transcription)
         const GEMINI_STORAGE_KEY = 'equity_analyzer_gemini_key';
-
-        const saveGeminiKeyToStorage = (key) => {
-            try { localStorage.setItem(GEMINI_STORAGE_KEY, key); } catch(e) { console.log('localStorage failed'); }
-            try { sessionStorage.setItem(GEMINI_STORAGE_KEY, key); } catch(e) { console.log('sessionStorage failed'); }
+        let sharedProviders = {};
+        const loadApiKeyFromStorage = () => sharedProviders.anthropic?.configured ? 'server-managed' : '';
+        const loadGeminiKeyFromStorage = () => sharedProviders.gemini?.configured ? 'server-managed' : '';
+        const refreshProviderStatus = async () => {
+            const response = await fetch(`${API_URL}/api/provider-credentials`);
+            if (!response.ok) throw Error('Shared provider settings are unavailable.');
+            sharedProviders = (await response.json()).providers || {};
+            for (const store of [localStorage,sessionStorage]) {
+                try { store.removeItem(STORAGE_KEY); store.removeItem(GEMINI_STORAGE_KEY); store.removeItem('charlie_gemini_key'); } catch {}
+            }
             try {
                 const request = indexedDB.open('EquityAnalyzerDB', 1);
                 request.onsuccess = () => {
                     const db = request.result;
-                    const tx = db.transaction('settings', 'readwrite');
-                    tx.objectStore('settings').put({ id: 'geminiApiKey', value: key });
+                    if (db.objectStoreNames.contains('settings')) {
+                        const tx = db.transaction('settings','readwrite');
+                        tx.objectStore('settings').delete('apiKey');
+                        tx.objectStore('settings').delete('geminiApiKey');
+                        tx.oncomplete = () => db.close();
+                    } else db.close();
                 };
-            } catch(e) { console.log('IndexedDB failed'); }
-            syncSettingsToBackend();
+            } catch {}
+            return sharedProviders;
         };
-
-        const loadGeminiKeyFromStorage = () => {
-            try {
-                const key = localStorage.getItem(GEMINI_STORAGE_KEY);
-                if (key) return key;
-            } catch(e) {}
-            try {
-                const key = sessionStorage.getItem(GEMINI_STORAGE_KEY);
-                if (key) return key;
-            } catch(e) {}
-            return '';
+        const saveSharedKey = async (provider,key) => {
+            const response = await fetch(`${API_URL}/api/provider-credentials/${provider}`, {
+                method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})
+            });
+            const data = await response.json();
+            if (!response.ok) throw Error(data.error || 'Shared key could not be saved.');
+            await refreshProviderStatus();
         };
+        const saveApiKeyToStorage = key => saveSharedKey('anthropic',key);
+        const saveGeminiKeyToStorage = key => saveSharedKey('gemini',key);
 
         const escapeHtml = (str) => String(str == null ? '' : str)
             .replace(/&/g, '&amp;')
@@ -1610,6 +1576,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
 
             // Separate states: apiKeyInput is what user types, apiKeySaved is what's confirmed saved
             const [apiKeyInput, setApiKeyInput] = useState('');
+            const [sharedOpenaiInput,setSharedOpenaiInput] = useState('');
             const [apiKeySaved, setApiKeySaved] = useState(loadApiKeyFromStorage() || '');
             const [apiKeyChecked, setApiKeyChecked] = useState(false);
             const [savedAnalyses, setSavedAnalyses] = useState([]);
@@ -7490,86 +7457,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 if (!authToken || authLoading) return;
                 loadSavedAnalyses();
 
-                // Check if we already have a saved key locally
-                const existingKey = loadApiKeyFromStorage();
-                if (existingKey) {
-                    setApiKeySaved(existingKey);
-                    setApiKeyChecked(true);
-                    return;
-                }
-
-                // Try IndexedDB first (sync-ish), then fall back to backend
-                const loadFromBackend = async () => {
-                    try {
-                        const res = await fetch(`${API_URL}/api/settings`);
-                        if (res.ok) {
-                            const settings = await res.json();
-                            if (settings.apiKey) {
-                                console.log('Restored API key from backend');
-                                setApiKeySaved(settings.apiKey);
-                                // Save locally without re-syncing to backend
-                                try { localStorage.setItem(STORAGE_KEY, settings.apiKey); } catch(e) {}
-                                try { sessionStorage.setItem(STORAGE_KEY, settings.apiKey); } catch(e) {}
-                            }
-                            if (settings.geminiApiKey) {
-                                console.log('Restored Gemini key from backend');
-                                setGeminiApiKey(settings.geminiApiKey);
-                                try { localStorage.setItem(GEMINI_STORAGE_KEY, settings.geminiApiKey); } catch(e) {}
-                                try { sessionStorage.setItem(GEMINI_STORAGE_KEY, settings.geminiApiKey); } catch(e) {}
-                            }
-                            if (settings.googleClientId) {
-                                console.log('Restored Google Client ID from backend');
-                                setGoogleClientId(settings.googleClientId);
-                                try { localStorage.setItem('google_oauth_client_id', settings.googleClientId); } catch(e) {}
-                            }
-                            if (settings.emailCredentials) {
-                                console.log('Restored email credentials from backend');
-                                try {
-                                    localStorage.setItem('emailCredentials', settings.emailCredentials);
-                                    setEmailData(JSON.parse(settings.emailCredentials));
-                                } catch(e) {}
-                            }
-                        }
-                    } catch(e) { console.log('Backend settings fetch failed:', e.message); }
-                    setApiKeyChecked(true);
-                };
-
-                try {
-                    const request = indexedDB.open('EquityAnalyzerDB', 1);
-                    request.onupgradeneeded = (e) => {
-                        const db = e.target.result;
-                        if (!db.objectStoreNames.contains('settings')) {
-                            db.createObjectStore('settings', { keyPath: 'id' });
-                        }
-                    };
-                    request.onsuccess = () => {
-                        const db = request.result;
-                        if (db.objectStoreNames.contains('settings')) {
-                            const tx = db.transaction('settings', 'readonly');
-                            const getReq = tx.objectStore('settings').get('apiKey');
-                            getReq.onsuccess = () => {
-                                const idbKey = getReq.result?.value;
-                                if (idbKey) {
-                                    console.log('Loaded API key from IndexedDB');
-                                    setApiKeySaved(idbKey);
-                                    try { localStorage.setItem(STORAGE_KEY, idbKey); } catch(e) {}
-                                    try { sessionStorage.setItem(STORAGE_KEY, idbKey); } catch(e) {}
-                                    setApiKeyChecked(true);
-                                } else {
-                                    // Not in IndexedDB either — try backend
-                                    loadFromBackend();
-                                }
-                            };
-                        } else {
-                            loadFromBackend();
-                        }
-                    };
-                    request.onerror = () => {
-                        loadFromBackend();
-                    };
-                } catch(e) {
-                    loadFromBackend();
-                }
+                fetch(`${API_URL}/api/settings`).then(r=>r.ok?r.json():{}).then(settings=>{
+                    if (settings.googleClientId) {setGoogleClientId(settings.googleClientId);try{localStorage.setItem('google_oauth_client_id',settings.googleClientId);}catch{}}
+                    if (settings.emailCredentials) {try{localStorage.setItem('emailCredentials',settings.emailCredentials);setEmailData(JSON.parse(settings.emailCredentials));}catch{}}
+                }).catch(()=>{});
+                let live = true;
+                const refresh = () => refreshProviderStatus().then(() => {
+                    if (live) { setApiKeySaved(loadApiKeyFromStorage()); setGeminiApiKey(loadGeminiKeyFromStorage()); setApiKeyChecked(true); }
+                }).catch(() => { if (live) setApiKeyChecked(true); });
+                refresh();
+                window.addEventListener('focus',refresh);
+                return () => {live=false;window.removeEventListener('focus',refresh);};
             }, [authToken, authLoading]);
 
             // Reconnect to background analysis job on mount
@@ -12315,7 +12213,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker,
                             apiKey: apiKeySaved,
-                            geminiApiKey: localStorage.getItem('charlie_gemini_key') || '',
+                            geminiApiKey: loadGeminiKeyFromStorage(),
                         }),
                     });
                     if (!resp.ok) {
@@ -12348,7 +12246,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         body: JSON.stringify({
                             ticker,
                             apiKey: apiKeySaved,
-                            geminiApiKey: localStorage.getItem('charlie_gemini_key') || '',
+                            geminiApiKey: loadGeminiKeyFromStorage(),
                         }),
                     });
                     if (!resp.ok) {
@@ -12412,14 +12310,14 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setCondensedThesisData(null);
             };
 
-            const saveKey = () => {
+            const saveKey = async () => {
                 if (!apiKeyInput.trim()) { setError('Enter API key'); return; }
                 if (!apiKeyInput.startsWith('sk-ant-')) { setError('Key must start with sk-ant-'); return; }
                 const key = apiKeyInput.trim();
                 // Save to all storage methods
-                saveApiKeyToStorage(key);
+                try { await saveApiKeyToStorage(key); } catch(e) { setError(e.message); return; }
                 // Update saved state - this is what triggers the transition
-                setApiKeySaved(key);
+                setApiKeySaved(loadApiKeyFromStorage());
                 setError(null);
                 alert('API key saved! You can now upload documents.');
             };
@@ -13172,8 +13070,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                 setDraggedIndex(null);
             };
 
-            // Call Claude API directly from browser — bypasses Cloudflare Worker + Render proxy chain
-            // to avoid 502 timeouts on large multi-document analysis requests.
+            // Stream analysis through Charlie using centrally managed credentials.
             const callClaudeDirectly = async (apiKey, allDocuments, existingAnalysis, historicalWeights, weightingConfig) => {
                 const simpleMode = weightingConfig?.mode === 'simple';
                 const existingWeight = weightingConfig?.existingAnalysisWeight || 70;
@@ -13266,13 +13163,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     // Call Anthropic API with streaming
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 300000);
-                    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                    const resp = await fetch(`${API_URL}/api/provider/anthropic/messages`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
                             'anthropic-version': '2023-06-01',
-                            'anthropic-dangerous-direct-browser-access': 'true'
                         },
                         body: JSON.stringify({
                             ...modelPolicy,
@@ -13586,7 +13481,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         newDocsWeight: weightingMode === 'simple' ? (100 - existingAnalysisWeight) : null
                     };
                     
-                    // Call Claude API directly from browser (bypasses Cloudflare/Render proxy chain)
+                    // Stream analysis through the authenticated Charlie backend
                     const data = await callClaudeDirectly(
                         apiKeySaved,
                         allDocuments,
@@ -31232,22 +31127,21 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="flex gap-2">
                                             <input
                                                 type="password"
-                                                value={apiKeySaved}
+                                                value={apiKeySaved === 'server-managed' ? '' : apiKeySaved}
                                                 onChange={(e) => setApiKeySaved(e.target.value)}
                                                 placeholder="sk-ant-..."
-                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                                className="min-w-0 flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
                                             />
                                             <button 
-                                                onClick={() => {
-                                                    saveApiKeyToStorage(apiKeySaved);
-                                                    alert('API Key saved!');
+                                                onClick={async () => {
+                                                    try { await saveApiKeyToStorage(apiKeySaved); setApiKeySaved(loadApiKeyFromStorage()); alert('Shared Claude key validated and saved for all devices.'); } catch(e) { alert(e.message); }
                                                 }}
                                                 className="px-4 py-2 bg-amber-500/80 hover:bg-amber-500/90 backdrop-blur-sm border border-amber-400/30 shadow-lg shadow-amber-500/20 rounded-lg text-sm font-medium"
                                             >
                                                 Save
                                             </button>
                                         </div>
-                                        <p className="text-xs text-slate-500 mt-2">Your API key is stored locally on this device only.</p>
+                                        <p className="text-xs text-slate-500 mt-2">{sharedProviders.anthropic?.configured ? 'Claude is configured centrally.' : 'Claude needs a shared API key.'} Saving a replacement applies to all devices and new jobs. The key is never returned to your browser.</p>
                                     </div>
 
                                     {/* Gemini API Key Section */}
@@ -31259,22 +31153,30 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                         <div className="flex gap-2">
                                             <input
                                                 type="password"
-                                                value={geminiApiKey}
+                                                value={geminiApiKey === 'server-managed' ? '' : geminiApiKey}
                                                 onChange={(e) => setGeminiApiKey(e.target.value)}
                                                 placeholder="AIza..."
-                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                                className="min-w-0 flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
                                             />
                                             <button
-                                                onClick={() => {
-                                                    saveGeminiKeyToStorage(geminiApiKey);
-                                                    alert('Gemini API Key saved!');
+                                                onClick={async () => {
+                                                    try { await saveGeminiKeyToStorage(geminiApiKey); setGeminiApiKey(loadGeminiKeyFromStorage()); alert('Shared Gemini key validated and saved for all devices.'); } catch(e) { alert(e.message); }
                                                 }}
                                                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium"
                                             >
                                                 Save
                                             </button>
                                         </div>
-                                        <p className="text-xs text-slate-500 mt-2">Required for audio transcription. Stored locally only.</p>
+                                        <p className="text-xs text-slate-500 mt-2">{sharedProviders.gemini?.configured ? 'Gemini is configured centrally.' : 'Gemini needs a shared API key.'} Used for audio transcription. Changes apply to all devices and new jobs.</p>
+                                    </div>
+
+                                    <div hidden={settingsSection !== 'connections'} className="bg-white/[0.07] rounded-xl p-4 border border-white/10">
+                                        <h3 className="font-semibold mb-3">OpenAI API Key</h3>
+                                        <div className="flex gap-2">
+                                            <input aria-label="Replacement OpenAI API key" type="password" value={sharedOpenaiInput} onChange={e=>setSharedOpenaiInput(e.target.value)} placeholder="Paste a replacement key" className="min-w-0 flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm"/>
+                                            <button onClick={async()=>{try{await saveSharedKey('openai',sharedOpenaiInput);setSharedOpenaiInput('');alert('Shared OpenAI key validated and saved for all devices.');}catch(e){alert(e.message);}}} className="px-4 py-2 bg-amber-500/80 rounded-lg">Save</button>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2">{sharedProviders.openai?.configured ? 'OpenAI is configured centrally.' : 'OpenAI is not configured.'} Changes apply to all devices and new jobs.</p>
                                     </div>
 
                                     {/* Finnhub API Key Section (earnings calendar) */}
@@ -31289,7 +31191,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 value={finnhubApiKey}
                                                 onChange={(e) => setFinnhubApiKey(e.target.value)}
                                                 placeholder={finnhubStatus?.hasKey ? '••• saved — paste new key to replace' : 'Free tier key from finnhub.io'}
-                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                                className="min-w-0 flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
                                             />
                                             {finnhubStatus?.hasKey && !finnhubApiKey && (
                                                 <span className="text-[10px] px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded whitespace-nowrap">Saved ✓</span>
@@ -31432,7 +31334,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 value={googleClientId}
                                                 onChange={(e) => setGoogleClientId(e.target.value)}
                                                 placeholder="OAuth Client ID (e.g., 123456789.apps.googleusercontent.com)"
-                                                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
+                                                className="min-w-0 flex-1 px-4 py-2 bg-white/5 border border-white/10 backdrop-blur-md rounded-lg text-sm"
                                             />
                                             <button
                                                 onClick={() => {

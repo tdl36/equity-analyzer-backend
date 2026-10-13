@@ -71,7 +71,7 @@ class SavedNotesTests(unittest.TestCase):
         def db(**kw): yield Mock(),cur
         fn=next(n for n in TREE.body if isinstance(n,ast.FunctionDef) and n.name=='generate_saved_meeting_notes')
         fn.decorator_list=[]
-        scope=dict(request=request,jsonify=jsonify,get_db=db,cache=Mock(),_meeting_notes_html=Mock(return_value=response_text))
+        scope=dict(provider_credentials=Mock(get=Mock(return_value='synthetic-shared-key')),request=request,jsonify=jsonify,get_db=db,cache=Mock(),_meeting_notes_html=Mock(return_value=response_text))
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'fixture','exec'),scope)
         app=Flask(__name__)
         with app.test_request_context(json={}):

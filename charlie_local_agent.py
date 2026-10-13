@@ -344,6 +344,18 @@ def _read_icloud_bytes(path, retries=3, wait=2.0):
                 raise
 
 
+def shared_provider_key(provider: str) -> str:
+    """Resolve each new job from Charlie; never fall back to a stale Mac key."""
+    response = requests.get(CHARLIE_API+'/api/agent/provider-credentials/'+provider,
+                            headers=_agent_headers(), timeout=20)
+    if response.status_code != 200:
+        raise RuntimeError('Shared provider configuration unavailable; no model request started')
+    key = response.json().get('key')
+    if not isinstance(key, str) or not key:
+        raise RuntimeError('Configure the shared provider in Charlie Settings → Connections')
+    return key
+
+
 def poll_for_jobs() -> list[dict]:
     """Poll backend for pending note generation jobs."""
     try:
@@ -3558,7 +3570,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     import openai as _openai
                 except ImportError:
                     raise RuntimeError("openai package not installed")
-                openai_key = get_secret('OPENAI_API_KEY') or ''
+                openai_key = shared_provider_key('openai')
                 if not openai_key:
                     raise RuntimeError("OPENAI_API_KEY not set in env")
                 _client = _openai.OpenAI(api_key=openai_key)
@@ -3580,7 +3592,7 @@ def process_synthesis_job(job: dict, api_key: str) -> None:
                     from google import genai as _genai
                 except ImportError:
                     raise RuntimeError("google-genai package not installed")
-                google_key = get_secret('GEMINI_API_KEY') or get_secret('GOOGLE_API_KEY') or ''
+                google_key = shared_provider_key('gemini')
                 if not google_key:
                     raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY not set in env")
                 _gclient = _genai.Client(api_key=google_key)
@@ -4017,12 +4029,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Resolve API key
-    api_key = args.api_key or get_secret("ANTHROPIC_API_KEY") or load_api_key_from_config()
-    if not api_key:
-        print("Error: Anthropic API key required.")
-        print("  Set ANTHROPIC_API_KEY env var, use --api-key, or save to ~/.charlie_agent_config.json")
-        sys.exit(1)
+    # Provider credentials resolve centrally for each job, not at agent startup.
+    api_key = None
 
     # Configure logging
     _log_path = os.path.expanduser("~/Library/Logs/charlie-agent.log")
@@ -4047,7 +4055,7 @@ def main() -> None:
 
     # Direct ticker mode
     if args.ticker:
-        process_ticker_directly(args.ticker, api_key, args.mode)
+        process_ticker_directly(args.ticker, shared_provider_key('anthropic'), args.mode)
         return
 
     # Polling mode
@@ -4185,6 +4193,13 @@ def main() -> None:
                 synth_dispatched = 0
                 for job in jobs:
                     job_type = job.get("job_type", "note")
+                    job_provider_key = None
+                    if job_type in ('note', 'synthesis'):
+                        try:
+                            job_provider_key = shared_provider_key('anthropic')
+                        except Exception:
+                            log.warning('Shared Claude credentials unavailable; leaving job queued')
+                            continue
                     job_id = job["id"]
                     ticker = job.get("ticker", "???")
 
@@ -4204,9 +4219,9 @@ def main() -> None:
                             continue
                         _synthesis_in_flight.add(job_id)
                         log.info(f"Dispatching synthesis job: {job_id[:12]}... for {ticker} (in-flight={len(_synthesis_in_flight)})")
-                        def _synth_wrapper(j, jid):
+                        def _synth_wrapper(j, jid, job_key):
                             try:
-                                process_synthesis_job(j, api_key)
+                                process_synthesis_job(j, job_key)
                             except Exception as e:
                                 log.error(f"Synthesis thread crashed for {jid[:12]}: {e}")
                             finally:
@@ -4215,7 +4230,7 @@ def main() -> None:
                                 _active_job_claims.discard(jid)
                         threading.Thread(
                             target=_synth_wrapper,
-                            args=(job, job_id),
+                            args=(job, job_id, job_provider_key),
                             daemon=True,
                             name=f'synthesis-{job_id[:8]}',
                         ).start()
@@ -4234,7 +4249,7 @@ def main() -> None:
                     elif job_type == "earnings_fetch":
                         process_earnings_fetch_job(job)
                     else:
-                        process_note_job(job, api_key)
+                        process_note_job(job, job_provider_key)
                     _job_claim_tokens.pop(job_id,None)
                     _active_job_claims.discard(job_id)
                     break  # only one non-synthesis job per tick

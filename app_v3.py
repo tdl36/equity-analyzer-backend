@@ -3,6 +3,7 @@ TDL Equity Analyzer - Backend API with PostgreSQL
 Cross-device sync for portfolio analyses and overviews
 """
 
+import provider_credentials
 import meeting_notes
 import model_registry
 from flask import Flask, request, jsonify, Response
@@ -1906,7 +1907,7 @@ def media_episode_full_summary(episode_id):
     Returns {jobId}. Frontend polls /api/mp/jobs/:id.
     """
     data = request.get_json(silent=True) or {}
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+    api_key = provider_credentials.get('anthropic')
     if not api_key:
         return jsonify({'error': 'No API key provided.'}), 400
 
@@ -2169,11 +2170,11 @@ def _extract_json(text):
 
 
 def _get_api_keys(anthropic_api_key="", gemini_api_key="", openai_api_key=""):
-    """Resolve API keys from explicit params or environment variables."""
+    """Resolve shared provider configuration; ignore legacy per-device overrides."""
     return {
-        "anthropic": anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
-        "gemini":    gemini_api_key or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", ""),
-        "openai":    openai_api_key or os.environ.get("OPENAI_API_KEY", ""),
+        "anthropic": provider_credentials.get('anthropic'),
+        "gemini":    provider_credentials.get('gemini'),
+        "openai":    provider_credentials.get('openai'),
     }
 
 def _is_retryable(provider, error):
@@ -2564,6 +2565,9 @@ def get_db(commit=False):
     """Return connections even when cursor creation or rollback fails."""
     with pooled_cursor(_get_pool(), commit=commit) as pair:
         yield pair
+
+
+provider_credentials.configure(get_db)
 
 
 def init_db():
@@ -3782,7 +3786,7 @@ def get_settings():
         with get_db() as (conn, cur):
             cur.execute('SELECT key, value FROM app_settings')
             rows = cur.fetchall()
-        return jsonify({row['key']: row['value'] for row in rows})
+        return jsonify({**{row['key']: row['value'] for row in rows if row['key'] not in provider_credentials.SECRET_FIELDS and not row['key'].startswith('_provider_preference:')}, 'providerCredentials': provider_credentials.status()})
     except Exception as e:
         print(f"Error getting settings: {e}")
         return jsonify({})
@@ -3796,6 +3800,8 @@ def save_settings():
             return jsonify({'error': 'No data provided'}), 400
         with get_db(commit=True) as (conn, cur):
             for key, value in data.items():
+                if key in provider_credentials.SECRET_FIELDS or key.startswith('_provider_preference:'):
+                    continue  # Older devices must not overwrite shared credentials.
                 cur.execute('''
                     INSERT INTO app_settings (key, value, updated_at)
                     VALUES (%s, %s, CURRENT_TIMESTAMP)
@@ -5164,7 +5170,7 @@ def create_analysis_job():
     """Create a background analysis job."""
     try:
         data = request.json
-        api_key = data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         ticker = data.get('ticker', '').upper()
         if not api_key:
             return jsonify({'error': 'API key required'}), 400
@@ -5267,7 +5273,7 @@ def create_analysis_jobs_batch():
     """Create multiple independent background analysis jobs in one request."""
     try:
         data = request.json
-        api_key = data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'API key required'}), 400
         jobs_input = data.get('jobs', [])
@@ -6076,7 +6082,7 @@ def save_summary():
             result = cur.fetchone()
 
         if result['inserted'] and data.get('rawNotes', '').strip() and data.get('sourceType') != 'decipher':
-            _queue_improved_summary(summary_id, data.get('apiKey'))
+            _queue_improved_summary(summary_id, provider_credentials.get('anthropic'))
         cache.invalidate('summaries')
         return jsonify({'success': True, 'id': result['id']})
     except Exception as e:
@@ -6451,7 +6457,7 @@ def generate_saved_meeting_notes(summary_id):
                 return jsonify({'error': 'No original source text is saved for this summary.'}), 400
             meta = row.get('source_meta') or {}
             if isinstance(meta, str): meta = json.loads(meta)
-            content = _meeting_notes_html(row['raw_notes'], data.get('apiKey'), korean=bool(meta.get('koreanOnly')))
+            content = _meeting_notes_html(row['raw_notes'], provider_credentials.get('anthropic'), korean=bool(meta.get('koreanOnly')))
             cur.execute('UPDATE meeting_summaries SET meeting_notes=%s WHERE id=%s', (content, summary_id))
         cache.invalidate('summaries')
         return jsonify({'meetingNotes': content})
@@ -6473,8 +6479,8 @@ def generate_summary():
             return jsonify({'error': 'No notes provided'}), 400
 
         keys = _get_api_keys(
-            anthropic_api_key=data.get('apiKey', ''),
-            gemini_api_key=data.get('geminiApiKey', '')
+            anthropic_api_key=provider_credentials.get('anthropic'),
+            gemini_api_key=provider_credentials.get('gemini')
         )
         if not keys.get('gemini') and not keys.get('anthropic'):
             return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
@@ -6608,8 +6614,8 @@ def generate_assessment():
             return jsonify({'error': 'No notes provided'}), 400
 
         keys = _get_api_keys(
-            anthropic_api_key=data.get('apiKey', ''),
-            gemini_api_key=data.get('geminiApiKey', '')
+            anthropic_api_key=provider_credentials.get('anthropic'),
+            gemini_api_key=provider_credentials.get('gemini')
         )
         if not keys.get('gemini') and not keys.get('anthropic'):
             return jsonify({'error': 'No API key provided. Check your API keys in Settings.'}), 400
@@ -6701,7 +6707,7 @@ def extract_summary_text():
             data = request.get_json()
             if not data or 'files' not in data or not data['files']:
                 return jsonify({'error': 'No files provided'}), 400
-            api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+            api_key = provider_credentials.get('anthropic')
             for f in data['files']:
                 file_content = base64.b64decode(f['fileData'])
                 file_items.append((f['filename'], file_content))
@@ -6711,7 +6717,7 @@ def extract_summary_text():
             files = request.files.getlist('files')
             if not files or files[0].filename == '':
                 return jsonify({'error': 'No files selected'}), 400
-            api_key = os.environ.get('ANTHROPIC_API_KEY', '') or request.form.get('apiKey', '')
+            api_key = provider_credentials.get('anthropic')
             for file in files:
                 file_items.append((file.filename, file.read()))
             print(f"extract-summary-text (multipart): {len(file_items)} files, API key present: {bool(api_key)}")
@@ -7268,7 +7274,7 @@ def _run_transcription(job_id, file_content, filename, mime_type, gemini_api_key
         print(f"[Job {job_id}] Transcription complete: {len(transcript_text)} chars")
 
         # --- Transcript cleanup pass using Claude ---
-        cleanup_key = anthropic_api_key or os.environ.get('ANTHROPIC_API_KEY', '')
+        cleanup_key = provider_credentials.get('anthropic')
         if cleanup_key:
             try:
                 import anthropic as _anthropic_mod
@@ -7366,7 +7372,7 @@ def transcribe_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '') or request.form.get('geminiApiKey', '')
+        gemini_api_key = provider_credentials.get('gemini')
         if not gemini_api_key:
             return jsonify({'error': 'Gemini API key is required for audio transcription. Please add it in Settings.'}), 400
 
@@ -7393,7 +7399,7 @@ def transcribe_audio():
         _mirror_transcription_state(job_id)
 
         topic = request.form.get('topic', '')
-        anthropic_api_key = request.form.get('apiKey', '')
+        anthropic_api_key = provider_credentials.get('anthropic')
         thread = threading.Thread(target=_run_transcription, args=(job_id, file_content, file.filename, mime_type, gemini_api_key, topic, anthropic_api_key))
         thread.daemon = True
         thread.start()
@@ -7431,7 +7437,7 @@ def auto_process_audio():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        gemini_api_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '') or request.form.get('geminiApiKey', '')
+        gemini_api_key = provider_credentials.get('gemini')
         if not gemini_api_key:
             # Fall back to app_settings.geminiApiKey (set via Settings UI)
             try:
@@ -7451,7 +7457,7 @@ def auto_process_audio():
 
         filename = file.filename
         detail_level = request.form.get('detailLevel', 'standard')
-        anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        anthropic_api_key = provider_credentials.get('anthropic')
         # The folder watcher identifies itself so only SUMMARIES-folder audio
         # fans out into Summary Lab. See _should_fan_out_summary_lab.
         origin = (request.form.get('origin') or '').strip().lower()
@@ -7538,7 +7544,7 @@ def auto_process_text():
 
         file_content = file.read()
         filename = file.filename
-        anthropic_api_key = request.form.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', '')
+        anthropic_api_key = provider_credentials.get('anthropic')
         if not anthropic_api_key:
             return jsonify({'error': 'Anthropic API key required'}), 400
 
@@ -7746,7 +7752,7 @@ def youtube_summarize():
         ticker = (data.get('ticker') or '').strip().upper()
         generate_korean = bool(data.get('generateKorean'))
         korean_only = bool(data.get('koreanOnly')) and generate_korean
-        anthropic_api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        anthropic_api_key = provider_credentials.get('anthropic')
         if not url:
             return jsonify({'error': 'url is required'}), 400
         if not anthropic_api_key:
@@ -7871,7 +7877,7 @@ def youtube_tasks_result(task_id):
             video_id = task['video_id']
             canonical_url = task['source_url']
             ticker = task.get('ticker_hint') or ''
-            api_key = task.get('anthropic_api_key') or os.environ.get('ANTHROPIC_API_KEY', '')
+            api_key = provider_credentials.get('anthropic')
             meta = task.get('metadata') or {}
 
             if not ok:
@@ -11767,8 +11773,8 @@ def generate_condensed_thesis():
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
+        anthropic_key = provider_credentials.get('anthropic')
+        gemini_key = provider_credentials.get('gemini')
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -11997,8 +12003,8 @@ def generate_full_thesis():
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
+        anthropic_key = provider_credentials.get('anthropic')
+        gemini_key = provider_credentials.get('gemini')
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -12172,8 +12178,8 @@ def generate_all_thesis_tiers():
     try:
         data = request.get_json()
         ticker = data.get('ticker', '').upper()
-        anthropic_key = data.get('apiKey', '')
-        gemini_key = data.get('geminiApiKey', '')
+        anthropic_key = provider_credentials.get('anthropic')
+        gemini_key = provider_credentials.get('gemini')
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
 
@@ -13409,8 +13415,8 @@ def generate_onepager_poster():
         if provider not in ONEPAGER_IMAGE_BY_KEY:
             return jsonify({'error': f'Unknown image model: {provider}'}), 400
 
-        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
-                             data.get('openaiApiKey', ''))
+        keys = _get_api_keys(provider_credentials.get('anthropic'), provider_credentials.get('gemini'),
+                             provider_credentials.get('openai'))
         job_id = str(uuid.uuid4())
         with get_db(commit=True) as (_c, cur):
             cur.execute("INSERT INTO mp_jobs (id, stage, ticker, status) "
@@ -13800,8 +13806,8 @@ def start_orchestration():
         ticker = (data.get('ticker') or '').upper().strip()
         if not ticker:
             return jsonify({'error': 'No ticker provided'}), 400
-        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
-                             data.get('openaiApiKey', ''))
+        keys = _get_api_keys(provider_credentials.get('anthropic'), provider_credentials.get('gemini'),
+                             provider_credentials.get('openai'))
         if not keys.get('anthropic'):
             return jsonify({'error': 'Anthropic API key required - add it in Settings'}), 400
 
@@ -13908,8 +13914,8 @@ def approve_orchestration(job_id):
         _journal_thesis(ticker, _previous_thesis, candidate, 'orchestrator',
                         diff=_approved_diff, layers=_approved_diff.get('layers'))
 
-        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
-                             data.get('openaiApiKey', ''))
+        keys = _get_api_keys(provider_credentials.get('anthropic'), provider_credentials.get('gemini'),
+                             provider_credentials.get('openai'))
         # The approved thesis names what to watch and carries the figures this
         # run extracted, so the first check happens now, not next quarter.
         _check_signposts(ticker, candidate, keys.get('anthropic', ''),
@@ -14481,7 +14487,7 @@ def review_generate():
     ticker = (data.get('ticker') or '').upper().strip()
     if not ticker:
         return jsonify({'error': 'No ticker provided'}), 400
-    api_key = data.get('apiKey', '')
+    api_key = provider_credentials.get('anthropic')
     if not api_key:
         return jsonify({'error': 'API key required'}), 400
     mode = (data.get('mode') or 'review').lower()
@@ -14697,9 +14703,9 @@ def generate_onepager():
             return jsonify({'error': 'No ticker provided'}), 400
 
         keys = _get_api_keys(
-            data.get('apiKey', ''),
-            data.get('geminiApiKey', ''),
-            data.get('openaiApiKey', ''),
+            provider_credentials.get('anthropic'),
+            provider_credentials.get('gemini'),
+            provider_credentials.get('openai'),
         )
         if not any(keys.values()):
             return jsonify({'error': 'No LLM API key available — add one in Settings'}), 400
@@ -14781,7 +14787,7 @@ def check_signposts(ticker):
     """Run a signpost check on demand against the newest extracted material."""
     try:
         data = request.get_json() or {}
-        api_key = data.get('apiKey') or _get_api_keys().get('anthropic', '')
+        api_key = provider_credentials.get('anthropic') or _get_api_keys().get('anthropic', '')
         analysis = _load_thesis(ticker)
         if not analysis:
             return jsonify({'error': f'No thesis stored for {ticker.upper()}'}), 404
@@ -14999,7 +15005,7 @@ def start_thesis_infographic():
         mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, err = \
             _resolve_infographic_params(
                 data.get('mode', '1'), data.get('detail', 'full'), data.get('style', 'professional'),
-                data.get('geminiApiKey', ''), data.get('colorScheme', 'default'),
+                provider_credentials.get('gemini'), data.get('colorScheme', 'default'),
                 data.get('showRiskDetail', False), data.get('includeCompanyName', False),
                 data.get('templateId'), thesis_tier_override=data.get('thesisTier'))
         if err:
@@ -15031,7 +15037,7 @@ def start_thesis_infographic_batch():
         mode, detail, style, gemini_key, color_scheme, show_risk_detail, include_company, thesis_tier, err = \
             _resolve_infographic_params(
                 data.get('mode', '1'), data.get('detail', 'full'), data.get('style', 'professional'),
-                data.get('geminiApiKey', ''), data.get('colorScheme', 'default'),
+                provider_credentials.get('gemini'), data.get('colorScheme', 'default'),
                 data.get('showRiskDetail', False), data.get('includeCompanyName', False),
                 data.get('templateId'), thesis_tier_override=data.get('thesisTier'))
         if err:
@@ -15261,7 +15267,7 @@ def edit_thesis_infographic():
         data = request.get_json()
         parent_id = data.get('parentId')
         edit_prompt = data.get('editPrompt', '')
-        gemini_key = data.get('geminiApiKey', '')
+        gemini_key = provider_credentials.get('gemini')
 
         if not parent_id:
             return jsonify({'error': 'parentId required'}), 400
@@ -15655,7 +15661,7 @@ def chat():
     """Proxy chat requests to Anthropic API"""
     try:
         data = request.json
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('api_key', '')
+        api_key = provider_credentials.get('anthropic')
         messages = data.get('messages', [])
         system = data.get('system', '')
 
@@ -15687,7 +15693,7 @@ def analyze_multi():
     """Analyze multiple PDF documents and generate investment thesis"""
     try:
         data = request.json
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         documents = data.get('documents', [])
         existing_analysis = data.get('existingAnalysis')
         historical_weights = data.get('historicalWeights', [])
@@ -16132,7 +16138,7 @@ def parse():
     """Use Claude to intelligently parse stock analysis into sections"""
     try:
         data = request.json
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('api_key', '')
+        api_key = provider_credentials.get('anthropic')
         content = data.get('content', '')
 
         if not api_key:
@@ -16645,7 +16651,7 @@ def pipeline_start():
 
         tickers = data.get('tickers', [])
         job_type = data.get('jobType', 'process')
-        api_key = data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         document_config = data.get('documentConfig', {})
         generate_tiers = data.get('generateTiers', 'detailed')
 
@@ -17119,7 +17125,7 @@ def pipeline_refresh_sector():
     data = request.get_json()
     sector = data.get('sector', '')
     job_type = data.get('jobType', 'update')
-    api_key = data.get('apiKey', '')
+    api_key = provider_credentials.get('anthropic')
     generate_tiers = data.get('generateTiers', 'detailed')
     document_config = data.get('documentConfig', {})
 
@@ -17332,7 +17338,7 @@ def generate_research_note():
     """Generate a full equity research note for a ticker."""
     data = request.get_json()
     ticker = data.get('ticker', '').upper()
-    api_key = data.get('apiKey', '')
+    api_key = provider_credentials.get('anthropic')
     mode = data.get('mode', 'new')  # 'new' or 'update'
     file_selection = data.get('fileSelection', [])
     reprocess = data.get('reprocess', False)
@@ -19293,7 +19299,7 @@ def research_analyze():
         text = data.get('text', '')
         prompt_id = data.get('promptId', '')
         prompt_name = data.get('promptName', '')
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         files = data.get('files', [])
 
         if not text:
@@ -20536,12 +20542,12 @@ def _fetch_provider_models():
     provider -> sorted list of model ids, falling back to the hardcoded
     list for any provider whose call fails."""
     out = {}
-    out['anthropic'] = (_fetch_anthropic_models(os.environ.get('ANTHROPIC_API_KEY', ''))
+    out['anthropic'] = (_fetch_anthropic_models(provider_credentials.get('anthropic'))
                         or TRADING_AGENT_PROVIDERS_FALLBACK['anthropic'])
-    out['openai'] = (_fetch_openai_models(os.environ.get('OPENAI_API_KEY', ''))
+    out['openai'] = (_fetch_openai_models(provider_credentials.get('openai'))
                      or TRADING_AGENT_PROVIDERS_FALLBACK['openai'])
     out['google'] = (_fetch_google_models(
-        os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', ''))
+        provider_credentials.get('gemini'))
                      or TRADING_AGENT_PROVIDERS_FALLBACK['google'])
     return out
 
@@ -21116,8 +21122,8 @@ def deepdive_analyze():
         if not ticker or not re.match(r'^[A-Z][A-Z0-9.\-]{0,9}$', ticker):
             return jsonify({'error': 'Enter a valid ticker, e.g. DE or BRK.B'}), 400
 
-        keys = _get_api_keys(data.get('apiKey', ''), data.get('geminiApiKey', ''),
-                             data.get('openaiApiKey', ''))
+        keys = _get_api_keys(provider_credentials.get('anthropic'), provider_credentials.get('gemini'),
+                             provider_credentials.get('openai'))
         if not any(keys.values()):
             return jsonify({'error': 'No model API key configured.'}), 400
 
@@ -21267,7 +21273,7 @@ def decipher():
         if text and len(text) > 200_000:
             text = text[:200_000] + '\n\n[truncated to 200K chars]'
 
-        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'Anthropic API key not configured'}), 500
 
@@ -21408,7 +21414,7 @@ def decipher_followup(job_id):
         if '_chat_state' not in parent:
             return jsonify({'error': 'Original Decipher run did not complete; cannot follow up'}), 400
 
-        api_key = data.get('apiKey') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'Anthropic API key not configured'}), 500
 
@@ -22368,7 +22374,7 @@ Return ONLY valid JSON:
                 ))
 
         # Step 4: Generate images via Gemini
-        gemini_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        gemini_key = provider_credentials.get('gemini')
         if not gemini_key:
             # No Gemini key - leave slides as text-only but mark complete
             with get_db(commit=True) as (conn, cur):
@@ -23222,7 +23228,7 @@ def mp_analyze_document():
     """Step 1 (async): analyze one document. Returns {jobId}. Native PDF support preserved."""
     try:
         data = request.json or {}
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'No API key provided. Please add your API key in Settings.'}), 400
 
@@ -23400,7 +23406,7 @@ def mp_synthesize():
     """Step 2 (async): queue cross-reference job. Returns {jobId}. Poll /api/mp/jobs/:id."""
     try:
         data = request.json or {}
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -23434,7 +23440,7 @@ def mp_generate_questions():
     """Step 3 (async): queue question-generation job. Returns {jobId}."""
     try:
         data = request.json or {}
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -23951,7 +23957,7 @@ def mp_run_pipeline():
     """
     try:
         data = request.json or {}
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -24040,7 +24046,7 @@ def mp_job_retry(job_id):
     persisted)."""
     try:
         data = request.get_json(silent=True) or {}
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'No API key provided.'}), 400
 
@@ -25751,7 +25757,7 @@ def _build_slide_prompt(slide_data, theme_name, project_title, total_slides):
 def _generate_slide_image(prompt, api_key=None, reference_image=None):
     """Generate a slide image via Gemini API. Returns base64 PNG string or None.
     If reference_image (base64 PNG) is provided, it's sent as a style reference."""
-    key = api_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+    key = provider_credentials.get('gemini')
     if not key:
         return None
     client = genai.Client(api_key=key)
@@ -26027,7 +26033,7 @@ def generate_one_slide(project_id, slide_num):
     """Generate image for a single slide."""
     try:
         data = request.json or {}
-        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+        gemini_key = provider_credentials.get('gemini')
         if not gemini_key:
             return jsonify({'error': 'Gemini API key not configured. Add it in Settings.'}), 400
         with get_db() as (conn, cur):
@@ -26071,7 +26077,7 @@ def generate_slides(project_id):
         data = request.json or {}
         changed_only = data.get('changed_only', True)
         slide_numbers = data.get('slide_numbers', None)  # optional list of specific slide numbers
-        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
+        gemini_key = provider_credentials.get('gemini')
         if not gemini_key:
             return jsonify({'error': 'Gemini API key not configured. Add it in Settings.'}), 400
         with get_db() as (conn, cur):
@@ -26360,7 +26366,7 @@ IMPORTANT: Fill in actual data, numbers, and specific details from the source ma
 Return ONLY valid JSON array, no markdown fencing."""
 
         # Call Claude for outline generation
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '') or data.get('apiKey', '') or data.get('api_key', '')
+        api_key = provider_credentials.get('anthropic')
         if not api_key:
             return jsonify({'error': 'Anthropic API key not configured. Add it in Settings.'}), 500
         import httpx as _httpx
@@ -26812,7 +26818,7 @@ def delete_studio_theme(theme_id):
 def generate_studio_theme_preview(theme_id):
     try:
         data = request.json or {}
-        gemini_key = data.get('geminiApiKey') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        gemini_key = provider_credentials.get('gemini')
         with get_db() as (_, cur):
             cur.execute('SELECT style_prompt, name FROM studio_design_themes WHERE id=%s', (theme_id,))
             theme = cur.fetchone()
@@ -27217,7 +27223,7 @@ IMPORTANT: Ensure all text is spelled correctly. Do not add backslashes, special
             prompt += f"\n\nADDITIONAL STYLE INSTRUCTIONS (follow these closely):\n{style_instructions}"
 
         gemini_key = api_keys.get('gemini', '')
-        key = gemini_key or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        key = gemini_key or provider_credentials.get('gemini')
         client = genai.Client(api_key=key)
         image_data = None
         for attempt in range(3):
@@ -27513,8 +27519,8 @@ def generate_studio_output(output_id):
             source_content = f"Generate content about: {output['title']}"
 
         api_keys = {
-            'anthropic': data.get('apiKey', '') or os.environ.get('ANTHROPIC_API_KEY', ''),
-            'gemini': data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', ''),
+            'anthropic': provider_credentials.get('anthropic'),
+            'gemini': provider_credentials.get('gemini'),
         }
 
         import threading
@@ -27666,7 +27672,7 @@ def regenerate_studio_slide(output_id, slide_num):
     """Regenerate a single slide image with optional edit prompt."""
     try:
         data = request.json or {}
-        gemini_key = data.get('geminiApiKey', '') or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY', '')
+        gemini_key = provider_credentials.get('gemini')
         edit_prompt = data.get('edit_prompt', '')
 
         with get_db() as (_, cur):
@@ -29283,29 +29289,29 @@ app.register_blueprint(research_commands.create_blueprint(get_db))
 import meeting_commands
 
 def _run_command_meeting(job_id, inp, checkpoint):
-    key=os.environ.get('ANTHROPIC_API_KEY','')
+    key=provider_credentials.get('anthropic')
     if not key:raise ValueError('Server research key is missing.')
     _run_mp_pipeline_job(job_id,key,inp['meetingId'],inp['ticker'],inp['companyName'],inp['sector'],
         inp['docs'],inp['pastQuestions'],inp['timeframe'],inp['unresolvedQuestions'],
         MEETING_PREP_DEFAULT_MODEL,resume_from=checkpoint,managed=True,owner=inp['workerToken'],meeting_profile=inp.get('meetingProfile'))
 
 app.register_blueprint(meeting_commands.create_blueprint(get_db,_run_command_meeting,
-    lambda:bool(os.environ.get('ANTHROPIC_API_KEY',''))))
+    lambda:bool(provider_credentials.get('anthropic'))))
 meeting_commands.start_server_worker(get_db,_run_command_meeting,
-    lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
+    lambda:bool(provider_credentials.get('anthropic')))
 
 
 import manual_meeting_recovery
 
 def _resume_manual_meeting(job_id,inp,checkpoint):
-    _execute_mp_pipeline_job(job_id,os.environ['ANTHROPIC_API_KEY'],inp['meetingId'],
+    _execute_mp_pipeline_job(job_id,provider_credentials.get('anthropic'),inp['meetingId'],
         inp.get('ticker',''),inp.get('companyName',''),inp.get('sector','unknown'),
         inp['docs'],inp.get('pastQuestions') or [],inp.get('timeframe','recent'),
         inp.get('unresolvedQuestions') or [],resolve_picker_model(inp.get('model'),MEETING_PREP_DEFAULT_MODEL),
         resume_from=checkpoint,owner=inp['workerToken'],meeting_profile=inp.get('meetingProfile'),revision_context=inp.get('revisionContext'))
 
 manual_meeting_recovery.start(get_db,_resume_manual_meeting,
-    lambda:bool(os.environ.get('ANTHROPIC_API_KEY','')))
+    lambda:bool(provider_credentials.get('anthropic')))
 
 
 import agent_execution
@@ -29476,6 +29482,8 @@ _research_automation = research_automation.ResearchAutomation(
     lambda: budget_blocks('evidence-amendment'))
 app.register_blueprint(_research_automation.blueprint)
 
+
+app.register_blueprint(provider_credentials.create_blueprint(get_db, lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

@@ -66,17 +66,8 @@ def _save_transcript(episode_id: str, transcript: str | None, source: str, cost_
 
 def _gemini_transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
     """Call Gemini 2.0 Flash audio input. Returns transcript text or raises."""
-    api_key = os.environ.get('GEMINI_API_KEY', '') or os.environ.get('GOOGLE_API_KEY', '')
-    if not api_key:
-        # Fall back to app_settings-stored key, like other call sites do.
-        try:
-            with app_v3.get_db() as (_c, cur):
-                cur.execute("SELECT value FROM app_settings WHERE key = 'geminiApiKey'")
-                row = cur.fetchone()
-            if row:
-                api_key = row['value']
-        except Exception:
-            pass
+    import provider_credentials
+    api_key = provider_credentials.get('gemini')
     if not api_key:
         raise RuntimeError('GEMINI_API_KEY not configured')
 

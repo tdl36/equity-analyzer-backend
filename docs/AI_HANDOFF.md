@@ -2,6 +2,30 @@
 
 Updated: October 12, 2026
 
+## T235 — shared provider credentials across devices
+
+Charlie resolves Anthropic, Gemini and OpenAI credentials centrally for browser,
+backend/recovery and Mac-agent jobs. Settings → Connections validates replacements
+using read-only provider catalogs before saving; only explicit validated saves
+supersede deployment credentials. Legacy synced settings cannot overwrite keys.
+Browser Settings returns readiness only, clears obsolete device key caches, and
+routes legacy streaming Claude requests through the authenticated backend. The
+Mac agent retrieves shared credentials per new job through an agent-only endpoint;
+existing jobs retain their resolved credential. No automatic paid retry is added.
+
+Legacy saved values are not implicitly promoted over deployment secrets: the
+older saved Gemini value failed its read-only catalog check. Provider status means
+configured, not guaranteed access to every model. This is centralized credential
+management, not workload identity federation. Secrets remain in existing server
+settings/deployment secret storage. Older app installations should reload once.
+
+Validation: 1319 safe backend tests, 153 frontend tests, touched-Python compilation,
+model policy against 75097e5 and production frontend build passed. Synthetic mobile
+390px and desktop 1280px Settings checks show shared status, clear stale browser
+keys, and no horizontal overflow. No model-backed QA or research approvals.
+The old Summary Lab run 86a98b12 remains marked running with a September 21 update;
+it was preserved without retry. Deployment verification receipt follows.
+
 ## T234 — bound automatic catalyst spending
 
 Folder watcher submissions reserve one automatic attempt per folder before the

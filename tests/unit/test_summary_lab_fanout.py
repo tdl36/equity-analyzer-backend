@@ -34,6 +34,8 @@ def constant(name):
 
 class FanOutOriginTests(unittest.TestCase):
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.namespace = {'SUMMARIES_FOLDER_ORIGIN': constant('SUMMARIES_FOLDER_ORIGIN'),
                           'SUMMARY_LAB_FANOUT_MARKER': constant('SUMMARY_LAB_FANOUT_MARKER')}
         self.should_fan_out = load('_should_fan_out_summary_lab', self.namespace)
@@ -65,6 +67,8 @@ class CompletionOrderTests(unittest.TestCase):
     """The saved Summary must be durable before any follow-on queue runs."""
 
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.body = next(
             n for n in TREE.body
             if isinstance(n, ast.FunctionDef) and n.name == '_run_auto_process_audio'
@@ -107,6 +111,8 @@ class CompletionOrderTests(unittest.TestCase):
 
 class StatusStateTests(unittest.TestCase):
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         self.jobs = {}
         self.persisted = None
         owner = self
@@ -209,6 +215,10 @@ class SourceJobCursor:
 
 
 class SourceJobDedupeTests(unittest.TestCase):
+    def setUp(self):
+        p = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        p.start(); self.addCleanup(p.stop)
+
     def test_every_tab_resuming_one_job_converges_on_one_experiment(self):
         store = {}
 
@@ -370,6 +380,8 @@ class MarkerTests(unittest.TestCase):
     """** opts a recording into the Lab. It is routing, not part of the name."""
 
     def setUp(self):
+        credential_patch = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        credential_patch.start(); self.addCleanup(credential_patch.stop)
         namespace = {'SUMMARY_LAB_FANOUT_MARKER': constant('SUMMARY_LAB_FANOUT_MARKER')}
         self.marker = load('_lab_fanout_marker', namespace)
 

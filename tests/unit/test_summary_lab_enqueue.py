@@ -55,6 +55,10 @@ class FakeThread:
 
 
 class SummaryLabEnqueueTests(TestCase):
+    def setUp(self):
+        p = patch('provider_credentials.get', return_value='synthetic-shared-key')
+        p.start(); self.addCleanup(p.stop)
+
     def test_automatic_fanout_is_idempotent_and_launches_once(self):
         store = {}
 
