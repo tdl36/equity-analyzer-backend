@@ -31,6 +31,13 @@ class AcceptedRenderTests(unittest.TestCase):
         self.assertEqual(row['pendingPaths'],[]);self.assertEqual(row['supportedPaths'],[])
         self.assertEqual(row['investorPaths'],['/summary/earnings_direction'])
 
+    def test_accepted_print_header_does_not_revert_to_pending(self):
+        args=fixture();context=accepted_evidence(*args,decision=decision(args[2]))
+        rendered=illustrated(args[0],args[1]['input'],args[5],preview=context)
+        self.assertIn('Charlie / Investor-accepted editorial edition',rendered)
+        self.assertNotIn('Charlie / Pending review - not accepted',rendered)
+        self.assertIn('counter(page) " of " counter(pages)',rendered)
+
     def test_no_pending_rejected_changed_or_restricted_export(self):
         for change in ('action','digest','edition','source','financials'):
             args=fixture();d=decision(args[2])

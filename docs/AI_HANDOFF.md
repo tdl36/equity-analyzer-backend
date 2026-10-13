@@ -2,6 +2,55 @@
 
 Updated: October 12, 2026
 
+## T230 — accepted print-header regression (verification pending)
+
+T229's print header treated any explicit edition context as pending, including the
+validated accepted-edition subtype. Renderer v25 now distinguishes server-validated
+accepted contexts from pending contexts and ordinary report drafts. The existing
+acceptance decision, source checks, body notices and review requirements are intact.
+No approval performed. Synthetic two-page PDFs verified the correct repeating header
+and page count separately for accepted, pending and original contexts. Pending and
+accepted rendering regression suites passed. Full local suite passed 1202 tests
+(including 11 uncommitted historical-valuation tests), plus 148 frontend tests,
+compile, model-policy baseline 75097e5 and production build. No active jobs before
+release. Historical valuation WIP remains local
+and is deliberately excluded from this release until its evidence adapter is ready.
+
+## Historical valuation inventory WIP — October 13, 00:26 UTC
+
+Extended the uncommitted validator with a 1–60 observation inventory, strict version
+and security identity, a canonical input digest, a 250 KB payload bound and original
+byte SHA-256 comparisons. Duplicate price dates withhold every affected row rather
+than silently selecting one. Invalid observations stay visible with their index.
+No filesystem path or URL is opened; source bytes are supplied by the future adapter.
+Both source-review and investor-review requirements remain explicit even when the
+arithmetic succeeds. Eleven focused synthetic tests and compile pass.
+
+Still not integrated, committed or deployed. Next build the evidence adapter and
+publication/share-basis/filing-completeness checks before connecting to pending
+editions. Existing byte hashes prove identity only, not the correctness of extracted
+prices/EPS or asserted split compatibility. Preserve this WIP and original test file.
+No live originals or research changed; no provider calls or release this wake.
+
+## Historical valuation work in progress — October 12, 23:56 UTC
+
+Uncommitted `historical_valuation.py` and `tests/unit/test_historical_valuation.py`
+implement a pure, non-mutating arithmetic diagnostic for explicit annual GAAP EPS
+and unadjusted-close pairs. Six focused synthetic tests and Python compile pass.
+It withholds mismatched security/currency/share bases, later or same-day filings,
+unsupported adjusted/TTM inputs, malformed receipts/dates/values, stale annual
+periods and nonpositive prices. Zero/negative EPS is not meaningful, not zero P/E.
+It labels a ratio calculated, never source-verified or investor-approved.
+
+This is NOT integrated, committed, deployed or ready for real valuation use.
+Next: bound and validate a complete supplement/duplicate-date inventory; verify
+original receipts, corporate-action evidence and latest available filing selection;
+then connect immutable supplement identity to edition baseline/review and rendering.
+A claimed matching share basis alone is not proof against split mismatch. The
+550-day annual age limit is an initial conservative bound needing adapter coverage.
+No source fetch, paid call, research mutation or release occurred this wake. Preserve
+these WIP files; production remains T229 (documentation commit 4f0c31e followed it).
+
 ## Next valuation increment — October 12, 23:26 UTC audit
 
 Confirmed the current fundamentals adapter has no historical price/estimate-vintage

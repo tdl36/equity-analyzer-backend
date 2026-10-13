@@ -9,11 +9,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 from visual_business_profiles import PROFILES
 from stock_evidence import valid_citations
-from onepager_edition_evidence import render_evidence, editorial_label, labeled_statement, preview_notice, check_render_inputs
+from onepager_edition_evidence import render_evidence, editorial_label, labeled_statement, preview_notice, check_render_inputs, AcceptedEditionEvidence
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v24'
+VERSION='stock-infographic-v25'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -320,7 +320,8 @@ def render(run,assignment,fundamentals, *, preview=None):
     notice=preview_notice(preview, run)
     body=head+notice+coverage+section(1,'The company',company)+section(2,profile.get('businessTitle','How the business makes money'),business)+section(3,'Growth is only half the story',history,'Five-year financial record')+'<div class="research-grid">'+section(4,'The investment thesis',thesis)+section(5,'What the market is debating',debate)+'</div><div class="lower-grid">'+section(6,'Catalysts & risks',triggers)+section(7,'Valuation & peer context',valuation)+section(8,'What to monitor',watch)+'</div>'+scenario_panel+section(9,'The investment view',bottom)+notice+footer
     # Margin boxes repeat provenance on continuation pages without changing claims.
-    print_status = 'Pending review - not accepted' if preview else 'Research review draft'
+    print_status = ('Investor-accepted editorial edition' if type(preview) is AcceptedEditionEvidence
+                    else 'Pending review - not accepted' if preview else 'Research review draft')
     print_css = ('@media print{@page{margin:10mm 6mm;'
                  '@top-left{content:"Charlie / ' + print_status + '";'
                  'font-family:Calibri,Carlito,sans-serif;font-size:8pt;color:#000;}'
