@@ -19,6 +19,27 @@ ABT's new pending thesis is saved; the 47-claim original-page edition and final
 assignment receipt will be verified after this deployment. Earlier partial correction
 receipts remain preserved in their private workspace; no paid model calls or approvals.
 
+### ABT delivery verified — 2026-10-13 10:31 UTC
+
+Assignment f9e363e4-597e-4394-b9d4-36d83def935f is complete for delivery,
+with reviewPackage status pending_investor_review. Pending thesis
+8c434b10-20b3-46c1-a810-107709d3ac6e is nonstale; pending edition
+6a8c989e-4ca2-45e8-8b57-273480bb31bd retains 47 corrections and all eight
+frozen originals. Exact replay returned the same package. Original automated
+failure/report/artifacts and older proposals remain preserved; no approval occurred.
+Live recovery brief and stock-summary routes returned validated HTML. Locally
+rendered PDFs are one and four pages respectively, embedded Calibri, black text,
+visually inspected, with no mobile horizontal overflow. Signed-in Charlie visibly
+shows complete and all three reconciled output links. Private delivery receipts
+and PDFs: ~/.charlie-workspaces/abt-finish-20261013/.
+
+Backend d21217d0acf79f98d1d68f0ea4d5e4d980b7e583 verified; hosted app JS and
+service-worker match local bytes. Cloudflare b16403b9-09f4-411b-b535-5f48e7db68be.
+Mac heartbeat healthy. Remaining ABT action is investor review/decision, not another
+collection or paid retry. Do not substitute the earlier linked thesis or original
+failed outputs for the reconciled review package. This is bounded manual recovery,
+not evidence that all eight product priorities or unattended workflows are complete.
+
 ## T232 — ABT manual recovery package delivery
 
 Adds an explicit saved-review-package handoff for blocked summary/thesis/visual
