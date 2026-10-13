@@ -24,6 +24,17 @@ HTML download and no horizontal overflow; all observed API calls were GETs. No
 paid research or approval. Backend unchanged; prior 1326-test safe suite remains
 applicable. Deployment/live preview verification follows.
 
+### T238 verified — 2026-10-13 21:31 UTC
+
+Backend health reports efaca0de068b0ea98e0918bb68699e7f4228b3f0.
+Cloudflare cb0c64a1-6fa0-432d-8390-8a5132d0160c serves exact tested app/service-worker
+bytes. Signed-in ABT assignment visibly opens its actual reconciled one-pager
+without an extra preview click, with all three review tabs and collapsed history.
+Agent heartbeat healthy (3.4 seconds); no restart required. Temporary Render
+replacement errors cleared and the existing page recovered through its read poll.
+No research calls or decisions were made. Live screenshot: /tmp/charlie-review-live.png.
+The SYK issue remains visible; its long global banner is a remaining polish item.
+
 ## T237 — research alerts independent of Activity backlog
 
 The global research banner now reads a dedicated failure inventory. Unrelated
