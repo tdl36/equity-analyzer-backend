@@ -48,9 +48,15 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  async function startLab(summaryId,labTitle,outputMode='english',labFocus=focus,sourceJobId){
   const documentMode=!summaryId&&intake==='document';
   const signature=JSON.stringify([documents.map(d=>d.id),labTitle||title,labFocus,model,outputMode]);
-  if(documentMode&&documentRequest.current?.signature!==signature)documentRequest.current={signature,id:crypto.randomUUID()};
+  if(documentMode&&documentRequest.current?.signature!==signature){
+   let pending;try{pending=JSON.parse(localStorage.getItem('charlie_summary_lab_document_submit')||'null');}catch{}
+   documentRequest.current=pending?.signature===signature?pending:{signature,id:crypto.randomUUID()};
+   try{localStorage.setItem('charlie_summary_lab_document_submit',JSON.stringify(documentRequest.current));}catch{}
+  }
   const d=await req('',{...(documentMode?{documentIds:documents.map(d=>d.id),documentCoverageAccepted:coverageAccepted,requestId:documentRequest.current.id}:{}),summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,model:model||undefined,apiKey:getKey()});
-  setId(d.id);await refreshLists();return d;
+  setId(d.id);
+  if(documentMode){try{const pending=JSON.parse(localStorage.getItem('charlie_summary_lab_document_submit')||'null');if(pending?.id===documentRequest.current.id)localStorage.removeItem('charlie_summary_lab_document_submit');}catch{}}
+  await refreshLists();return d;
  }
  async function start(){setBusy(true);setError('');setNotice('');try{await startLab(intake==='saved'?(sid||undefined):undefined,title,'english',focus);}catch(e){setError(e.message);}finally{setBusy(false);}}
 

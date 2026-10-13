@@ -163,10 +163,19 @@ export function SummaryLab({
   async function startLab(summaryId, labTitle, outputMode = 'english', labFocus = focus, sourceJobId) {
     var documentMode = !summaryId && intake === 'document';
     var signature = JSON.stringify([documents.map(d => d.id), labTitle || title, labFocus, model, outputMode]);
-    if (documentMode && documentRequest.current?.signature !== signature) documentRequest.current = {
-      signature,
-      id: crypto.randomUUID()
-    };
+    if (documentMode && documentRequest.current?.signature !== signature) {
+      var pending;
+      try {
+        pending = JSON.parse(localStorage.getItem('charlie_summary_lab_document_submit') || 'null');
+      } catch {}
+      documentRequest.current = pending?.signature === signature ? pending : {
+        signature,
+        id: crypto.randomUUID()
+      };
+      try {
+        localStorage.setItem('charlie_summary_lab_document_submit', JSON.stringify(documentRequest.current));
+      } catch {}
+    }
     var d = await req('', {
       ...(documentMode ? {
         documentIds: documents.map(d => d.id),
@@ -183,6 +192,12 @@ export function SummaryLab({
       apiKey: getKey()
     });
     setId(d.id);
+    if (documentMode) {
+      try {
+        var _pending = JSON.parse(localStorage.getItem('charlie_summary_lab_document_submit') || 'null');
+        if (_pending?.id === documentRequest.current.id) localStorage.removeItem('charlie_summary_lab_document_submit');
+      } catch {}
+    }
     await refreshLists();
     return d;
   }
