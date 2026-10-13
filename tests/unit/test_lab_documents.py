@@ -41,7 +41,7 @@ class Documents(unittest.TestCase):
         d=docs.prepare('model.xlsx',b.getvalue());text='\n'.join(p['text'] for p in d['parts'])
         self.assertIn('A1: Revenue',text);self.assertIn('B1: =1+2',text);self.assertIn('not recalculated',text)
     def test_every_review_and_section_check_receives_original_visual(self):
-        d=docs.prepare('figure.png',png());seen=[]
+        d=docs.prepare('figure.png',png());d['parts'][0]['text']='EXTRACTED-TEXT-SHOULD-NOT-BE-DUPLICATED';seen=[]
         def ask(system,prompt,tokens):
             seen.append(prompt)
             if isinstance(prompt,list):
@@ -52,6 +52,7 @@ class Documents(unittest.TestCase):
         visual=[p for p in seen if isinstance(p,list)]
         self.assertEqual(len(visual),1+len(lab.sections_for_mode('english')))
         self.assertTrue(all(any(b['type']=='image' for b in p) for p in visual))
+        self.assertTrue(all('EXTRACTED-TEXT-SHOULD-NOT-BE-DUPLICATED' not in json.dumps(p) for p in visual))
         self.assertEqual(state['sourceParts'][0]['label'],'figure.png')
         before=len(seen);lab.generate('',state,ask,lambda _:None,documents=[d]);self.assertEqual(before,len(seen))
         self.assertEqual(state['parts']['0']['passages'],[])

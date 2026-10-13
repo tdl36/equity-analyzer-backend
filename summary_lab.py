@@ -335,7 +335,7 @@ For takeaways/meeting also flag material omissions. A claim absent here may be s
 another part: label it not assessable here, not false. Do not demand exhaustive coverage in Brief.
 Return concise actionable findings; distinguish definite errors from uncertainty. If none,
 say no definite issues found in this part. This is a model review, not proof of correctness.
-DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body}'''
+DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not document_parts[i]['visual'] else 'See the attached original PDF pages or image.'}'''
                 if documents:
                     part=document_parts[i]
                     review_prompt += '\nSource location: '+part['label']+'\nReview the attached original visuals when supplied, including chart values, units and omissions. Flag unreadable evidence.'
