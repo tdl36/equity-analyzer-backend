@@ -17,6 +17,16 @@ an older blocked assignment, a recovered parent/failed child and independent
 failure. 1326 backend and 154 frontend tests pass; build, compile and model policy
 against 75097e5 pass. No paid research or job retries. Deployment receipt follows.
 
+### T237 verified — 2026-10-13 21:15 UTC
+
+Backend revision 9c5b22ec207b345c9e73355d39434cb311497d22 is healthy.
+Cloudflare e3d65db5-0e51-4402-a3aa-df3ecba89ba2 serves exact tested app and service-worker
+bytes. Live authenticated research-alert inventory returns 200, no unavailable
+or truncated sources, and the existing SYK attention item. Recovered ABT is not
+incorrectly alerted through its preserved failed child. Agent heartbeat is healthy
+(49.7 seconds); no agent restart required. Transient replacement 502 cleared.
+No research dispatch, retry or approval occurred.
+
 ## T236 deployment verified — 2026-10-13 21:07 UTC
 
 The original-document feature is released. Backend health reports
