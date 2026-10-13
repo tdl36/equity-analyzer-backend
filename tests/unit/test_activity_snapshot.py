@@ -81,6 +81,21 @@ class ActivityPostgresTests(unittest.TestCase):
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
 
+ def test_alerts_ignore_unrelated_backlog_and_recovered_child(self):
+  with self.db(True) as (_,c):
+   c.execute("INSERT INTO mp_jobs SELECT 'alert-noise-'||i,'evidence_amendment','TEST','attention',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,250)i")
+   c.execute("INSERT INTO mp_jobs VALUES('alert-real','research_assignment','ABT','blocked','Needs recovery','{}','{}',NOW()-INTERVAL '10 days',NOW()-INTERVAL '10 days'),('alert-parent','research_assignment','DONE','complete',NULL,'{}','{\"reportId\":\"alert-child\"}',NOW(),NOW())")
+   c.execute("CREATE TABLE stock_analysis_runs(id TEXT,ticker TEXT,status TEXT,error TEXT,created_at TIMESTAMP,updated_at TIMESTAMP)")
+   c.execute("INSERT INTO stock_analysis_runs VALUES('alert-child','DONE','attention','old failure',NOW(),NOW()),('alert-independent','OTHER','failed','inspect',NOW(),NOW())")
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));r=app.test_client().get('/api/activity/research-alerts');d=r.json
+   self.assertEqual(d['unavailable'],[]);self.assertEqual(d['truncated'],[])
+   self.assertEqual({x['ticker'] for x in d['items']},{'ABT','OTHER'})
+   self.assertEqual(r.headers['Cache-Control'],'no-store')
+   self.assertTrue(all('input' not in x and 'result' not in x for x in d['items']))
+  finally:
+   with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'alert-%'; DROP TABLE stock_analysis_runs")
+
  def test_legacy_agent_progress_projection_is_read_only(self):
   with self.db(True) as (_,c):
    c.execute('CREATE TABLE agent_runs(id TEXT,ticker TEXT,status TEXT,created_at TIMESTAMP,completed_at TIMESTAMP,logs JSONB,llm_provider TEXT,llm_model TEXT,report TEXT,decision TEXT)')

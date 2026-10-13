@@ -18,3 +18,7 @@ test('warns when blocked research coverage is capped or unavailable',()=>{
  assert.equal(incompleteResearchAlerts({unavailable:['Stock analysis']}),true);
  assert.equal(incompleteResearchAlerts({truncated:['Research workflows (active)','Audio processing (attention)']}),false);
 });
+
+test('blocked, interrupted and error outcomes remain visible',()=>{
+ for(const status of ['blocked','interrupted','error'])assert.equal(researchAlerts({items:[{id:status,ticker:'ABT',workflow:'research_assignment',status}]}).length,1);
+});

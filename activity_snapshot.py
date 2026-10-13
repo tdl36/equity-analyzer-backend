@@ -138,6 +138,30 @@ def create_blueprint(get_db):
             return jsonify(error=str(exc)), 409
         return jsonify(id=run_id, status='attention', changed=changed, providerOutcome='unverified')
 
+    @bp.get('/api/activity/research-alerts')
+    def research_alerts():
+        # Query research failures directly: unrelated review/active backlogs must
+        # not consume alert coverage. No job inputs or research bodies leave here.
+        rows=[]; unavailable=[]
+        for table,label,view,extra,updated in SOURCES[:5]:
+            if table=='research_pipeline_jobs':continue
+            try:
+                with get_db() as (_,cur):
+                    cur.execute('SELECT to_regclass(%s) AS name',(table,))
+                    if not cur.fetchone()['name']:continue
+                    condition="r.stage='research_assignment'" if table=='mp_jobs' else 'TRUE'
+                    if table=='stock_analysis_runs':
+                        condition="NOT EXISTS (SELECT 1 FROM mp_jobs p WHERE p.stage='research_assignment' AND p.result->>'reportId'=r.id::text)"
+                    projection="stage,result->>'step' AS step" if table=='mp_jobs' else "NULL::text AS stage,NULL::text AS step"
+                    # One representative per company, after filtering ALL eligible
+                    # rows. Older failures remain available in Activity unchanged.
+                    cur.execute(f"SELECT DISTINCT ON (ticker) id,ticker,status,error,created_at,updated_at,{projection} FROM {table} r WHERE r.status IN %s AND ({condition}) ORDER BY ticker,updated_at DESC,id DESC",(('attention','failed','needs_auth','error','interrupted','blocked'),))
+                    rows.extend({**dict(r),'source':table,'label':label,'view':view} for r in cur.fetchall())
+            except Exception:unavailable.append(label)
+        response=jsonify(items=assemble(rows,{},datetime.now(timezone.utc)),unavailable=unavailable,truncated=[])
+        response.headers['Cache-Control']='no-store'
+        return response
+
     @bp.get('/api/activity')
     def snapshot():
         rows=[]; unavailable=[]; truncated=[]; now=datetime.now(timezone.utc)

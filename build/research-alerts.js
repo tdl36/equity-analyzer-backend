@@ -16,7 +16,7 @@ export function ResearchAlerts({
       if (pending) return;
       pending = true;
       try {
-        var r = await fetch(api + '/api/activity', {
+        var r = await fetch(api + '/api/activity/research-alerts', {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)])
         });
         if (!r.ok) throw Error();

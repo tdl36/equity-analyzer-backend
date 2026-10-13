@@ -2,6 +2,21 @@
 
 Updated: October 12, 2026
 
+## T237 — research alerts independent of Activity backlog
+
+The global research banner now reads a dedicated failure inventory. Unrelated
+review and active queues cannot consume its 200-row Activity budget. The query
+selects the latest unresolved failure per company in each research workflow
+without limiting coverage to recent records; parent assignments own linked stock
+analysis alerts, including recovered completed assignments. Error/interrupted/
+blocked outcomes are included. Source read failures still display incomplete
+coverage. Existing Activity history, jobs and research are unchanged.
+
+Validation: disposable PostgreSQL regression covers 250 unrelated attention rows,
+an older blocked assignment, a recovered parent/failed child and independent
+failure. 1326 backend and 154 frontend tests pass; build, compile and model policy
+against 75097e5 pass. No paid research or job retries. Deployment receipt follows.
+
 ## T236 deployment verified — 2026-10-13 21:07 UTC
 
 The original-document feature is released. Backend health reports

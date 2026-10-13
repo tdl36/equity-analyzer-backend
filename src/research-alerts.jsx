@@ -4,7 +4,7 @@ import {activityDestination} from './activity-model.mjs';
 export function ResearchAlerts({api,onNavigate}) {
  const [data,setData]=React.useState(null),[dismissed,setDismissed]=React.useState({}),[unavailable,setUnavailable]=React.useState(false);
  React.useEffect(()=>{let alive=true,pending=false;const controller=new AbortController();
-  const load=async()=>{if(pending)return;pending=true;try{const r=await fetch(api+'/api/activity',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});if(!r.ok)throw Error();const d=await r.json();if(alive){setData(d);setUnavailable(incompleteResearchAlerts(d));}}catch{if(alive)setUnavailable(true);}finally{pending=false;}};
+  const load=async()=>{if(pending)return;pending=true;try{const r=await fetch(api+'/api/activity/research-alerts',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});if(!r.ok)throw Error();const d=await r.json();if(alive){setData(d);setUnavailable(incompleteResearchAlerts(d));}}catch{if(alive)setUnavailable(true);}finally{pending=false;}};
   load();const timer=setInterval(load,30000);const visible=()=>{if(!document.hidden)load();};document.addEventListener('visibilitychange',visible);
   return()=>{alive=false;controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);};},[api]);
  const alerts=researchAlerts(data,dismissed),row=alerts[0];
