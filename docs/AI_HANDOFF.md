@@ -2,6 +2,24 @@
 
 Updated: October 12, 2026
 
+## T236 deployment verified — 2026-10-13 21:07 UTC
+
+The original-document feature is released. Backend health reports
+8ecd6feadb1205c1b66ca4eb8498d26ae19c4eff. Cloudflare deployment
+056617f8-d25b-4ebe-afe1-f7c3ad6a7095 serves exact tested app.js and
+service-worker bytes. Authenticated Summary Lab sources return 200; original
+retrieval without authentication returns 401. Mac agent heartbeat was healthy
+(10 seconds); agent code was unchanged and no restart was required.
+
+The user's UNH experiment 8f9c42a0-a1b7-40a2-aecc-24a788e70e97 completed all
+six sections and final review before deployment and remains complete afterward.
+No paid QA or automatic rerun was launched. Pending document submission IDs
+survive a device reload; mocked browser checks verified reuse and clearing after
+success at 390px and 1280px. Visual output quality still requires investor review;
+validation used synthetic fixtures, not a paid production visual experiment.
+The temporary Render replacement 502 cleared. This documentation-only receipt
+uses [skip render] to avoid a second backend restart after verification.
+
 ## T236 — Summary Lab original-document review (prepared; deployment pending)
 
 Document intake preserves exact original bytes and hashes on the backend. PDF
