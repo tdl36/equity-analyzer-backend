@@ -1,6 +1,6 @@
 """Ticker refresh policies and resumable work for the scheduled browser worker."""
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import time
@@ -171,7 +171,10 @@ class RefreshManager:
             default=frozen_default(self.db)
             if default is not None:cfg['sourcePolicy']=default
         if assignment:cfg.update(assignment=assignment,sourcePolicy=assignment['sourcePolicy'])
-        today = datetime.fromtimestamp(self.clock(), timezone.utc).date()
+        # AlphaSense uses the collecting Mac's calendar day. UTC midnight can
+        # otherwise freeze tomorrow before its date picker permits that date.
+        # Explicit command/assignment windows below remain authoritative.
+        today = datetime.fromtimestamp(self.clock()).date()
         since = today - timedelta(days=cfg['lookbackDays'] - 1)
         if row['last_success']:
             since = min(today, datetime.fromisoformat(row['last_success']).date() - timedelta(days=2))

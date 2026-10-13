@@ -2,7 +2,23 @@
 
 Updated: October 12, 2026
 
-## T230 — accepted print-header regression (verification pending)
+## T231 — collection calendar boundary fix
+
+New policy-driven refreshes now freeze the collecting Mac's local calendar date,
+matching AlphaSense's date picker. Previously UTC midnight could freeze tomorrow
+and block the evening collection until local midnight. Explicit assignment/command
+windows and already-created runs remain unchanged; DGX's existing October 4–13
+window still awaits the local date rollover. No originals or research were changed.
+
+Synthetic regression verifies the New York UTC/local midnight boundary, unchanged
+retry dates, the next new run after midnight, and authoritative explicit windows.
+Focused collection suite: 27 passed. Full backend suite: 1229 passed (including 36
+uncommitted historical WIP tests); frontend: 148 passed. Compile, model-policy gate
+against 75097e5 and production build passed. Release verification pending below.
+The agent must restart to reload its imported collection manager. No phase is newly
+accepted; next priority remains evidence-backed historical valuation and review.
+
+## T230 — accepted print-header regression (verified live)
 
 T229's print header treated any explicit edition context as pending, including the
 validated accepted-edition subtype. Renderer v25 now distinguishes server-validated
@@ -15,6 +31,85 @@ accepted rendering regression suites passed. Full local suite passed 1202 tests
 compile, model-policy baseline 75097e5 and production build. No active jobs before
 release. Historical valuation WIP remains local
 and is deliberately excluded from this release until its evidence adapter is ready.
+
+Backend 0f4bc29129c979f9da38bda2180f33b2907324e8 and hosted frontend bytes
+verified; Cloudflare 59808801-ed3a-42f7-a59f-f21b7e163611. Live ABT pending
+preview uses v25 and retains the pending print header. Accepted export status was
+verified with synthetic retained-decision fixtures only; no live acceptance created.
+Mac activity available, no pending collection commands; agent unchanged.
+
+## Historical evidence identity WIP — October 13, 02:00 UTC wake
+
+The local reconciliation result now includes a separate deterministic evidence
+identity binding adapter version, proposal digest, issuer CIK, provider symbol,
+trusted retrieval-date inventory and hashes of the actual referenced originals.
+Missing originals remain explicit null receipts; changed bytes or retrieval context
+change evidence identity even when the proposed observations are identical. Context
+inputs are bounded and validated, and returned context does not alias caller data.
+The proposal digest remains separately available and is not evidence certification.
+
+Thirty-six focused synthetic tests and Python compile pass. No live source changes,
+provider calls, approval or release. WIP remains local/uncommitted. Next add documented
+corporate-action/share-class evidence checks and immutable persistence/review using
+this complete evidence identity. Do not expose ratios as validated historical
+valuation while `valuationReady` is false. T230 remains live, all eight acceptance
+phases remain open, and unrelated dirty files are preserved.
+
+## Historical input reconciliation WIP — October 13, 01:30 UTC wake
+
+Added `check_market_supplement` to reconcile proposed historical price and annual
+EPS amounts against both original-byte adapters. Changed prices, EPS, receipt bytes,
+wrong issuer/symbol and missing/invalid trusted retrieval dates withhold the ratio.
+Proposal-supplied retrieval dates cannot override the separate receipt inventory.
+Matched amounts remain explicitly `valuationReady=false`: security/currency mapping,
+corporate actions, filing completeness and investor review remain unresolved.
+Zero/negative EPS remains not meaningful after both extractions match.
+
+Thirty-two focused synthetic tests and Python compile pass. These uncommitted modules
+remain unpublished and disconnected from live research. No paid calls, approval,
+source mutation or deployment. Next implement evidence-backed share-basis checks and
+bind the complete evidence context (including retrieval inventory and adapter version)
+into immutable pending-supplement identity before persistence/review integration.
+Do not use the current proposal-only digest as certification of the evidence context.
+T230 remains live; no phase acceptance is newly claimed.
+
+## Historical price extraction WIP — October 13, 01:00 UTC wake
+
+Added a pure exact-byte raw daily-close extractor to the local historical evidence
+adapter. It rejects adjusted-series shapes, mismatched symbols, missing exact dates,
+same-day/unsettled dates, contradictory response vintages, malformed/duplicate JSON,
+nonpositive or inconsistent OHLC values and invalid volume. It never substitutes a
+nearby trading date. Currency, share class and split basis are deliberately not
+inferred from a ticker. Twenty-six focused synthetic historical tests and compile
+pass. No account key, paid query, real research mutation or approval was used.
+
+Provider format checked against [official Alpha Vantage documentation](https://www.alphavantage.co/documentation/#daily)
+and its public IBM DAILY demo response. This is an optional original-byte adapter,
+not a configured provider or proof of account access. Full historical DAILY inventory
+requires provider access beyond the free compact window; no purchase or integration
+was made. Do not treat this adapter as available historical coverage for Charlie.
+
+All historical WIP remains uncommitted/unpublished. Next bind extracted prices to
+supplement observations with verified security/currency mapping and corporate-action
+evidence, then add immutable supplement persistence and pending-edition review.
+SEC companyfacts availability does not independently certify historical split basis
+or complete point-in-time filing coverage. T230 remains the live application.
+
+## Historical SEC earnings adapter WIP — October 13, 00:56 UTC
+
+New uncommitted `historical_valuation_evidence.py` and its unit tests verify SEC
+companyfacts bytes/CIK, select the latest annual period and filing strictly before
+the price date, withhold conflicting latest values/start dates/accessions and reject
+malformed or extreme numeric data without falling back to older values. Binding
+checks reject proposed EPS/filing metadata that differ from the extracted original.
+Twenty focused historical tests and compile pass. No source-fetching/model calls.
+
+This remains unpublished WIP, not a live historical valuation feature. Next implement
+price-original extraction and corporate-action evidence, then immutable supplement
+storage, pending-edition linkage, review and rendering. Exact SEC bytes do not prove
+share-class compatibility, split basis, completeness of the filing inventory or
+correct price extraction. Keep those review requirements explicit. No existing
+financial snapshot, research, pending proposal or investor decision was changed.
 
 ## Historical valuation inventory WIP — October 13, 00:26 UTC
 

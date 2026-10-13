@@ -1,4 +1,7 @@
 import json
+import os
+import time
+from datetime import datetime, timezone
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +17,44 @@ class RefreshTests(unittest.TestCase):
         self.c=Collector(root/'state',root/'STOCKS');self.addCleanup(self.c.db.close)
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
+
+    def test_local_midnight_window_and_frozen_retry(self):
+        previous = os.environ.get('TZ')
+        def restore_zone():
+            if previous is None:
+                os.environ.pop('TZ', None)
+            else:
+                os.environ['TZ'] = previous
+            time.tzset()
+        self.addCleanup(restore_zone)
+        os.environ['TZ'] = 'America/New_York'
+        time.tzset()
+        self.clock = datetime(2026, 10, 13, 2, 30, tzinfo=timezone.utc).timestamp()
+        self.m.save(self.cfg)
+        rid = self.m.trigger('MDT')
+        first = self.m.claim()
+        self.assertEqual(first['collection']['until_date'], '2026-10-12')
+        self.assertEqual(first['collection']['since'], '2026-10-06')
+        self.m.mark(rid, first['owner'], 'queued')
+        self.clock += 3 * 3600
+        second = self.m.claim()
+        self.assertEqual(second['run'], first['run'])
+        self.assertEqual(second['collection']['until_date'], '2026-10-12')
+        self.m.cancel(rid)
+        self.m.trigger('MDT')
+        self.assertEqual(self.m.claim()['collection']['until_date'], '2026-10-13')
+
+    def test_explicit_window_is_not_clamped_to_local_today(self):
+        self.m.save(self.cfg)
+        row = self.c.db.execute('SELECT * FROM refresh_policies WHERE ticker=?', ('MDT',)).fetchone()
+        with self.c.lock():
+            rid = self.m._enqueue(row, manual=True,
+                command={'since': '2026-10-04', 'until': '2026-10-13'},
+                event={'id': 'fixed-window', 'reason': 'test', 'url': ''})
+        claim = self.m.claim()
+        self.assertEqual(claim['id'], rid)
+        self.assertEqual(claim['collection']['since'], '2026-10-04')
+        self.assertEqual(claim['collection']['until_date'], '2026-10-13')
 
     def scheduled_claim(self):
         self.m.save(self.cfg)
