@@ -75,7 +75,8 @@ class Documents(unittest.TestCase):
         with patch('provider_credentials.get',return_value='synthetic'),patch.object(lab.threading,'Thread') as thread:
             raw=pdf(1);r=client.post('/api/summary-lab/documents',data={'file':(io.BytesIO(raw),'original.pdf')})
             self.assertEqual(r.status_code,200,r.json);ident=r.json['id'];thread.assert_not_called()
-            self.assertEqual(client.get('/api/summary-lab/documents/'+ident+'/original').data,raw)
+            download=client.get('/api/summary-lab/documents/'+ident+'/original')
+            self.assertEqual(download.data,raw);self.assertEqual(download.headers['Cache-Control'],'private, no-store')
             self.assertEqual(client.post('/api/summary-lab',json={'documentIds':[ident]}).status_code,400)
             thread.assert_not_called()
             payload={'documentIds':[ident],'documentCoverageAccepted':True,'requestId':'00000000-0000-4000-8000-000000000099','source':'','title':'Fixture'}

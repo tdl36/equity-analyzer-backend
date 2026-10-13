@@ -723,7 +723,9 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
         with get_db() as (_,cur):
             cur.execute('SELECT filename,original FROM summary_lab_documents WHERE id=%s',(ident,));doc=cur.fetchone()
         if not doc:return jsonify(error='Original not found.'),404
-        return send_file(io.BytesIO(bytes(doc['original'])),download_name=doc['filename'],as_attachment=True,mimetype='application/octet-stream',max_age=0)
+        response=send_file(io.BytesIO(bytes(doc['original'])),download_name=doc['filename'],as_attachment=True,mimetype='application/octet-stream',max_age=0)
+        response.headers['Cache-Control']='private, no-store'
+        return response
 
     @bp.post('/api/summary-lab')
     def start():
