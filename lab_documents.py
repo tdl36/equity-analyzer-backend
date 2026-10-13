@@ -68,7 +68,7 @@ def prepare(filename, data):
                         for row, values in zip(sheet.iter_rows(),cached[sheet.title].iter_rows()):
                             for cell,value in zip(row,values):
                                 if cell.value is not None:
-                                    lines.append(f'{cell.coordinate}: {cell.value}'+(f' [cached value: {value.value}; not recalculated]' if cell.data_type=='f' else ''))
+                                    lines.append(f'{cell.coordinate}: {cell.value} [number format: {cell.number_format}]'+(f' [cached value: {value.value}; not recalculated]' if cell.data_type=='f' else ''))
                         parts.extend(text_parts('\n'.join(lines),filename+' · worksheet '+sheet.title))
                 finally:formulas.close();cached.close()
             # Include source XML text, table cells, formulas, chart caches and notes.

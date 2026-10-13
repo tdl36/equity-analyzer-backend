@@ -37,9 +37,9 @@ class Documents(unittest.TestCase):
         self.assertIn('not rendered',d['limitations'][0])
     def test_workbook_retains_cells_and_formula_limitations(self):
         from openpyxl import Workbook
-        w=Workbook();w.active['A1']='Revenue';w.active['B1']='=1+2';b=io.BytesIO();w.save(b)
+        w=Workbook();w.active['A1']='Revenue';w.active['B1']='=1+2';w.active['B1'].number_format='0.00%';b=io.BytesIO();w.save(b)
         d=docs.prepare('model.xlsx',b.getvalue());text='\n'.join(p['text'] for p in d['parts'])
-        self.assertIn('A1: Revenue',text);self.assertIn('B1: =1+2',text);self.assertIn('not recalculated',text)
+        self.assertIn('A1: Revenue',text);self.assertIn('B1: =1+2',text);self.assertIn('not recalculated',text);self.assertIn('number format: 0.00%',text)
     def test_every_review_and_section_check_receives_original_visual(self):
         d=docs.prepare('figure.png',png());d['parts'][0]['text']='EXTRACTED-TEXT-SHOULD-NOT-BE-DUPLICATED';seen=[]
         def ask(system,prompt,tokens):
