@@ -2,6 +2,20 @@
 
 Updated: October 12, 2026
 
+## T239 — compact research issue banner
+
+The global banner retains the company/status, issue count, saved-work destination,
+coverage warning and session dismissal. Long error/recovery text now sits behind
+Issue details, with bounded scrolling when expanded, instead of occupying the
+reading area on every page. A changed issue resets disclosure state. No alert is
+marked resolved or removed; source coverage and saved recovery remain unchanged.
+
+Validation: 156 frontend tests, build and model-policy gate passed. Synthetic
+390/1280px full-app checks used a long failure message, confirmed collapsed height
+below 180px, expansion retains the complete message, and verified the ABT review
+flow still loads/retries/downloads with GET-only requests and no overflow. Backend
+unchanged; no paid research, approval or job mutation. Deployment receipt follows.
+
 ## T238 — saved assignment review workspace
 
 Saved assignment links now open a review workspace directly, with the first saved
