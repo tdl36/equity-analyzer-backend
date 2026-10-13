@@ -26,6 +26,18 @@ keys, and no horizontal overflow. No model-backed QA or research approvals.
 The old Summary Lab run 86a98b12 remains marked running with a September 21 update;
 it was preserved without retry. Deployment verification receipt follows.
 
+### T235 deployment verified — 2026-10-13 20:27 UTC
+
+Backend health reports aaac9fcc96cffc1c60a51351bedbfa0d2f7ffe0b.
+Cloudflare bcc16083-ec7d-4fdb-9aa6-940a41075107 serves exact tested app.js
+and service-worker bytes. Unauthenticated credential status returns 401;
+authenticated Settings omits all three provider keys. Agent-only credential
+retrieval and official read-only catalogs return 200 for Anthropic, Gemini and
+OpenAI. The working deployment Gemini credential was retained. No key values
+were printed or committed. After confirming zero running pipeline jobs, the Mac
+agent was restarted; heartbeat age was 5.0 seconds with no recent log errors.
+The transient Render replacement 502 cleared. No synthesis/model QA was run.
+
 ## T234 — bound automatic catalyst spending
 
 Folder watcher submissions reserve one automatic attempt per folder before the
