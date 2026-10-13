@@ -5,6 +5,23 @@ refresh, model call, thesis approval or mutation. Private rendered artifacts:
 `/Users/tonydlee/Charlie-private/onepager-review-20261012`.
 No licensed source bodies are included in this document.
 
+## Current status — October 13, 2026, 22:41 UTC
+
+The findings below describe the preserved original automated reports, not the
+current ABT recovery edition. T233 delivered a separate pending review package:
+assignment `f9e363e4-597e-4394-b9d4-36d83def935f`, edition
+`6a8c989e-4ca2-45e8-8b57-273480bb31bd`, and thesis draft
+`8c434b10-20b3-46c1-a810-107709d3ac6e`. The authenticated assignment read still
+reports complete delivery and `pending_investor_review`. T238 opens these current
+outputs directly in the saved-assignment review workspace. Original failures and
+older outputs remain preserved. Do not rerun research to recreate delivered drafts.
+
+This supersedes the older statements below that editorial handoff is unimplemented
+or that ABT has no delivered replacement. It does not supersede the original-report
+audit findings or certify the recovered claims. Investor review, historical valuation
+with dated evidence, and real-source quality acceptance remain outstanding. The
+existing untracked historical-valuation implementation is not a verified release.
+
 ## Finding
 
 ABT is not accepted as a professional investment brief. The current map lacks

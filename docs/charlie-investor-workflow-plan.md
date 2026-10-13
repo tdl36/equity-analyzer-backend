@@ -76,3 +76,18 @@ Mac startup imports against failed inventory reads and concurrent existing files
 These are partial implementations, not completion of any acceptance criterion.
 Origin-specific refresh submission/context and real-source quality benchmarking
 remain open. See AI_HANDOFF for exact release and validation receipts.
+
+## October 13 acceptance checkpoint
+
+T233 delivered ABT's reconciled one-pager, stock summary and thesis proposal for
+investor review; T238 provides direct saved-output review and T239 compacts long
+issue banners. The October 12 original-report audit remains historical evidence,
+not a description of missing current ABT deliverables. See its current-status
+addendum and AI_HANDOFF for exact identities and release receipts.
+
+Read-only verification at 22:41 UTC confirms ABT delivery is still pending investor
+review. Legacy WELL remains attention, with no saved report/decision/completion
+and unknown worker presence; no new provider-outcome evidence was found. Neither
+condition authorizes another paid attempt. Phase 1 live-interruption/provider-outcome
+acceptance, dated historical valuation and investor-scored output quality remain
+open. No phase is newly accepted and no research decision was made.
