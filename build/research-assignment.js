@@ -1,3 +1,4 @@
+import { AssignmentReview } from './assignment-review';
 import { submissionKey, readSubmission, reserveSubmission, clearSubmission, matchingReceipt } from './assignment-submission.mjs';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import * as React from 'react';
@@ -198,85 +199,9 @@ export function ResearchAssignment({
   return /*#__PURE__*/React.createElement("section", {
     className: "sa-prepare",
     "aria-label": "End-to-end research"
-  }, /*#__PURE__*/React.createElement("style", null, `@media(max-width:650px){.sa-visual-preview{position:fixed;inset:58px 0 64px;background:white;z-index:80;padding:10px!important;display:flex;flex-direction:column}.sa-visual-preview iframe{flex:1;min-height:0;height:100%!important}.sa-visual-preview button{align-self:flex-start;margin:0!important}}`), /*#__PURE__*/React.createElement("h4", null, origin ? 'Refresh this one-pager from recent sources' : 'One research assignment'), origin && /*#__PURE__*/React.createElement("p", null, "Starting from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report; compare and review the resulting draft."), /*#__PURE__*/React.createElement("p", null, "For ", /*#__PURE__*/React.createElement("strong", null, ticker), ", collect new originals and prepare the outputs you choose."), focusId && /*#__PURE__*/React.createElement("p", {
-    role: "status"
-  }, "Opened saved assignment ", focusId.slice(0, 8), ". ", /*#__PURE__*/React.createElement("button", {
+  }, focusId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("button", {
     onClick: onClearFocus
-  }, "Show all assignments for ", ticker)), /*#__PURE__*/React.createElement("details", {
-    open: !focusId
-  }, /*#__PURE__*/React.createElement("summary", null, "Prepare a new research assignment"), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "sa-form-grid"
-  }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
-    "aria-label": "Research from",
-    type: "date",
-    value: since,
-    max: until,
-    onChange: e => setSince(e.target.value)
-  })), /*#__PURE__*/React.createElement("label", null, "Through", /*#__PURE__*/React.createElement("input", {
-    "aria-label": "Research through",
-    type: "date",
-    value: until,
-    min: since,
-    max: date(new Date()),
-    onChange: e => setUntil(e.target.value)
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "sa-form-grid"
-  }, outputs.map(([id, title]) => /*#__PURE__*/React.createElement("label", {
-    className: "sa-check",
-    key: id
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: chosen.includes(id),
-    disabled: !!origin && id === 'visual',
-    onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
-  }), title))), chosen.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
-    className: "sa-form-grid"
-  }, /*#__PURE__*/React.createElement("label", null, "Meeting date", /*#__PURE__*/React.createElement("input", {
-    type: "date",
-    value: meetingDate,
-    onChange: e => setMeetingDate(e.target.value)
-  })), /*#__PURE__*/React.createElement("label", null, "Meeting type", /*#__PURE__*/React.createElement("select", {
-    value: meetingType,
-    onChange: e => setMeetingType(e.target.value)
-  }, /*#__PURE__*/React.createElement("option", {
-    value: "management"
-  }, "Management"), /*#__PURE__*/React.createElement("option", {
-    value: "expert"
-  }, "Expert"), /*#__PURE__*/React.createElement("option", {
-    value: "conference"
-  }, "Conference"), /*#__PURE__*/React.createElement("option", {
-    value: "other"
-  }, "Other"))), /*#__PURE__*/React.createElement("p", null, "Uses source-matched questions from the same report and originals. No separate generation call. Review their premises before the meeting.")), chosen.includes('visual') && /*#__PURE__*/React.createElement("label", {
-    className: "sa-check"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: visualFundamentals,
-    onChange: e => setVisualFundamentals(e.target.checked)
-  }), "Add historical public filings and dated market data for the visual. Recent events still use your selected date range."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Research focus and defaults"), /*#__PURE__*/React.createElement("label", null, "Investment horizon", /*#__PURE__*/React.createElement("input", {
-    value: horizon,
-    maxLength: 100,
-    onChange: e => setHorizon(e.target.value)
-  })), /*#__PURE__*/React.createElement("label", null, "Focus or questions (optional)", /*#__PURE__*/React.createElement("textarea", {
-    value: instruction,
-    maxLength: 1800,
-    onChange: e => setInstruction(e.target.value),
-    rows: 3
-  })), /*#__PURE__*/React.createElement("button", {
-    disabled: !chosen.length,
-    onClick: () => mutate(async () => {
-      await request('assignment-defaults', {
-        outputs: chosen,
-        horizon
-      }, 'PUT');
-      return 'Output choices and horizon saved for your next assignment.';
-    })
-  }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
-    className: "sa-primary",
-    disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
-    onClick: start
-  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps.")), savedSubmission && /*#__PURE__*/React.createElement("section", {
+  }, "All assignments for ", ticker, " / Start new research")), savedSubmission && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Recover assignment submission"
   }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", savedSubmission.outputs?.join(', '), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -303,7 +228,16 @@ export function ResearchAssignment({
       paddingTop: 12,
       marginTop: 12
     }
-  }, /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
+  }, focusId ? /*#__PURE__*/React.createElement(AssignmentReview, {
+    key: j.id,
+    api: api,
+    job: j
+  }) : /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: routeHash('stockanalysis', ticker, 'stock-analysis', 'assignment:' + j.id)
+  }, "Open saved outputs \xB7 ", j.input.since, " \u2013 ", j.input.until)), /*#__PURE__*/React.createElement("details", {
+    className: "assignment-history",
+    open: j.status !== 'complete'
+  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', j.ticker, 'stock-analysis', 'assignment:' + j.input.origin.assignmentId)
   }, "saved one-pager"), " \xB7 ", j.input.origin.parentId ? 'accepted edition ' + j.input.origin.parentId.slice(0, 8) : 'original report ' + j.input.origin.runId.slice(0, 8), ". Outputs are separate drafts for review."), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -379,40 +313,7 @@ export function ResearchAssignment({
       border: '1px solid #d8dedd',
       marginTop: 12
     }
-  })), j.result.reviewPackage && /*#__PURE__*/React.createElement("aside", {
-    "aria-label": "Recovered review package",
-    style: {
-      background: '#f4f6f4',
-      padding: '16px 20px',
-      margin: '16px 0'
-    }
-  }, /*#__PURE__*/React.createElement("strong", null, "Recovered drafts ready for your review"), /*#__PURE__*/React.createElement("p", null, "The thesis and editorial edition use the same ", j.result.reviewPackage.sourceHashes.length, " frozen originals. Delivery is complete; neither draft has been approved. The original automated report and its failure remain preserved."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
-    href: `?thesisDraft=${encodeURIComponent(j.result.reviewPackage.thesisDraftId)}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
-  }, "Review reconciled thesis")), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => mutate(async () => {
-      var r = await fetch(api + `/api/research/assignments/${j.id}/review-package/summary`);
-      if (!r.ok) throw Error('Summary needs revalidation. Open the thesis review.');
-      setPreview({
-        id: j.id,
-        html: await r.text()
-      });
-      return 'Reconciled stock summary opened for review.';
-    })
-  }, "Preview reconciled stock summary"), [['recovery', 'one-pager'], ['illustrated', 'detailed investment map']].map(([layout, label]) => /*#__PURE__*/React.createElement("button", {
-    key: layout,
-    disabled: busy,
-    onClick: () => mutate(async () => {
-      var r = await fetch(api + `/api/research/assignments/${j.id}/onepager-editions/${j.result.reviewPackage.editionId}/preview?layout=${layout}`);
-      var d = await r.json();
-      if (!r.ok) throw Error(d.error || 'Saved package needs revalidation.');
-      setPreview({
-        id: j.id,
-        html: d.html
-      });
-      return 'Reconciled ' + label + ' opened for review.';
-    })
-  }, "Preview reconciled ", label)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Preserved original failure"), /*#__PURE__*/React.createElement("p", null, j.result.reviewPackage.originalFailure))), j.result.separateThesisProposal && !j.result.reviewPackage && /*#__PURE__*/React.createElement("aside", {
+  })), j.result.reviewPackage && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Preserved original failure"), /*#__PURE__*/React.createElement("p", null, j.result.reviewPackage.originalFailure), /*#__PURE__*/React.createElement("p", null, "The recovered review package above is the current delivered draft. Earlier automated outputs remain available here for comparison.")), j.result.separateThesisProposal && !j.result.reviewPackage && /*#__PURE__*/React.createElement("aside", {
     "aria-label": "Separate thesis proposal",
     style: {
       background: "#f4f6f4",
@@ -447,5 +348,81 @@ export function ResearchAssignment({
       await request(`assignments/${j.id}/stop`, {});
       return 'Stopped. Originals and saved drafts are retained; a call already running may finish.';
     })
-  }, "Stop assignment"))));
+  }, "Stop assignment")))), !focusId && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "New research"
+  }, origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
+    open: !!origin || !focusId && loaded && !jobs.length
+  }, /*#__PURE__*/React.createElement("summary", null, "Start new research"), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Research from",
+    type: "date",
+    value: since,
+    max: until,
+    onChange: e => setSince(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Through", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Research through",
+    type: "date",
+    value: until,
+    min: since,
+    max: date(new Date()),
+    onChange: e => setUntil(e.target.value)
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, outputs.map(([id, title]) => /*#__PURE__*/React.createElement("label", {
+    className: "sa-check",
+    key: id
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: chosen.includes(id),
+    disabled: !!origin && id === 'visual',
+    onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
+  }), title))), chosen.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, /*#__PURE__*/React.createElement("label", null, "Meeting date", /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: meetingDate,
+    onChange: e => setMeetingDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Meeting type", /*#__PURE__*/React.createElement("select", {
+    value: meetingType,
+    onChange: e => setMeetingType(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "management"
+  }, "Management"), /*#__PURE__*/React.createElement("option", {
+    value: "expert"
+  }, "Expert"), /*#__PURE__*/React.createElement("option", {
+    value: "conference"
+  }, "Conference"), /*#__PURE__*/React.createElement("option", {
+    value: "other"
+  }, "Other"))), /*#__PURE__*/React.createElement("p", null, "Uses source-matched questions from the same report and originals. No separate generation call. Review their premises before the meeting.")), chosen.includes('visual') && /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: visualFundamentals,
+    onChange: e => setVisualFundamentals(e.target.checked)
+  }), "Add historical public filings and dated market data for the visual. Recent events still use your selected date range."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Research focus and defaults"), /*#__PURE__*/React.createElement("label", null, "Investment horizon", /*#__PURE__*/React.createElement("input", {
+    value: horizon,
+    maxLength: 100,
+    onChange: e => setHorizon(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Focus or questions (optional)", /*#__PURE__*/React.createElement("textarea", {
+    value: instruction,
+    maxLength: 1800,
+    onChange: e => setInstruction(e.target.value),
+    rows: 3
+  })), /*#__PURE__*/React.createElement("button", {
+    disabled: !chosen.length,
+    onClick: () => mutate(async () => {
+      await request('assignment-defaults', {
+        outputs: chosen,
+        horizon
+      }, 'PUT');
+      return 'Output choices and horizon saved for your next assignment.';
+    })
+  }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
+    className: "sa-primary",
+    disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
+    onClick: start
+  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }

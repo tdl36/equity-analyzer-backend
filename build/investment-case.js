@@ -174,13 +174,14 @@ export function InvestmentCase({
       [key]: value
     } : a)
   });
+  var reviewingAssignment = workspaceTab === 'stock-analysis' && routeWork.startsWith('assignment:');
   var snapshot = versions.find(v => String(v.revision) === selectedVersion);
   return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel",
     "aria-label": "Investment case"
   }, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
-  }, initialTab === 'stock-analysis' ? 'COMPANIES / RESEARCH & EVIDENCE' : 'INVESTMENT CASE / YOUR ASSUMPTIONS'), /*#__PURE__*/React.createElement("h2", null, initialTab === 'stock-analysis' ? 'Stock analysis.' : 'Investment thesis workspace.'), /*#__PURE__*/React.createElement("p", null, initialTab === 'stock-analysis' ? 'Choose a company to build source-linked research, compare evidence over time and prepare an investment visual. Thesis changes remain yours to review.' : 'Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.'), initialTab !== 'stock-analysis' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(InvestmentWorkflowGuide, {
+  }, initialTab === 'stock-analysis' ? 'COMPANIES / RESEARCH & EVIDENCE' : 'INVESTMENT CASE / YOUR ASSUMPTIONS'), /*#__PURE__*/React.createElement("h2", null, reviewingAssignment ? active + ' · Research review' : initialTab === 'stock-analysis' ? 'Stock analysis.' : 'Investment thesis workspace.'), !reviewingAssignment && /*#__PURE__*/React.createElement("p", null, initialTab === 'stock-analysis' ? 'Choose a company to build source-linked research, compare evidence over time and prepare an investment visual. Thesis changes remain yours to review.' : 'Record what you believe, the evidence against it, and the next test. These are your working assumptions. Manual source references are unverified; accepted research links retain the original excerpt and its provenance.'), initialTab !== 'stock-analysis' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(InvestmentWorkflowGuide, {
     api: api,
     active: active,
     onNavigate: setWorkspaceTab
@@ -193,7 +194,9 @@ export function InvestmentCase({
       setWorkspaceTab('reviews');
       load(t);
     }
-  })), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("details", {
+    open: !reviewingAssignment
+  }, /*#__PURE__*/React.createElement("summary", null, "Company & workspace"), /*#__PURE__*/React.createElement("div", {
     className: "desk-filter"
   }, /*#__PURE__*/React.createElement("label", null, "Company", /*#__PURE__*/React.createElement("input", {
     list: "investment-case-tickers",
@@ -210,7 +213,7 @@ export function InvestmentCase({
   }))), /*#__PURE__*/React.createElement("button", {
     disabled: busy || dirty || !ticker.trim(),
     onClick: load
-  }, "Open investment case")), dirty && /*#__PURE__*/React.createElement("p", null, "Save your edits before switching companies. To discard them, use ", /*#__PURE__*/React.createElement("button", {
+  }, "Open investment case"))), dirty && /*#__PURE__*/React.createElement("p", null, "Save your edits before switching companies. To discard them, use ", /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => {
       setDirty(false);
@@ -218,7 +221,9 @@ export function InvestmentCase({
     }
   }, "Allow reload without saving"), "."), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, message), active && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, message), active && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
+    open: !reviewingAssignment
+  }, /*#__PURE__*/React.createElement("summary", null, "Explore ", active), /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("h3", null, active, " \xB7 ", revision ? `Revision ${revision}` : 'New investment case'), /*#__PURE__*/React.createElement("span", null, dirty ? 'Unsaved changes' : 'Saved working assumptions')), /*#__PURE__*/React.createElement("nav", {
     className: "lifecycle-tabs",
@@ -227,7 +232,7 @@ export function InvestmentCase({
     key: id,
     "aria-pressed": workspaceTab === id,
     onClick: () => setWorkspaceTab(id)
-  }, label))), workspaceTab === 'model' && /*#__PURE__*/React.createElement(OperatingModel, {
+  }, label)))), workspaceTab === 'model' && /*#__PURE__*/React.createElement(OperatingModel, {
     key: active,
     api: api,
     ticker: active,

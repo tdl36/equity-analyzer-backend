@@ -285,15 +285,15 @@ export function StockAnalysis({
     busy
   };
   return /*#__PURE__*/React.createElement("section", {
-    className: "stock-analysis",
+    className: 'stock-analysis' + (assignmentFocus ? ' assignment-focused' : ''),
     "aria-label": "Stock analysis"
-  }, /*#__PURE__*/React.createElement("style", null, styles), /*#__PURE__*/React.createElement("header", {
+  }, /*#__PURE__*/React.createElement("style", null, styles), !assignmentFocus && /*#__PURE__*/React.createElement("header", {
     className: "sa-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
-  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement("details", {
-    open: !focusId
-  }, /*#__PURE__*/React.createElement("summary", null, focusId ? 'Related assignments and new research' : 'Collect originals and prepare drafts'), /*#__PURE__*/React.createElement(ResearchAssignment, {
+  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Saved assignments"
+  }, /*#__PURE__*/React.createElement(ResearchAssignment, {
     focusId: assignmentFocus,
     onClearFocus: () => onWorkChange?.(''),
     api: api,

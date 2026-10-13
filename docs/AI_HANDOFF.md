@@ -2,6 +2,28 @@
 
 Updated: October 12, 2026
 
+## T238 — saved assignment review workspace
+
+Saved assignment links now open a review workspace directly, with the first saved
+deliverable loaded automatically. Current recovered outputs take precedence over
+preserved automated outputs. One-pager, stock summary and thesis changes have
+separate keyboard-accessible tabs; additional saved notes/meeting questions remain
+available. Thesis decisions link to the existing review screen; previewing approves
+nothing. Reading panes provide download/print, explicit loading and retry states,
+and abort obsolete requests when switching documents. No generation calls occur.
+
+Completed assignments collapse sources/progress/history and earlier failure/output
+controls beneath the current deliverables. New research is a separate section on
+the assignment list. Focused review collapses company/workspace navigation and
+removes nested mobile padding. Partial job recovery controls remain available.
+
+Validation: 156 frontend tests, production build and unchanged-model policy gate
+against 75097e5 passed. Isolated mocked full-app checks at 390/1280px verified auto
+preview, original/recovered precedence, summary failure/retry, thesis destination,
+HTML download and no horizontal overflow; all observed API calls were GETs. No
+paid research or approval. Backend unchanged; prior 1326-test safe suite remains
+applicable. Deployment/live preview verification follows.
+
 ## T237 — research alerts independent of Activity backlog
 
 The global research banner now reads a dedicated failure inventory. Unrelated
