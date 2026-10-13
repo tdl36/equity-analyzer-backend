@@ -21,6 +21,16 @@ corrupt state, failed reservation persistence and ambiguous network outcomes.
 No paid QA, investor approvals or original-document changes. Deployment receipt
 will be recorded after backend, hosted assets and Mac agent verification.
 
+### T234 deployment verified — 2026-10-13 19:16 UTC
+
+Backend health reports c7c710336e2d9bf6eb2e0b14c12f7659b60d6603.
+Cloudflare deployment dccaa58f-e82e-4ea6-bdf3-7cb91fd72170 serves exact local
+app.js and service-worker bytes. Agent was restarted after confirming no running
+pipeline/audio work; its heartbeat is current (4.1 seconds at verification).
+The transient Render 502 during replacement cleared. No paid synthesis was
+started for verification. This bounds the observed duplicate-spend paths; broader
+job recovery and the eight-priority acceptance work remain incomplete.
+
 ## T233 — verified original-page editorial evidence
 
 ABT recovery exposed an older report whose frozen model excerpts omitted the
