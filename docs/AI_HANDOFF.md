@@ -16,6 +16,13 @@ below 180px, expansion retains the complete message, and verified the ABT review
 flow still loads/retries/downloads with GET-only requests and no overflow. Backend
 unchanged; no paid research, approval or job mutation. Deployment receipt follows.
 
+### T239 verified — 2026-10-13 21:44 UTC
+
+Backend revision d07e3b107c4cca227bc64fff65bb8469291792f5 healthy.
+Cloudflare f69730eb-3021-4655-b771-457cf084fe21 serves exact tested app and service-worker
+bytes. Agent healthy (24.4 seconds), unchanged; no restart. Temporary Render
+replacement 502 cleared. Existing unresolved jobs and research were preserved.
+
 ## T238 — saved assignment review workspace
 
 Saved assignment links now open a review workspace directly, with the first saved
