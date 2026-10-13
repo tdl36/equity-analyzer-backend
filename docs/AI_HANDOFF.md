@@ -2,6 +2,23 @@
 
 Updated: October 12, 2026
 
+## T233 — verified original-page editorial evidence
+
+ABT recovery exposed an older report whose frozen model excerpts omitted the
+reviewed valuation pages. Pending editorial corrections may now explicitly name
+`originalPage` (physical PDF page), independently extracted from the exact verified
+original bytes. This never expands or changes automated report context/citations.
+Current usage policy, bytes, bounded PDF/page/text limits and exact passage matching
+are rechecked at submission, edition replay and preview. Old corrections retain
+their original contract; all new wording remains pending investor review.
+The recovery brief also preserves the report's actual named scenario order.
+
+Validation: 1291 full safe backend tests plus the new edition replay regression;
+149 frontend tests, compile, model policy gate and production build passed.
+ABT's new pending thesis is saved; the 47-claim original-page edition and final
+assignment receipt will be verified after this deployment. Earlier partial correction
+receipts remain preserved in their private workspace; no paid model calls or approvals.
+
 ## T232 — ABT manual recovery package delivery
 
 Adds an explicit saved-review-package handoff for blocked summary/thesis/visual

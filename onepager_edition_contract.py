@@ -88,8 +88,9 @@ def prepare_edition(run, assignment, body, corrections, documents, fundamentals,
             raise ValueError('Select only one correction for each claim.')
         replay = {name: proposal.get(name) for name in
                   ('path', 'statement', 'basis', 'reason', 'sourceId', 'excerpt', 'locator')}
+        if 'originalPage' in proposal:replay['originalPage']=proposal['originalPage']
         if 'additionalEvidence' in proposal:
-            replay['additionalEvidence']=[{k:e.get(k) for k in ('sourceId','excerpt','locator')} for e in proposal['additionalEvidence']]
+            replay['additionalEvidence']=[{k:e[k] for k in ('sourceId','excerpt','locator','originalPage') if k in e} for e in proposal['additionalEvidence']]
         replay.update(requestId=key, fingerprint=current['fingerprint'])
         _, signature, checked = prepare(run, replay, documents)
         if row.get('payload_hash') != signature or proposal != checked:

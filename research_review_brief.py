@@ -23,7 +23,10 @@ def render(run, assignment, *, preview):
     blocks+=section('Valuation discipline',['/valuation/summary','/valuation/metrics/0/historical_range','/valuation/metrics/0/peer_reference'])
     blocks+=section('Next evidence to watch',['/monitor/kpis/0/current','/monitor/kpis/0/bull_threshold','/monitor/kpis/0/bear_threshold','/monitor/kpis/0/timing'])
     rows=''
-    for i,name in enumerate(['Bull','Base','Bear']):
+    names=[str(row.get('name','')).strip().title() for row in derived.get('state',{}).get('report',{}).get('scenarios',[])]
+    if len(names)!=3 or set(names)!={'Bull','Base','Bear'}:
+        raise ValueError('Recovery brief requires three distinct named scenarios.')
+    for i,name in enumerate(names):
         root=f'/scenarios/{i}/'
         rows+='<tr><th>'+name+'</th><td>'+field(root+'business_conditions')+'</td><td>'+field(root+'eps_or_fcf')+'<br>'+field(root+'valuation_multiple')+'</td><td>'+field(root+'implied_value')+'<br>'+field(root+'upside_downside')+'</td></tr>'
     short=' · '.join('['+str(i)+'] '+esc(s['filename'].split('--')[0].replace('ABT-','').replace('-original','').replace('.pdf','')) for i,s in enumerate(sources,1))

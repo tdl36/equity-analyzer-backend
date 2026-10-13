@@ -2,6 +2,8 @@
 import hashlib
 import json
 import uuid
+import io
+from PyPDF2 import PdfReader
 from flask import Blueprint, jsonify, request
 from onepager_editorial_fields import editable_fields
 from company_research import eligible
@@ -31,12 +33,15 @@ def submission_evidence(body):
     if not isinstance(extra,list) or ('additionalEvidence' in body and not 1<=len(extra)<=7):
         raise ValueError('Add between one and seven additional originals.')
     items=[{k:body.get(k) for k in ('sourceId','excerpt','locator')}]
+    if 'originalPage' in body:items[0]['originalPage']=body['originalPage']
     for item in extra:
-        if not isinstance(item,dict) or set(item)!={'sourceId','excerpt','locator'}:
-            raise ValueError('Additional evidence must contain only source ID, passage and locator.')
+        if not isinstance(item,dict) or set(item)-{'originalPage'}!={'sourceId','excerpt','locator'}:
+            raise ValueError('Additional evidence requires source ID, passage and locator, with an optional physical original page.')
         items.append(item)
     ids=[]
     for item in items:
+        if 'originalPage' in item and (type(item['originalPage']) is not int or not 1<=item['originalPage']<=300):
+            raise ValueError('Original page must be a physical PDF page between 1 and 300.')
         if not isinstance(item['sourceId'],str) or not item['sourceId'] or item['sourceId'] in ids:
             raise ValueError('Choose distinct frozen originals for each evidence passage.')
         ids.append(item['sourceId'])
@@ -46,8 +51,23 @@ def submission_evidence(body):
     return items
 
 
+def original_page_text(raw,filename,page):
+    """Explicit editorial evidence only; never expand a model's frozen context."""
+    if not filename.lower().endswith('.pdf') or len(raw)>20_000_000:
+        raise ValueError('Original-page evidence requires a PDF within the 20 MB bound.')
+    try:
+        reader=PdfReader(io.BytesIO(raw))
+        if reader.is_encrypted or len(reader.pages)>300 or page>len(reader.pages):
+            raise ValueError('Original-page evidence is encrypted or outside the page bound.')
+        text=reader.pages[page-1].extract_text() or ''
+        if not text.strip() or len(text)>100000:raise ValueError('Original page has no bounded readable text.')
+        return text
+    except Exception:
+        raise ValueError('The specified original PDF page could not be verified. Inspect the original.') from None
+
+
 def prepare(run,body,document):
-    if not isinstance(body,dict) or set(body)-{'additionalEvidence'}!={'requestId','fingerprint','path','statement','basis','reason','sourceId','excerpt','locator'}:
+    if not isinstance(body,dict) or set(body)-{'additionalEvidence','originalPage'}!={'requestId','fingerprint','path','statement','basis','reason','sourceId','excerpt','locator'}:
         raise ValueError('Use the correction form; unknown review or approval fields are not accepted.')
     try:identity=str(uuid.UUID(body['requestId']))
     except (ValueError,TypeError,AttributeError):raise ValueError('Invalid correction identity.') from None
@@ -65,15 +85,21 @@ def prepare(run,body,document):
         if not source:raise ValueError('Choose a source from this frozen report.')
         doc=document.get(source['filename']) if isinstance(document,dict) and 'file_data' not in document else document
         if not doc or not eligible(doc.get('metadata') or {}):raise ValueError('The source is unavailable or restricted. Restore eligible original evidence before submitting.')
-        verified_original(source,doc,(run.get('input',{}).get('hashes') or {}).get(source['filename']))
+        raw=verified_original(source,doc,(run.get('input',{}).get('hashes') or {}).get(source['filename']))
+        evidence_text=str(source.get('text') or '')
+        if 'originalPage' in item:
+            evidence_text=original_page_text(raw,source['filename'],item['originalPage'])
         excerpt=' '.join(item['excerpt'].split())
-        if len(excerpt)<30 or excerpt not in ' '.join(str(source.get('text') or '').split()):
-            raise ValueError('The passage was not matched in this report’s frozen extracted source. Inspect the original; do not substitute another source.')
+        if len(excerpt)<30 or excerpt not in ' '.join(evidence_text.split()):
+            raise ValueError('The passage was not matched in the selected frozen text or explicit original page. Inspect the original; do not substitute another source.')
         checked.append({**item,'filename':source['filename'],'sha256':source['originalHash']})
     proposal={k:body[k] for k in ('path','statement','basis','reason','sourceId','excerpt','locator')}
     proposal.update(before=fields[body['path']],filename=checked[0]['filename'],sha256=checked[0]['sha256'],
                     passageMatched=True,review='pending',
                     caveat='Passage matches frozen extracted text and original bytes. Claim meaning, completeness and locator still require investor review. No research or thesis was changed.')
+    if 'originalPage' in body:proposal['originalPage']=body['originalPage']
+    if any('originalPage' in item for item in checked):
+        proposal['caveat']='Explicit original-page evidence was independently extracted from the verified PDF bytes. It may be outside the automated report context. The report and its citations are unchanged; claim meaning and completeness require investor review.'
     if 'additionalEvidence' in body:proposal['additionalEvidence']=checked[1:]
     return identity,digest(body),proposal
 

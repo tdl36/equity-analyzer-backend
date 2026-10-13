@@ -13,8 +13,8 @@ class RecoveryBriefTests(unittest.TestCase):
  def test_complete_selected_claims_keep_pending_labels_references_and_escape(self):
   class Claims(dict):
    def get(self,path):return {'statement':'<script>Conditional assumption</script>','reviewOrigin':'pending_editorial','evidence':[{'sourceId':'s','matched':True}]}
-  run={'ticker':'TEST','id':'report','sources':[{'id':'s','filename':'source.pdf','originalHash':'hash'}]}
+  run={'state':{'report':{'scenarios':[{'name':'Bear'},{'name':'Base'},{'name':'Bull'}]}},'ticker':'TEST','id':'report','sources':[{'id':'s','filename':'source.pdf','originalHash':'hash'}]}
   with patch('research_review_brief.check_render_inputs'),patch('research_review_brief.render_evidence',return_value=(run,Claims())):
    text=render(run,{'since':'2026-01-01','until':'2026-10-11'},preview=SimpleNamespace(edition_id='edition'))
-  self.assertIn('Pending investor review',text);self.assertIn('author assumptions, not targets',text)
+  self.assertIn('<tr><th>Bear</th>',text);self.assertIn('Pending investor review',text);self.assertIn('author assumptions, not targets',text)
   self.assertNotIn('<script>',text);self.assertIn('&lt;script&gt;',text);self.assertIn('[1]',text)
