@@ -2,6 +2,36 @@
 
 Updated: October 12, 2026
 
+## T236 — Summary Lab original-document review (prepared; deployment pending)
+
+Document intake preserves exact original bytes and hashes on the backend. PDF
+parts carry every page (five per part), including scanned pages, directly to the
+model; images remain image blocks. Both source review and each section check
+receive those originals. Visual observations are explicitly model interpretations,
+not text-matched quotations. Source-part labels map back to filenames/page ranges.
+Original downloads remain authenticated. Resumes verify original and preparation
+hashes, retaining checkpoints. Repeated document submissions share an explicit
+request identity; altered payloads cannot reuse it or dispatch a second paid job.
+
+Word/PowerPoint/Excel intake includes structured text, cached chart data and
+embedded supported images. Office layouts/chart appearances are not rendered;
+formulas are not recalculated. The UI requires acknowledging these limits and
+source-pass costs before Generate; PDF export is the alternative for visual
+fidelity. Unsupported embedded objects/diagrams/formats fail explicitly. Text,
+Markdown, CSV/TSV, JSON and HTML are supported; HTML external resources are not
+fetched. Audio/YouTube retain existing transcription workflows. Limits: 8 files,
+20 MB/file, 80 MB total, 40 review parts, 200 pages per PDF. No silent truncation.
+Import uses no model call. Models, token caps and active text jobs are unchanged.
+
+Validation: six synthetic document regressions (scanned page coverage, visual
+passes/checkpoint replay, Office images, Excel coordinates/formulas, original
+bytes, explicit acknowledgment and duplicate submission), 1325 safe backend
+tests and 153 frontend tests passed. Build, compile and model-policy gate against
+75097e5 passed. Isolated mocked browser checks passed at 390px and 1280px with
+no overflow and no paid calls. Deployment is held while the user's resumed UNH
+experiment 8f9c42a0-a1b7-40a2-aecc-24a788e70e97 is actively running. Do not restart
+it, retry it, or describe this feature as released before production verification.
+
 ## T235 — shared provider credentials across devices
 
 Charlie resolves Anthropic, Gemini and OpenAI credentials centrally for browser,

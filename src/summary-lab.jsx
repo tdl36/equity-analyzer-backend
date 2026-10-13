@@ -14,6 +14,8 @@ const statusOf=r=>r.status==='complete'?['Ready to review','ok']
 export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  const [sharing,setSharing]=useState(false),[edits,setEdits]=useState({}),[sending,setSending]=useState(false);
  const [sources,setSources]=useState([]),[runs,setRuns]=useState([]),[id,setId]=useState(''),[row,setRow]=useState(null),[sid,setSid]=useState(''),[source,setSource]=useState(''),[title,setTitle]=useState(''),[focus,setFocus]=useState(''),[compare,setCompare]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[feedback,setFeedback]=useState(''),[notice,setNotice]=useState(''),[importing,setImporting]=useState(false),[importStatus,setImportStatus]=useState('');
+ const [documents,setDocuments]=useState([]),[coverageAccepted,setCoverageAccepted]=useState(false);
+ const documentRequest=useRef(null);
  const [intake,setIntake]=useState('saved'),[audioFile,setAudioFile]=useState(null),[youtubeUrl,setYoutubeUrl]=useState(''),[youtubeTicker,setYoutubeTicker]=useState(''),[youtubeKorean,setYoutubeKorean]=useState(false),[youtubeKoreanOnly,setYoutubeKoreanOnly]=useState(false),[ingest,setIngest]=useState(null);
  const [expanded,setExpanded]=useState({brief:true,takeaways:true,meeting:false,questions:false,assessment:false,korean:true});
  // Citations stay in the text and in every export; the reader chooses whether
@@ -28,7 +30,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  const markerMode=showSrc?'inline':'strip';
  const [labModels,setLabModels]=useState([]),[model,setModel]=useState('');
  const [defaultModelId,setDefaultModelId]=useState('');
- const audioInput=useRef(null),monitoring=useRef('');
+ const audioInput=useRef(null),documentInput=useRef(null),monitoring=useRef('');
  // With no experiment open the composer is the whole job, so it gets the page.
  // While reading, a 654px form should not compete with the note.
  const reading=!!(row||id),showComposer=!reading||composerOpen;
@@ -44,31 +46,38 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  // The pending job lives in localStorage, so every tab and every reload
  // resumes it; without the reference each one starts its own paid experiment.
  async function startLab(summaryId,labTitle,outputMode='english',labFocus=focus,sourceJobId){
-  const d=await req('',{summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,model:model||undefined,apiKey:getKey()});
+  const documentMode=!summaryId&&intake==='document';
+  const signature=JSON.stringify([documents.map(d=>d.id),labTitle||title,labFocus,model,outputMode]);
+  if(documentMode&&documentRequest.current?.signature!==signature)documentRequest.current={signature,id:crypto.randomUUID()};
+  const d=await req('',{...(documentMode?{documentIds:documents.map(d=>d.id),documentCoverageAccepted:coverageAccepted,requestId:documentRequest.current.id}:{}),summaryId:summaryId||undefined,source:summaryId?undefined:source,title:(labTitle||title).trim()||'Untitled experiment',focus:labFocus,outputMode,sourceJobId,model:model||undefined,apiKey:getKey()});
   setId(d.id);await refreshLists();return d;
  }
- async function start(){setBusy(true);setError('');setNotice('');try{await startLab(sid||undefined,title,'english',focus);}catch(e){setError(e.message);}finally{setBusy(false);}}
+ async function start(){setBusy(true);setError('');setNotice('');try{await startLab(intake==='saved'?(sid||undefined):undefined,title,'english',focus);}catch(e){setError(e.message);}finally{setBusy(false);}}
 
- async function importCloud(){
+ async function importCloud(providedFiles){
   setImporting(true);setError('');setImportStatus('Choose documents from iCloud…');
   try{
-   const files=await pickFromICloud({mode:'bytes',title:'Summary Lab · choose iCloud documents'});
+   const files=Array.isArray(providedFiles)?providedFiles:await pickFromICloud({mode:'bytes',title:'Summary Lab · choose iCloud documents'});
    if(!files?.length){setImportStatus('');return;}
+   if(files.length>8||files.reduce((n,f)=>n+f.size,0)>80*1024*1024)throw Error('Choose at most 8 files totaling 80 MB.');
    const records=[];
    for(let i=0;i<files.length;i++){
     const file=files[i];setImportStatus(`Reading ${i+1} of ${files.length}: ${file.name}`);
-    if(!/\.(pdf|docx|txt|md|csv|png|jpe?g|webp)$/i.test(file.name))throw Error(`${file.name}: choose PDF, DOCX, text or image documents.`);
-    const form=new FormData();form.append('files',file);form.append('apiKey',getKey()||'');
-    const response=await fetch(`${api}/api/extract-summary-text`,{method:'POST',body:form,signal:AbortSignal.timeout(120000)});const data=await response.json();
-    if(!response.ok||!data.text?.trim()||/^\[(Error processing|Unsupported file type|Image file:)/.test(data.text.trim()))throw Error(`${file.name}: ${data.error||'No readable text was extracted. Try a text-searchable PDF or paste the text.'}`);
-    records.push(`=== SOURCE: ${file.name} ===\n${data.text}`);
+    const form=new FormData();form.append('file',file);
+    const response=await fetch(`${api}/api/summary-lab/documents`,{method:'POST',body:form,signal:AbortSignal.timeout(120000)});const data=await response.json();
+    if(!response.ok)throw Error(`${file.name}: ${data.error||'Document import failed.'}`);
+    if(!records.some(d=>d.id===data.id))records.push(data);
    }
-   setSid('');setSource(records.join('\n\n'));if(!title.trim())setTitle(files[0].name.replace(/\.[^.]+$/,'').slice(0,300));
+   if(records.length>8||records.reduce((n,d)=>n+d.partCount,0)>40)throw Error('Choose at most 8 documents and 40 review parts in one experiment.');
+   setSid('');setSource('');setDocuments(records);setCoverageAccepted(false);documentRequest.current=null;if(!title.trim())setTitle(files[0].name.replace(/\.[^.]+$/,'').slice(0,300));
    setImportStatus(`Imported ${files.length} document${files.length===1?'':'s'}. Ready to generate.`);
   }catch(e){setError(`${e.message} No imported documents were applied; your previous source is preserved.`);setImportStatus('Import did not finish.');}
   finally{setImporting(false);}
  }
 
+ async function downloadOriginal(d){
+  try{const r=await fetch(`${api}/api/summary-lab/documents/${d.id}/original`);if(!r.ok)throw Error('Original download failed.');const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=d.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}catch(e){setError(e.message);}
+ }
  async function chooseAudioFromCloud(){
   try{const files=await pickFromICloud({mode:'bytes',title:'Summary Lab · choose one audio file'});const file=files?.[0];if(!file)return;if(!/\.(mp3|mp4|mpeg|mpga|m4a|wav|webm|ogg|flac)$/i.test(file.name))throw Error('Choose an MP3, M4A, WAV, MP4, MPEG, WebM, OGG or FLAC audio file.');setAudioFile(file);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,'').slice(0,300));}catch(e){setError(e.message);}
  }
@@ -190,7 +199,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
   if(window.ClipboardItem&&navigator.clipboard.write)await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([plain],{type:'text/plain'})})]);else await navigator.clipboard.writeText(plain);setNotice('Formatted notes copied.');
  }catch{setError('Clipboard unavailable. Select the note text to copy.');}}
  function download(){const url=URL.createObjectURL(new Blob([JSON.stringify(row,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`Summary-Lab-${id}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
- const canGenerate=(intake==='saved'&&!!sid)||((intake==='paste'||intake==='document')&&!!source.trim());
+ const canGenerate=(intake==='saved'&&!!sid)||(intake==='paste'&&!!source.trim())||(intake==='document'&&documents.length>0&&coverageAccepted);
 
  return <main className={showSrc?"summary-lab show-src":"summary-lab"}>
  <style>{`.summary-lab{box-sizing:border-box;--lab-border:var(--line,rgba(153,142,119,.35));--lab-accent:var(--accent,#c9a857);--lab-accent-ink:var(--accent-ink,#18150f);--lab-field:var(--surface,var(--bg-secondary,#211e18));--lab-paper:#fff;--lab-paper-ink:#242424;--lab-paper-line:#dedbd4;--lab-paper-faint:#8a8577;max-width:1500px;margin:0 auto;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding:32px;color:var(--text-primary,#e9e2d3);width:100%;min-width:0}.summary-lab *{box-sizing:border-box}.summary-lab h1,.summary-lab h2{font-family:Georgia,serif;line-height:1.2}.summary-lab h1{font-size:38px;margin:8px 0 14px}.summary-lab h2{font-size:24px;margin:0 0 18px}.summary-lab p{line-height:1.65}.summary-lab .muted{opacity:.72;font-size:13px}.summary-lab .eyebrow{color:var(--lab-accent);letter-spacing:.13em;text-transform:uppercase;font-size:11px}.summary-lab .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:24px;margin-top:28px}.summary-lab .layout.idle{grid-template-columns:minmax(0,1fr);max-width:900px;margin-left:auto;margin-right:auto}.summary-lab .layout.idle .intake-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.summary-lab .field-pair{display:grid;gap:0 18px}.summary-lab .layout.idle .field-pair{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-lab .layout.idle .dropzone{padding:26px}.summary-lab .panel{border:1px solid var(--lab-border);border-radius:14px;padding:24px;background:rgba(127,115,89,.045);min-width:0}.summary-lab label{display:block;font-size:13px;margin:16px 0 6px}.summary-lab input,.summary-lab select,.summary-lab textarea{width:100%;padding:11px;border:1px solid var(--lab-border);border-radius:7px;background:var(--lab-field);color:inherit;font:inherit;min-width:0}.summary-lab .check-row{display:flex;align-items:flex-start;gap:9px;margin:14px 0 0;line-height:1.45;cursor:pointer}.summary-lab .check-row.nested{margin:9px 0 0 26px}.summary-lab .check-row input[type=checkbox]{width:17px;height:17px;min-width:17px;margin:1px 0 0;padding:0;accent-color:var(--lab-accent)}.summary-lab select option{background:var(--lab-field);color:var(--text-primary,#e9e2d3)}.summary-lab button{padding:10px 14px;min-height:44px;border:1px solid var(--lab-border);border-radius:7px;font:inherit;cursor:pointer;background:transparent;color:inherit}.summary-lab button:focus-visible,.summary-lab input:focus-visible,.summary-lab textarea:focus-visible,.summary-lab select:focus-visible{outline:2px solid var(--lab-accent);outline-offset:3px}.summary-lab button:disabled{opacity:.45;cursor:default}.summary-lab button.primary,.summary-lab button[aria-pressed=true]{background:var(--lab-accent);color:var(--lab-accent-ink)}.summary-lab .controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.summary-lab .intake-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:16px}.summary-lab .intake-grid button{padding:8px;min-height:38px;font-size:12px}.summary-lab .dropzone{padding:18px;border:1px dashed var(--lab-border);border-radius:10px;text-align:center;background:color-mix(in srgb,var(--lab-accent) 4%,transparent)}.summary-lab .experiment{display:block;width:100%;text-align:left;margin:10px 0;overflow-wrap:anywhere}
@@ -237,7 +246,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  </div>}
  {showComposer&&<section className="panel"><h2>Add a source</h2><div className="intake-grid" role="group" aria-label="Source type">{INTAKES.map(([key,label])=><button key={key} aria-pressed={intake===key} onClick={()=>{setIntake(key);setError('');}}>{label}</button>)}</div>
  {intake==='saved'&&<><label htmlFor="lab-source">Saved transcript or document</label><select id="lab-source" value={sid} onChange={e=>setSid(e.target.value)}><option value="">Choose a saved Summary…</option>{sources.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select></>}
- {intake==='document'&&<><div className="dropzone"><strong>PDF, Word, text or image</strong><p className="muted">Choose one or several documents from the same connected iCloud sources.</p><button disabled={busy||importing} onClick={importCloud}>{importing?'Importing…':'Browse iCloud documents'}</button></div>{importStatus&&<p role="status" className="muted">{importStatus}</p>}{source&&<><label htmlFor="lab-document-text">Extracted source text</label><textarea id="lab-document-text" rows={6} value={source} onChange={e=>setSource(e.target.value)}/><p className="muted">{source.length.toLocaleString()} characters · no silent cutoff</p></>}</>}
+ {intake==='document'&&<><div className="dropzone"><strong>PDF, images, Word, PowerPoint, Excel or text</strong><p className="muted">Originals are preserved. PDFs and images are reviewed visually. Office files include structured text, chart data and embedded images; export to PDF when layout or chart appearance matters. Up to 8 files, 20 MB each and 40 review parts. Use Audio for recordings.</p><input ref={documentInput} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.docx,.pptx,.xlsx,.txt,.md,.csv,.tsv,.json,.html" style={{display:'none'}} onChange={e=>{importCloud(Array.from(e.target.files||[]));e.target.value='';}}/><button disabled={busy||importing} onClick={()=>documentInput.current?.click()}>Choose files on this device</button><button disabled={busy||importing} onClick={importCloud}>{importing?'Importing…':'Browse iCloud documents'}</button></div>{importStatus&&<p role="status" className="muted">{importStatus}</p>}{documents.map(d=><div key={d.id} className="panel"><strong>{d.filename}</strong><p>{d.pages?`${d.pages} pages · `:''}{d.partCount} review parts · {d.visualParts} visual parts</p>{d.limitations.map((v,i)=><p key={i} className="muted">{v}</p>)}</div>)}{!!documents.length&&<label className="check-row"><input type="checkbox" checked={coverageAccepted} onChange={e=>setCoverageAccepted(e.target.checked)}/><span>I reviewed the coverage. Generate will start paid analysis: approximately {7*documents.reduce((n,d)=>n+d.partCount,0)} source-reading/checking calls plus section drafting and revision. Visual pages add input tokens; actual cost is recorded. Import itself uses no model calls.</span></label>}</>}
  {intake==='paste'&&<><label htmlFor="lab-text">Complete source text</label><textarea id="lab-text" rows={9} value={source} onChange={e=>setSource(e.target.value)} placeholder="Paste a transcript or document text…"/><p className="muted">{source.length.toLocaleString()} characters · no silent cutoff</p></>}
  {intake==='audio'&&<><input ref={audioInput} type="file" hidden accept=".mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm,.ogg,.flac" onChange={e=>{const file=e.target.files?.[0];if(file){setAudioFile(file);if(!title.trim())setTitle(file.name.replace(/\.[^.]+$/,'').slice(0,300));}}}/><div className="dropzone"><strong>{audioFile?.name||'Audio recording'}</strong><p className="muted">MP3, M4A, WAV, MP4, MPEG, WebM, OGG or FLAC. The full transcript is saved before improved analysis begins.</p><div className="controls"><button onClick={()=>audioInput.current?.click()}>Choose file</button><button onClick={chooseAudioFromCloud}>Browse iCloud</button></div>{audioFile&&<p className="muted">{(audioFile.size/1024/1024).toFixed(1)} MB</p>}</div>{!getGeminiKey?.()&&<p className="muted">Audio transcription requires the Gemini key configured in Settings.</p>}</>}
  {intake==='youtube'&&<><label htmlFor="lab-youtube">YouTube link</label><input id="lab-youtube" type="url" value={youtubeUrl} onChange={e=>setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…"/><label htmlFor="lab-youtube-ticker">Ticker · optional</label><input id="lab-youtube-ticker" value={youtubeTicker} maxLength={8} onChange={e=>setYoutubeTicker(e.target.value.toUpperCase())} placeholder="ABT"/><label className="check-row"><input type="checkbox" checked={youtubeKorean} onChange={e=>{setYoutubeKorean(e.target.checked);if(!e.target.checked)setYoutubeKoreanOnly(false);}}/><span><strong>한국어 핵심 정리도 함께 생성</strong><br/><span className="muted">English analysis plus a source-reviewed Korean interpretation.</span></span></label>{youtubeKorean&&<label className="check-row nested"><input type="checkbox" checked={youtubeKoreanOnly} onChange={e=>setYoutubeKoreanOnly(e.target.checked)}/><span><strong>한국어만 생성</strong><br/><span className="muted">Skip the five English sections and generate only the Korean interpretation.</span></span></label>}<p className="muted">Charlie retrieves the available transcript through your connected Mac, saves it, then starts the improved analysis in the selected language.</p></>}
@@ -253,6 +262,7 @@ export function SummaryLab({api,getKey,getGeminiKey,renderHtml,pickFromICloud}){
  </div>
  <p className="muted">Thorough review makes several passes over the complete source. Long transcripts take longer and remain saved if you leave.</p>
  {intake==='audio'?<button className="primary" disabled={busy||!audioFile||!getGeminiKey?.()} onClick={processAudio}>{busy?'Starting…':'Transcribe and analyze'}</button>:intake==='youtube'?<button className="primary" disabled={busy||!youtubeUrl.trim()} onClick={processYoutube}>{busy?'Starting…':'Fetch transcript and analyze'}</button>:<button className="primary" disabled={busy||importing||!canGenerate} onClick={start}>{busy?'Starting…':'Generate all six sections'}</button>}</section>}
+ {reading&&row?.state?.documents&&<section className="panel"><h2>Original source coverage</h2>{(row.state.sourceParts||[]).map(p=><p key={p.id}>[{p.id}] {p.label} · {p.visual?'visual review':'text review'}</p>)}{row.state.documents.map(d=><p key={d.id}><button onClick={()=>downloadOriginal(d)}>Download {d.filename}</button> · {d.limitations.join(' ')}</p>)}</section>}
  {!reading&&<section className="panel" style={{marginTop:20}}>
   <div className="panel-head"><h2 style={{margin:0}}>{archivedView?'Archived':'Experiments'}</h2>
    <button className="quiet" aria-pressed={archivedView} onClick={()=>{setArchivedView(v=>!v);setSelected([]);setNotice('');}}>{archivedView?'Show active':'Show archived'}</button></div>
