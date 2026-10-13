@@ -28784,7 +28784,11 @@ def analysts_queue_catalyst_activity():
                     (activity_type == 'earnings_recap' and run_earnings)
                     or (activity_type == 'takeaway' and run_takeaways)
                 )
-                if should_run and still_valid and data.get('deferAutomaticRun') is not True:
+                # A folder watcher already created a synthesis or a proposal.
+                # Routing that item to an analyst must not independently start
+                # another paid recap, including when global Auto-Pilot is off.
+                # Keep the activity available for an explicit manual decision.
+                if should_run and still_valid and not catalyst_job_id and data.get('deferAutomaticRun') is not True:
                     _, dispatch_status = _dispatch_activity_run(act_id)
                     auto_ran = dispatch_status == 200
             except Exception as _e:

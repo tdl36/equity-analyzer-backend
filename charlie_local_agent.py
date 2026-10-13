@@ -2965,31 +2965,36 @@ def check_for_new_audio():
 # ------------------------------------------------------------------------------
 # AUTOMATED CATALYST SYNTHESIS
 # Watches CATALYSTS/{TICKER}/{topic}/ folders and auto-fires a synthesis job
-# when docs are added/updated, with debounce + per-topic cooldown.
+# once per new folder; subsequent changes become reviewable proposals.
 # ------------------------------------------------------------------------------
 
 CATALYST_AUTO_STATE_FILE = Path.home() / "Library/Application Support/charlie-agent/auto-catalyst-state.json"
 CATALYST_AUTO_DEBOUNCE_S = 120     # wait this long after last file change before firing
-# Removed COOLDOWN. Fingerprint match (same files) blocks re-fire on its own,
-# and the 2-minute debounce catches in-progress file drops. The old 15-min
-# cooldown also blocked legit "delete folder, recreate with new files" flows
-# which a single user actively iterating on a catalyst hits constantly.
+# Fingerprints suppress unchanged revisions. The quiet period is not proof
+# that an upload batch is complete. A durable reservation bounds automatic
+# spending to one attempt per folder, including ambiguous network outcomes.
 # Supported types are shared with the synthesis reader in catalyst_sources.
 
 
 def _load_catalyst_auto_state() -> dict:
     try:
         if CATALYST_AUTO_STATE_FILE.exists():
-            return json.loads(CATALYST_AUTO_STATE_FILE.read_text())
+            value = json.loads(CATALYST_AUTO_STATE_FILE.read_text())
+            if not isinstance(value, dict):
+                raise ValueError('Catalyst watcher state must be an object')
+            return value
     except Exception as e:
-        log.debug(f"auto-catalyst state load failed: {e}")
+        # Losing spend reservations must not turn existing folders into new work.
+        raise RuntimeError('Catalyst watcher state needs recovery; automatic processing stopped') from e
     return {}
 
 
 def _save_catalyst_auto_state(state: dict) -> None:
     try:
         CATALYST_AUTO_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CATALYST_AUTO_STATE_FILE.write_text(json.dumps(state, indent=2))
+        temporary = CATALYST_AUTO_STATE_FILE.with_suffix('.json.part')
+        temporary.write_text(json.dumps(state, indent=2))
+        temporary.replace(CATALYST_AUTO_STATE_FILE)
     except Exception as e:
         log.debug(f"auto-catalyst state save failed: {e}")
 
@@ -3013,9 +3018,8 @@ def _fetch_catalyst_auto_mode() -> dict:
 
 
 def check_for_catalyst_auto_synth() -> None:
-    """Scan CATALYSTS/{TICKER}/{topic}/ folders and auto-fire synthesis jobs
-    when files change. Uses a debounce + cooldown to avoid firing while the
-    user is still dropping files, and to avoid duplicate synths."""
+    """Scan catalyst folders after a quiet period. Reserve at most one
+    automatic attempt per folder; subsequent revisions require review."""
     if not CATALYSTS_DIR.exists():
         return
     now = time.time()
@@ -3053,6 +3057,9 @@ def check_for_catalyst_auto_synth() -> None:
                 prior_fingerprint = entry.get('fingerprint', '')
                 prior_job_id = entry.get('catalyst_job_id')
                 prior_routed = bool(entry.get('analyst_routed'))
+                # A changing folder is not a new authorization to spend again.
+                # Migrate previously handled folders conservatively to review.
+                automatic_attempted = bool(entry.get('automatic_attempted') or prior_fired > 0)
                 fingerprint = catalyst_fingerprint(sources)
                 from catalyst_sources import already_dispatched
                 try:
@@ -3077,6 +3084,7 @@ def check_for_catalyst_auto_synth() -> None:
                     'last_file_count': len(source_files),
                     'catalyst_job_id': prior_job_id,
                     'analyst_routed': prior_routed,
+                    'automatic_attempted': automatic_attempted,
                 }
 
                 # Already-fired but unrouted: retry the analyst-routing call only.
@@ -3113,8 +3121,17 @@ def check_for_catalyst_auto_synth() -> None:
 
                 # Decide: auto-fire or just propose?
                 auto_mode = _fetch_catalyst_auto_mode()
-                endpoint = 'synthesize' if auto_mode.get('enabled') else 'propose-synth'
-                action_word = 'firing' if auto_mode.get('enabled') else 'proposing'
+                automatic = bool(auto_mode.get('enabled')) and not automatic_attempted
+                endpoint = 'synthesize' if automatic else 'propose-synth'
+                action_word = 'firing' if automatic else 'proposing'
+                if automatic:
+                    # Reserve before the request: a timeout may mean the server
+                    # accepted paid work. Never automatically replay that call.
+                    state[key]['automatic_attempted'] = True
+                    _save_catalyst_auto_state(state)
+                    if not _load_catalyst_auto_state().get(key, {}).get('automatic_attempted'):
+                        log.warning(f"Catalyst automatic reservation was not saved for {ticker}/{topic}; no job started")
+                        continue
                 log.info(f"Auto-catalyst: {action_word} {ticker}/{topic} ({len(source_files)} files)")
                 try:
                     res = requests.post(

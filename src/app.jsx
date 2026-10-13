@@ -99,7 +99,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-13T233';
+        const BUILD_VERSION = '2026-10-13T234';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -27955,7 +27955,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div>
                                                             <h3 className="text-sm font-semibold text-white">Auto-Pilot</h3>
                                                             <p className="text-[10px] text-slate-400">
-                                                                Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Auto-fire synthesises without asking — set “Always on” to leave it running.
+                                                                Local agent watches CATALYSTS/{`{TICKER}`}/{`{topic}`}/ folders. Default: proposes syntheses you approve. Auto-fire can start once per new folder after a 2-minute quiet period; later changes require review. Wait until uploads finish before manually approving a proposal.
                                                             </p>
                                                         </div>
                                                         {/* One control, applied on change, showing the state that is
@@ -27995,7 +27995,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                         <div className="text-[10px] text-amber-300/80 -mt-1">
                                                             {catalystAutoMode.expires_at
                                                                 ? <>Auto-fire expires at {fmtETDateTime(catalystAutoMode.expires_at)} — after that, new documents queue up as proposals again.</>
-                                                                : <>Auto-fire is on with no expiry. New catalyst documents synthesise on arrival.</>}
+                                                                : <>Auto-fire is on with no expiry for new folders. Changes to previously handled folders become proposals.</>}
                                                         </div>
                                                     )}
 

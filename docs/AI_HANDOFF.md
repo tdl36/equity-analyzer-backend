@@ -2,6 +2,25 @@
 
 Updated: October 12, 2026
 
+## T234 — bound automatic catalyst spending
+
+Folder watcher submissions reserve one automatic attempt per folder before the
+request. Later source revisions become proposals; uncertain request outcomes
+never automatically repeat the paid submission. Previously handled folders migrate
+to review-only behavior. Watcher state writes are atomic and corrupt state stops
+processing. Linked analyst activities stay pending review instead of independently
+launching a second paid recap. User automation settings and existing jobs remain
+unchanged. The initial two-minute quiet period still does not prove an upload batch
+is complete; deleting the local reservation ledger is not a supported recovery.
+
+Validation: 1311 safe backend tests, 153 frontend tests, Python compilation,
+model-policy gate against 75097e5 and production frontend build passed. Counts
+include unrelated local historical-valuation tests, whose implementation remains
+unreleased. Synthetic regressions cover changed folders, linked analyst routing,
+corrupt state, failed reservation persistence and ambiguous network outcomes.
+No paid QA, investor approvals or original-document changes. Deployment receipt
+will be recorded after backend, hosted assets and Mac agent verification.
+
 ## T233 — verified original-page editorial evidence
 
 ABT recovery exposed an older report whose frozen model excerpts omitted the
