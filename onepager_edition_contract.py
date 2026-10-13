@@ -58,8 +58,8 @@ def prepare_edition(run, assignment, body, corrections, documents, fundamentals,
         if body[key] != current[key]:
             raise ValueError('The report, assignment, public data or parent changed. Prepare a new edition.')
     selected = body['correctionIds']
-    if not isinstance(selected, list) or not 1 <= len(selected) <= 20:
-        raise ValueError('Select between one and twenty corrections.')
+    if not isinstance(selected, list) or not 1 <= len(selected) <= 60:
+        raise ValueError('Select between one and sixty corrections.')
     ids = [_uuid(value) for value in selected]
     if len(set(ids)) != len(ids):
         raise ValueError('A correction may appear only once in an edition.')

@@ -2,6 +2,30 @@
 
 Updated: October 12, 2026
 
+## T232 — ABT manual recovery package delivery
+
+Adds an explicit saved-review-package handoff for blocked summary/thesis/visual
+assignments. It rechecks the live thesis baseline, exact frozen original pack,
+source policy, pending edition evidence and lineage transactionally. Idempotent
+replay cannot duplicate delivery; a conflicting package is rejected. Completion
+means drafts delivered for investor review, not investor approval or a passed
+original model review. The original failure, artifacts, report and earlier proposal
+remain retained. The assignment prominently opens the reconciled thesis and edition.
+
+Pending editions now support 60 distinct corrections (formerly 20), still bounded
+and individually source checked; the correction chooser retains 150 recent rows.
+A compact recovery brief renders explicitly pending editorial claims, complete
+scenario inputs, dated comparisons and original identities in black Calibri.
+Missing required corrections fail closed. Local ABT layout candidate is one A4
+page with embedded Calibri and no mobile overflow; production receipt verification
+will follow deployment. A fresh ABT thesis proposal is pending, not stale:
+8c434b10-20b3-46c1-a810-107709d3ac6e, eight exact assignment originals.
+
+Validation: 39 focused tests, 1289 full safe backend tests (including unrelated
+uncommitted historical WIP), 149 frontend tests; compile, model-policy gate against
+75097e5 and required frontend build passed. No pytest, model calls, research approval
+or original changes. Live edition/package delivery is not yet recorded as complete.
+
 ## T231 — collection calendar boundary fix
 
 New policy-driven refreshes now freeze the collecting Mac's local calendar date,

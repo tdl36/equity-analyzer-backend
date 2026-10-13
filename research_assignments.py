@@ -277,6 +277,26 @@ class Coordinator:
                     # Preserve the prior evidence snapshot; never rewrite report claims or original exports.
                     self.store(ident,state,row['status'],row.get('error'))
                 return jsonify(ok=True,asOf=state['visualFundamentals']['asOf'])
+        @bp.get('/api/research/assignments/<ident>/review-package/summary')
+        def review_package_summary(ident):
+            from research_assignment_recovery import summary_html
+            row=self.read(ident)
+            package=obj(row.get('result')).get('reviewPackage') if row else None
+            if not package:return jsonify(error='Recovered package not found.'),404
+            draft,code=self.invoke('thesis_imports.detail','GET',None,dict(ident=package['thesisDraftId']))
+            if code!=200 or draft.get('status')!='pending' or draft.get('stale') or draft.get('fingerprint')!=package['thesisFingerprint']:
+                return jsonify(error='Recovery thesis changed or was decided. Open the saved thesis review.'),409
+            _,code=self.invoke('onepager_editions.preview','GET',None,dict(aid=ident,eid=package['editionId']))
+            if code!=200:return jsonify(error='Recovery edition needs revalidation. Open its saved review.'),409
+            return Response(summary_html(draft,package),mimetype='text/html',headers={'Cache-Control':'private, no-store','Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'"})
+        @bp.post('/api/research/assignments/<ident>/review-package')
+        def review_package(ident):
+            from research_assignment_recovery import deliver
+            from amendment_ownership import worker_session
+            with worker_session(self.db,'assignment:'+ident) as acquired:
+                if not acquired:return jsonify(error='Assignment is advancing. Try again shortly.'),409
+                try:return jsonify(deliver(self.db,ident,request.get_json(silent=True)))
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:return jsonify(error=str(exc)),409
         @bp.post('/api/research/assignments/<ident>/link-thesis')
         def link_thesis(ident):
             """Associate a separately reviewed draft without approving or completing research."""

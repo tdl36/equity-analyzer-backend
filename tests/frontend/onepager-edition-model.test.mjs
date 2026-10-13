@@ -36,3 +36,9 @@ test('decision binds complete edition identity and explicitly shows removed corr
  assert.throws(()=>editionDecision(edition,{...p,canDecide:false},'accept','r'));
  assert.throws(()=>editionDecision(edition,p,'unknown','r'));
 });
+
+test('complete repair selection allows sixty distinct claims but refuses sixty-one',()=>{
+ const many=Array.from({length:61},(_,i)=>({...rows[0],id:'r'+i,proposal:{...rows[0].proposal,path:'/summary/field'+i}}));
+ assert.equal(editionSelection(pack,many,many.slice(0,60).map(r=>r.id),'x').correctionIds.length,60);
+ assert.throws(()=>editionSelection(pack,many,many.map(r=>r.id),'x'));
+});

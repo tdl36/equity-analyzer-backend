@@ -104,7 +104,7 @@ def record_decision(get_db, aid, eid, body, *, investor_id):
             raise ValueError('Saved report not found.')
         run = dict(row)
         ids = record.get('correctionIds')
-        if not isinstance(ids, list) or not 1 <= len(ids) <= 20:
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 60:
             raise ValueError('Invalid saved correction selection.')
         ids = [_uuid(value) for value in ids]
         cur.execute('SELECT id,run_id,fingerprint,payload_hash,proposal FROM onepager_corrections WHERE id=ANY(%s::uuid[]) FOR SHARE', (ids,))

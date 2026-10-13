@@ -105,10 +105,10 @@ def create_blueprint(get_db):
                     cur.execute("SELECT to_regclass('onepager_corrections') AS name")
                     exists=cur.fetchone()['name'];rows=[]
                     if exists:
-                        cur.execute('SELECT id,fingerprint,proposal,created_at FROM onepager_corrections WHERE run_id=%s ORDER BY created_at DESC LIMIT 50',(rid,))
+                        cur.execute('SELECT id,fingerprint,proposal,created_at FROM onepager_corrections WHERE run_id=%s ORDER BY created_at DESC LIMIT 150',(rid,))
                         rows=[dict(r) for r in cur.fetchall()]
                     for item in rows:item['stale']=item['fingerprint']!=pack['fingerprint']
-                    return jsonify(**pack,corrections=rows,limit=50)
+                    return jsonify(**pack,corrections=rows,limit=150)
                 # Schema and submission are one transaction; reads never create work.
                 cur.execute("SELECT pg_advisory_xact_lock(hashtext('onepager-corrections-schema'))")
                 cur.execute('''CREATE TABLE IF NOT EXISTS onepager_corrections (

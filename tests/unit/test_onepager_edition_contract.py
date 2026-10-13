@@ -100,3 +100,24 @@ class EditionContractTests(unittest.TestCase):
         second = prepare_edition(*args)
         self.assertNotEqual(first['selectionDigest'], second['selectionDigest'])
         self.assertEqual([x['correctionId'] for x in second['claims']], [EID, CID])
+
+    def test_complete_repair_selection_is_bounded_at_sixty(self):
+        args = list(edition_fixture())
+        run, assignment, body, records, docs, financials = args
+        import uuid
+        run['state']['report']['summary'].update({f'field{i}':'Old claim' for i in range(61)})
+        fingerprint = preparation(run)['fingerprint']
+        records.clear(); ids=[]
+        for i in range(61):
+            ident=str(uuid.uuid4()); ids.append(ident)
+            correction=fixture()[2]
+            correction.update(requestId=ident,path=f'/summary/field{i}',fingerprint=fingerprint)
+            _, signature, proposal=prepare(run,correction,docs['fixture.txt'])
+            records.append({'id':ident,'run_id':RID,'fingerprint':fingerprint,'payload_hash':signature,'proposal':proposal})
+        body.update(fingerprint=fingerprint,correctionIds=ids[:60])
+        self.assertEqual(len(prepare_edition(*args)['claims']),60)
+        body['correctionIds']=ids
+        with self.assertRaisesRegex(ValueError,'sixty'): prepare_edition(*args)
+        body['correctionIds']=ids[:60]
+        records[-2]['proposal']['sha256']='0'*64
+        with self.assertRaises(ValueError): prepare_edition(*args)

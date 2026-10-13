@@ -98,8 +98,8 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                                    canDecide=bool(investor_identity()),
                                    caveat='Decisions require investor sign-in and fresh evidence checks. Reading this list does not reverify original bytes or usage restrictions.')
                 ids = body.get('correctionIds')
-                if not isinstance(ids, list) or not 1 <= len(ids) <= 20:
-                    raise ValueError('Select between one and twenty corrections.')
+                if not isinstance(ids, list) or not 1 <= len(ids) <= 60:
+                    raise ValueError('Select between one and sixty corrections.')
                 ids = [str(uuid.UUID(value)) for value in ids]
                 cur.execute("SELECT to_regclass('onepager_corrections') AS name")
                 if not cur.fetchone()['name']:
@@ -135,8 +135,8 @@ def create_blueprint(get_db, investor_identity=lambda: None):
         try:
             aid, eid = str(uuid.UUID(aid)), str(uuid.UUID(eid))
             layout = request.args.get('layout', 'illustrated')
-            if set(request.args) - {'layout'} or layout not in ('illustrated', 'brief'):
-                return jsonify(error='Choose the illustrated or brief pending preview.'), 400
+            if set(request.args) - {'layout'} or layout not in ('illustrated', 'brief', 'recovery'):
+                return jsonify(error='Choose the illustrated, brief or recovery preview.'), 400
         except (ValueError, TypeError, AttributeError):
             return jsonify(error='Invalid assignment or edition identity.'), 400
         try:
@@ -171,7 +171,7 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                     return jsonify(error='Saved report not found.'), 404
                 run = dict(run)
                 ids = record.get('correctionIds')
-                if not isinstance(ids, list) or not 1 <= len(ids) <= 20:
+                if not isinstance(ids, list) or not 1 <= len(ids) <= 60:
                     raise ValueError('Invalid saved correction selection.')
                 ids = [str(uuid.UUID(value)) for value in ids]
                 cur.execute("SELECT to_regclass('onepager_corrections') AS name")
@@ -198,11 +198,12 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                     verified_original(source, documents[source['filename']], (run.get('input', {}).get('hashes') or {}).get(source['filename']))
                 from onepager_edition_evidence import pending_evidence, accepted_evidence
                 from research_onepager import render as brief
+                from research_review_brief import render as recovery
                 from research_infographic import render as illustrated
                 financials = result.get('visualFundamentals')
                 context = (accepted_evidence(run, assignment, record, corrections, documents, financials, decision=decisions[eid]) if exporting else
                            pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=parent))
-                html = (illustrated(run, assignment['input'], financials, preview=context) if layout == 'illustrated'
+                html = (recovery(run, assignment['input'], preview=context) if layout == 'recovery' else illustrated(run, assignment['input'], financials, preview=context) if layout == 'illustrated'
                         else brief(run, assignment['input'], preview=context))
                 if exporting:
                     response = Response(html, mimetype='text/html')

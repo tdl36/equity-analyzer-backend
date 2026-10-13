@@ -348,7 +348,7 @@ export function ResearchAssignment({
       });
       return 'Visual draft opened below.';
     })
-  }, "Preview visual one-pager"), j.result.reportId && /*#__PURE__*/React.createElement("button", {
+  }, j.result.reviewPackage ? 'Preview original visual' : 'Preview visual one-pager'), j.result.reportId && /*#__PURE__*/React.createElement("button", {
     onClick: () => onReport(j.result.reportId)
   }, "Open research report"), j.result.artifacts?.map(a => /*#__PURE__*/React.createElement("button", {
     key: a.kind,
@@ -361,7 +361,7 @@ export function ResearchAssignment({
       downloadText(await r.text(), `${ticker}-${a.kind}-${j.id.slice(0, 8)}.html`);
       return 'Draft exported as printable HTML.';
     })
-  }, "Export ", outputs.find(x => x[0] === a.kind)?.[1])), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
+  }, "Export ", j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
   }, "Open meeting questions from this pack"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
@@ -379,7 +379,40 @@ export function ResearchAssignment({
       border: '1px solid #d8dedd',
       marginTop: 12
     }
-  })), j.result.separateThesisProposal && /*#__PURE__*/React.createElement("aside", {
+  })), j.result.reviewPackage && /*#__PURE__*/React.createElement("aside", {
+    "aria-label": "Recovered review package",
+    style: {
+      background: '#f4f6f4',
+      padding: '16px 20px',
+      margin: '16px 0'
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, "Recovered drafts ready for your review"), /*#__PURE__*/React.createElement("p", null, "The thesis and editorial edition use the same ", j.result.reviewPackage.sourceHashes.length, " frozen originals. Delivery is complete; neither draft has been approved. The original automated report and its failure remain preserved."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: `?thesisDraft=${encodeURIComponent(j.result.reviewPackage.thesisDraftId)}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
+  }, "Review reconciled thesis")), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      var r = await fetch(api + `/api/research/assignments/${j.id}/review-package/summary`);
+      if (!r.ok) throw Error('Summary needs revalidation. Open the thesis review.');
+      setPreview({
+        id: j.id,
+        html: await r.text()
+      });
+      return 'Reconciled stock summary opened for review.';
+    })
+  }, "Preview reconciled stock summary"), [['recovery', 'one-pager'], ['illustrated', 'detailed investment map']].map(([layout, label]) => /*#__PURE__*/React.createElement("button", {
+    key: layout,
+    disabled: busy,
+    onClick: () => mutate(async () => {
+      var r = await fetch(api + `/api/research/assignments/${j.id}/onepager-editions/${j.result.reviewPackage.editionId}/preview?layout=${layout}`);
+      var d = await r.json();
+      if (!r.ok) throw Error(d.error || 'Saved package needs revalidation.');
+      setPreview({
+        id: j.id,
+        html: d.html
+      });
+      return 'Reconciled ' + label + ' opened for review.';
+    })
+  }, "Preview reconciled ", label)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Preserved original failure"), /*#__PURE__*/React.createElement("p", null, j.result.reviewPackage.originalFailure))), j.result.separateThesisProposal && !j.result.reviewPackage && /*#__PURE__*/React.createElement("aside", {
     "aria-label": "Separate thesis proposal",
     style: {
       background: "#f4f6f4",

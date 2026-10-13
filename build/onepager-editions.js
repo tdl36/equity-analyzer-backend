@@ -232,7 +232,7 @@ export function OnepagerEditions({
     onReport: id => {
       window.location.hash = 'view=stockanalysis&ticker=' + encodeURIComponent(run.ticker) + '&section=stock-analysis&work=analysis%3A' + encodeURIComponent(id);
     }
-  })), /*#__PURE__*/React.createElement("h4", null, "Choose proposed changes"), /*#__PURE__*/React.createElement("p", null, "Create corrections in \u201CPropose a correction for review\u201D above, then reload here. Showing up to 50 recent corrections; select at most 20, with one change per claim."), /*#__PURE__*/React.createElement("fieldset", {
+  })), /*#__PURE__*/React.createElement("h4", null, "Choose proposed changes"), /*#__PURE__*/React.createElement("p", null, "Create corrections in \u201CPropose a correction for review\u201D above, then reload here. Showing up to 150 recent corrections; select at most 60, with one change per claim."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy
   }, rows.map(c => /*#__PURE__*/React.createElement("article", {
     key: c.id
@@ -241,7 +241,7 @@ export function OnepagerEditions({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: selected.includes(c.id),
-    disabled: c.stale || c.fingerprint !== pack.fingerprint || !selected.includes(c.id) && selected.length >= 20,
+    disabled: c.stale || c.fingerprint !== pack.fingerprint || !selected.includes(c.id) && selected.length >= 60,
     onChange: e => setSelected(ids => e.target.checked ? [...ids, c.id] : ids.filter(id => id !== c.id))
   }), /*#__PURE__*/React.createElement("span", null, claimLabel(c.proposal.path), c.stale || c.fingerprint !== pack.fingerprint ? ' · Baseline changed; prepare again' : '')), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
@@ -250,7 +250,7 @@ export function OnepagerEditions({
   }, selectionError), /*#__PURE__*/React.createElement("button", {
     disabled: !selected.length || !!selectionError,
     onClick: save
-  }, busy ? 'Working…' : `Save pending edition (${selected.length}/20)`)), /*#__PURE__*/React.createElement("h4", null, "Saved editions"), /*#__PURE__*/React.createElement("p", null, "Showing up to ", pack.limit, " most recent editions. Saving an edition alone does not approve it; any recorded decision is shown separately. Original availability and usage restrictions are rechecked when saving; opening this list does not reverify them."), pack.editions.map(e => {
+  }, busy ? 'Working…' : `Save pending edition (${selected.length}/60)`)), /*#__PURE__*/React.createElement("h4", null, "Saved editions"), /*#__PURE__*/React.createElement("p", null, "Showing up to ", pack.limit, " most recent editions. Saving an edition alone does not approve it; any recorded decision is shown separately. Original availability and usage restrictions are rechecked when saving; opening this list does not reverify them."), pack.editions.map(e => {
     var review = editionReviewState(e);
     return /*#__PURE__*/React.createElement("article", {
       key: e.id
