@@ -20,6 +20,16 @@ approval. Deployment verification follows. Next: resume historical valuation
 integration, while operations owns the existing import/log-access blocker. Live
 unattended acceptance and all eight priority acceptance criteria remain open.
 
+### T240 verified — October 13, 2026, 8:54 p.m. New York
+
+Backend health reports 59e175fa78cfa236aeac55d19b55e4fe4a195e7c.
+Cloudflare c1f5f4ab-9363-4cef-a31b-89e75fe44f45 serves exact tested app and
+service-worker bytes. Mac agent restarted after checking no running pipeline jobs
+or active collection lease, and its fresh heartbeat and durable claim-order table
+were verified. Ten eligible queued requests were observed without claiming or
+replaying them. Temporary Render replacement 502s cleared. No paid research or
+investor decision. This confirms deployment, not end-to-end unattended acceptance.
+
 ## T239 — compact research issue banner
 
 The global banner retains the company/status, issue count, saved-work destination,
