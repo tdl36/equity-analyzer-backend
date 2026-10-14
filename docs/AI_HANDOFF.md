@@ -2,7 +2,7 @@
 
 Updated: October 14, 2026
 
-## T262–T263 — Lab selected-source generation and browser-only direction
+## T262–T264 — Lab selected-source generation and browser-only direction
 
 User confirmed no AlphaSense API/MCP access. Browser collection in the separate
 Operations chat is the required integration. Ongoing build automation now reads
@@ -31,7 +31,7 @@ collection state and successful-through dates; stale status never implies curren
 coverage. Same-named sources remain separate. Originals and legacy Pipeline
 settings/behavior are preserved.
 
-Validation: 1422 backend / 178 frontend tests, Python compilation, model policy and
+Validation: 1423 backend / 178 frontend tests, Python compilation, model policy and
 production build passed. New isolated PostgreSQL tests cover saved-selection
 submission, replay after config changes, no collection command, synthetic draft
 delivery, stale manifests, and worker identity changes before model calls. Mocked
@@ -39,7 +39,16 @@ delivery, stale manifests, and worker identity changes before model calls. Mocke
 QA, live config writes or investor approvals. T263 additionally gates generation
 on the server capability receipt, so an older backend cannot silently treat a
 Lab run as a browser-collection request during rollout. Synthetic mobile/desktop
-checks cover both unavailable and available capabilities. Release verification pending.
+checks cover both unavailable and available capabilities. T264 normalizes legacy
+text publication dates; a real-handler regression covers text/date/missing/invalid
+values. Live ABT inventory returned 200 with 60 documents, 8 recorded publication
+dates and 7 publishers. Missing metadata remains missing, not inferred.
+
+Release verified: backend f2a0f4d679dfce72ea691fc9e15fda40c759c3c4;
+Cloudflare 31e69e42-5cd0-4b77-b6f0-d22e8997f030; HTML T264 and versioned JS/SW
+match local bytes. Unsaved Lab selection rejects with 409; unchanged agent healthy
+at 4.1 seconds. Live paid generation remains deliberately untested. Full safe
+backend suite reran after the date fix; all tests passed.
 
 Next: exact-byte imports for iCloud-only/research-storage selections, richer
 browser receipt metadata and relevance guidance, full note/version integration,
