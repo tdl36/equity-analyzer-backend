@@ -2,6 +2,25 @@
 
 Updated: October 14, 2026
 
+## T249 — reliable saved choices at assignment start
+
+Assignment intake now waits for validated saved output/horizon defaults before
+allowing edits or submission. A slow response can no longer overwrite choices
+already made by the investor. Invalid or unavailable defaults visibly fall back
+to standard choices for review. Output names are consistent and collection timing
+no longer promises a fixed worker interval. Existing saved request recovery remains
+independent; no provider calls or investor approval behavior changed.
+
+167 frontend tests, model-policy gate, production build, and full-app synthetic
+390/1280px delayed-default and invalid-default fallback checks passed. All browser
+fixture calls were GET; no paid QA or research mutation. No backend changes.
+Release verification pending. Logs /tmp/charlie-defaults-{tests,ui,fallback-ui}.log
+and /tmp/charlie-T249-build.log.
+
+Next: continue ticker-only intake/recovery clarity and historical source provenance.
+Historical valuation and true unattended acceptance remain incomplete; do not replay
+ambiguous paid calls or treat draft completion as investor approval.
+
 ## T248 — company-scoped saved assignment archive
 
 ### T248 verified release receipt

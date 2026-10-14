@@ -1,10 +1,11 @@
 import { AssignmentReview } from './assignment-review';
+import { assignmentOutputs, checkedAssignmentDefaults, fallbackAssignmentDefaults, outputNames } from './assignment-defaults.mjs';
 import { submissionKey, readSubmission, reserveSubmission, clearSubmission, matchingReceipt } from './assignment-submission.mjs';
 import { financialWorkbook, saveFinancialWorkbook } from './financial-workbook-download.mjs';
 import * as React from 'react';
 import { parseTimestamp, routeHash } from './workspace-model.mjs';
 import { downloadText } from './stock-analysis-model.mjs';
-var outputs = [['summary_note', 'Summary note'], ['stock_summary', 'Stock summary'], ['thesis', 'Thesis draft / update'], ['visual', 'Visual one-pager draft'], ['meeting_prep', 'Meeting questions from this research']];
+var outputs = assignmentOutputs;
 var date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export function ResearchAssignment({
   api,
@@ -35,6 +36,8 @@ export function ResearchAssignment({
     [ack, setAck] = React.useState(false),
     [preview, setPreview] = React.useState(null),
     [savedSubmission, setSavedSubmission] = React.useState(null);
+  var [defaultsReady, setDefaultsReady] = React.useState(!!origin),
+    [defaultsWarning, setDefaultsWarning] = React.useState('');
   var submissionStorageKey = submissionKey(api, ticker);
   var listPath = 'assignments?ticker=' + encodeURIComponent(ticker) + (focusId ? '&requestId=' + encodeURIComponent(focusId) : '');
   var locked = React.useRef(false),
@@ -64,18 +67,33 @@ export function ResearchAssignment({
     return d;
   };
   React.useEffect(() => {
-    if (origin) return;
     var live = true;
-    request('assignment-defaults').then(d => {
+    setDefaultsWarning('');
+    if (origin) {
+      setDefaultsReady(true);
+      return () => {
+        live = false;
+      };
+    }
+    setDefaultsReady(false);
+    request('assignment-defaults').then(checkedAssignmentDefaults).then(d => {
       if (live) {
         setChosen(d.outputs);
         setHorizon(d.horizon);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      if (live) {
+        setChosen([...fallbackAssignmentDefaults.outputs]);
+        setHorizon(fallbackAssignmentDefaults.horizon);
+        setDefaultsWarning('Saved defaults could not be loaded. Standard output choices are shown below; review them before starting.');
+      }
+    }).finally(() => {
+      if (live) setDefaultsReady(true);
+    });
     return () => {
       live = false;
     };
-  }, [api]);
+  }, [api, !!origin]);
   React.useEffect(() => {
     var live = true,
       inflight = false;
@@ -203,7 +221,7 @@ export function ResearchAssignment({
     onClick: onClearFocus
   }, "All assignments for ", ticker, " / Start new research")), savedSubmission && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Recover assignment submission"
-  }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", savedSubmission.outputs?.join(', '), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", outputNames(savedSubmission.outputs), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: reconcile
   }, "Check whether assignment was saved"), /*#__PURE__*/React.createElement("button", {
@@ -352,8 +370,12 @@ export function ResearchAssignment({
     "aria-label": "New research"
   }, origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
     open: !!origin || !focusId && loaded && !jobs.length
-  }, /*#__PURE__*/React.createElement("summary", null, "Start new research"), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
+  }, /*#__PURE__*/React.createElement("summary", null, "Start new research"), !defaultsReady && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading your saved research choices\u2026"), defaultsWarning && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, defaultsWarning), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: !defaultsReady || disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
   }, /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
@@ -424,5 +446,5 @@ export function ResearchAssignment({
     className: "sa-primary",
     disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts on an available scheduled worker, usually the next 15-minute wake. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
+  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }
