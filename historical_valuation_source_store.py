@@ -36,7 +36,7 @@ def save_original(cur, record):
     return {'id': record['id'], 'sha256': record['sha256'], 'reused': not inserted}
 
 
-def read_originals(cur, references, *, assignment_id):
+def read_records(cur, references, *, assignment_id):
     """Lock only requested rows; missing evidence remains missing, with no DDL.
 
     SQL checks byte lengths before transferring bodies to bound memory even if
@@ -46,7 +46,7 @@ def read_originals(cur, references, *, assignment_id):
     load_originals(references, [], assignment_id=aid)
     cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
     if not cur.fetchone()['name']:
-        return {}, {}
+        return []
     identifiers = sorted({r['id'] for r in references})
     cur.execute('''SELECT source_id,octet_length(content) AS size
         FROM historical_valuation_originals
@@ -64,4 +64,10 @@ def read_originals(cur, references, *, assignment_id):
     records = [{'assignmentId': aid, 'id': r['source_id'], 'sha256': r['sha256'],
                 'kind': r['kind'], 'retrievedDate': str(r['retrieved_date']),
                 'content': bytes(r['content'])} for r in cur.fetchall()]
-    return load_originals(references, records, assignment_id=aid)
+    load_originals(references, records, assignment_id=aid)
+    return records
+
+
+def read_originals(cur, references, *, assignment_id):
+    records = read_records(cur, references, assignment_id=assignment_id)
+    return load_originals(references, records, assignment_id=assignment_id)

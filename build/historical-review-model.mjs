@@ -44,3 +44,23 @@ export function historicalReview(value, assignmentId, editionId, reviewId) {
       periodEnd:text(original?.earnings?.periodEnd), publishedDate:text(original?.earnings?.publishedDate)};
   })};
 }
+
+export function historicalCandidate(value, selection) {
+  const p=value?.payload, expected=selection.observation;
+  if (!/^[a-f0-9]{64}$/.test(value?.candidateDigest||'') || p?.version!==1 ||
+      !matchingBaselines([selection.baseline,p?.baseline],selection.baseline.assignmentId,selection.baseline.parentEditionId) ||
+      p?.valuationReady!==false || p?.investorReviewRequired!==true ||
+      !Array.isArray(p?.unresolvedChecks) ||
+      !['security_currency_mapping','corporate_actions','filing_inventory_completeness','source_provenance','investor_review'].every(k=>p.unresolvedChecks.includes(k)) ||
+      p?.selections?.length!==1 || p?.observations?.length!==1) throw Error('Candidate inputs do not match this frozen review. Reload saved evidence.');
+  const saved=p.selections[0], row=p.observations[0];
+  if(saved?.date!==expected.date || row?.date!==expected.date ||
+     !['priceSource','earningsSource'].every(k=>saved?.[k]?.id===expected[k].id && saved?.[k]?.sha256===expected[k].sha256) ||
+     !['incomplete','inputs_extracted'].includes(row?.status) || !Array.isArray(row?.gaps) ||
+     row.gaps.length>2 || row.gaps.some(g=>!g || !['price','earnings'].includes(g.input) || !['missing_original','wrong_original_kind','unverified_original'].includes(g.code))) throw Error('Historical input selection changed. Reload saved evidence.');
+  if(row.status==='inputs_extracted' && (row.gaps.length || typeof row.price?.value!=='string' || typeof row.earnings?.value!=='string')) throw Error('Historical inputs are incomplete. Reload saved evidence.');
+  const text=v=>typeof v==='string'&&v.length<=500?v:'Not established';
+  return {date:row.date,price:text(row.price?.value),earnings:text(row.earnings?.value),
+    periodEnd:text(row.earnings?.periodEnd),publishedDate:text(row.earnings?.publishedDate),
+    gaps:row.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.message?text(g.message):'The selected original is missing or has the wrong type.'}`)};
+}

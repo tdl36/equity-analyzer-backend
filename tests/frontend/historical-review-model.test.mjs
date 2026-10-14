@@ -50,3 +50,18 @@ test('parallel inventories cannot combine different source packs or financial ba
   const legacy=pack();delete legacy[1].baseline;
   assert.throws(()=>historicalInventory(...legacy,'assignment','edition'));
 });
+
+test('candidate preview binds exact receipts, date, baseline and unresolved qualifiers',async()=>{
+ const {historicalCandidate}=await import('../../src/historical-review-model.mjs');
+ const baseline={assignmentId:'a',parentEditionId:'e',fundamentalsDigest:'a'.repeat(64),sourcePackFingerprint:'b'.repeat(64),parentEditionDigest:'c'.repeat(64)};
+ const observation={date:'2025-03-03',priceSource:{id:'p',sha256:'d'.repeat(64)},earningsSource:{id:'s',sha256:'e'.repeat(64)}};
+ const selection={baseline,observation};
+ const fixture=()=>({candidateDigest:'f'.repeat(64),payload:{version:1,baseline:{...baseline},valuationReady:false,investorReviewRequired:true,selections:[structuredClone(observation)],observations:[{date:observation.date,status:'inputs_extracted',gaps:[],price:{value:'100'},earnings:{value:'5',periodEnd:'2024-12-31',publishedDate:'2025-02-15'}}],unresolvedChecks:['security_currency_mapping','corporate_actions','filing_inventory_completeness','source_provenance','investor_review']}});
+ assert.equal(historicalCandidate(fixture(),selection).price,'100');
+ for(const mutate of [v=>v.payload.valuationReady=true,v=>v.payload.baseline.parentEditionDigest='0'.repeat(64),v=>v.payload.selections[0].date='2025-03-04',v=>v.payload.selections[0].priceSource.sha256='0'.repeat(64),v=>v.payload.unresolvedChecks=[],v=>delete v.payload.observations[0].price]){
+  const value=fixture();mutate(value);assert.throws(()=>historicalCandidate(value,selection));
+ }
+ const partial=fixture();partial.payload.observations[0]={date:observation.date,status:'incomplete',gaps:[{input:'price',code:'missing_original'}]};
+ assert.equal(historicalCandidate(partial,selection).price,'Not established');
+ assert.equal(historicalCandidate(partial,selection).gaps.length,1);
+});

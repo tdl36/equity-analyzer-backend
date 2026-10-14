@@ -46,6 +46,35 @@ def create_blueprint(get_db, authenticated=lambda: False, *, ingestion_config=No
         response.headers['Cache-Control'] = 'private, no-store'
         return response
 
+    @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/historical-candidate')
+    def candidate_preview(aid, eid):
+        if not authenticated():
+            return jsonify(error='Sign in to inspect historical inputs.'), 403
+        try:
+            if set(request.args) != {'selection'} or len(request.args.getlist('selection')) != 1:
+                raise ValueError('One exact selection is required.')
+            raw = request.args['selection']
+            if len(raw.encode()) > 4096:
+                raise ValueError('Selection exceeds the bound.')
+            def unique(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError('Duplicate selection key.')
+                    result[key] = value
+                return result
+            def nonfinite(value):
+                raise ValueError('Nonfinite selection.')
+            selection = json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite)
+            if not isinstance(selection, dict) or set(selection) != {'baseline', 'observation'}:
+                raise ValueError('Select a frozen baseline and exact original receipts.')
+            from historical_valuation_candidate_context import assemble_from_storage
+            with get_db() as (_, cur):
+                result = assemble_from_storage(cur, aid, eid, [selection['observation']], selection['baseline'])
+            return jsonify(result)
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+            return jsonify(error='Historical inputs could not be verified for this edition and selection. Reload the retained evidence; no retrieval or research was started.'), 409
+
     @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/historical-retrievals')
     def retrieval_status(aid, eid):
         if not authenticated():

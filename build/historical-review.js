@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { HistoricalCandidate } from './historical-candidate';
 import { historicalReview, historicalInventory } from './historical-review-model.mjs';
 
 // Read-only inspection; never retrieves providers or writes research.
@@ -72,7 +73,11 @@ export function HistoricalReview({
     role: "status"
   }, "Checking saved evidence\u2026"), state.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, state.error), state.sources && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h5", null, "Retained originals"), !state.sources.originals.length && /*#__PURE__*/React.createElement("p", null, "No historical originals retained for this assignment."), state.sources.originals.map(source => /*#__PURE__*/React.createElement("p", {
+  }, state.error), state.sources && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(HistoricalCandidate, {
+    url: url,
+    baseline: state.sources.baseline,
+    originals: state.sources.originals
+  }), /*#__PURE__*/React.createElement("h5", null, "Retained originals"), !state.sources.originals.length && /*#__PURE__*/React.createElement("p", null, "No historical originals retained for this assignment."), state.sources.originals.map(source => /*#__PURE__*/React.createElement("p", {
     key: source.id
   }, source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts', " \xB7 retrieved ", source.retrievedDate)), /*#__PURE__*/React.createElement("h5", null, "Retrieval progress"), !state.retrievals.retrievals.length && /*#__PURE__*/React.createElement("p", null, "No retrieval attempts recorded."), state.retrievals.retrievals.map(row => /*#__PURE__*/React.createElement("article", {
     key: row.id

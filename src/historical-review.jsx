@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {HistoricalCandidate} from './historical-candidate';
 import {historicalReview,historicalInventory} from './historical-review-model.mjs';
 
 // Read-only inspection; never retrieves providers or writes research.
@@ -39,6 +40,7 @@ export function HistoricalReview({api, assignmentId, editionId}) {
     {state.busy && <p role="status">Checking saved evidence…</p>}
     {state.error && <p role="alert">{state.error}</p>}
     {state.sources && <>
+      <HistoricalCandidate url={url} baseline={state.sources.baseline} originals={state.sources.originals}/>
       <h5>Retained originals</h5>
       {!state.sources.originals.length && <p>No historical originals retained for this assignment.</p>}
       {state.sources.originals.map(source=><p key={source.id}>{source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts'} · retrieved {source.retrievedDate}</p>)}

@@ -2,6 +2,35 @@
 
 Updated: October 12, 2026
 
+## T242 — retained historical input preview
+
+Historical evidence panels with retained price and SEC originals now offer a
+read-only exact-date input preview. The authenticated GET endpoint accepts one
+bounded selection, exact receipts and the expected frozen baseline; it loads and
+locks only that assignment's originals, extracts the raw close and pre-date annual
+EPS, and reports missing/invalid evidence without adjacent-date substitution.
+Input edits clear old results; obsolete reads are aborted. No source fetch, model
+call, research save, approval or valuation multiple is introduced. Currency/share
+mapping, corporate actions, completeness and provenance remain explicit unresolved
+checks. When either original type is absent, no preview form is shown.
+
+This releases the candidate assembler/replay and locked-storage adapter developed
+in prior wakes. Snapshots bind the source hashes, selection, original retrieval
+dates and frozen baseline. Changed evidence requires a new version. Original byte
+bounds, assignment scope and exact hashes remain checked; source bodies are not
+returned. Production POST remains disabled, including provider ingestion.
+
+Validation: 1353 safe backend tests, 158 frontend tests, Python compilation,
+model policy against 75097e5 and production build pass. Synthetic full-app checks
+at 390/1280px previewed retained inputs, cleared stale results on date change and
+preserved saved-document/retry/download/thesis flows with GET-only requests and
+no horizontal overflow. API tests cover missing evidence, stale targets, auth,
+malformed/oversized/duplicate selections and POST rejection. No paid QA.
+Deployment verification pending. Next: bind trustworthy currency/share-class and
+corporate-action evidence before any multiple can be claimed, and integrate safe
+retained-source selection into the coordinator; provider retrieval remains gated.
+All eight acceptance phases and ticker-only unattended proof remain open.
+
 ## T241 — historical evidence inspection integrated
 
 Saved recovered one-pager reviews now include a collapsed Historical valuation
