@@ -4,6 +4,15 @@ Updated: October 14, 2026
 
 ## T255 — source consistency warnings in historical input previews
 
+### T255 verified release receipt
+
+Backend health verified 8d0130d829c7fbeb61dfb2dcd376da1345193d84. Cloudflare
+e82e2121-3518-4506-b6b7-6951117f192f deployed; hosted HTML references T255 and
+versioned app/service-worker bytes match local assets. Agent healthy at 14.3-second
+staleness, unchanged/not restarted. 173 frontend tests, synthetic mobile/desktop
+checks, policy gate and production build passed. No backend change (last backend
+suite 1401 at T254), live acquisition, paid QA, research mutation or approval.
+
 The retained-input preview now explains acquisition checks separately for the
 selected price and earnings originals. Missing checks/metadata stay explicit;
 provider, issuer/endpoint, collector-version and retrieval-date mismatches receive
@@ -18,7 +27,7 @@ warnings, existing review/coverage navigation, no overflow and GET-only traffic.
 Mobile preview inspected. No backend/agent changes; backend suite not repeated
 (last 1401 at T254). No live retrieval, research changes or approvals. Logs
 /tmp/charlie-T255-{front,build}.log and /tmp/charlie-consistency-view-ui.log.
-Release verification pending.
+Release verified above.
 
 Next: bounded security/currency/share-basis checks from retained source fields,
 with explicit gaps when the original cannot establish compatibility. Maintain
