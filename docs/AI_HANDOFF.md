@@ -10,7 +10,11 @@ Ticker A–Z / Newest updated selector. Dates sort descending, invalid/missing d
 last, ticker ties deterministic, without mutating saved research. 174 frontend
 tests, model-policy gate and production build passed. Synthetic 390/1280px browser
 checks cover mobile sort changes and desktop shared state, GET-only traffic and
-no horizontal page overflow. No backend change or paid QA. Release pending.
+no horizontal page overflow. No backend change or paid QA. Release verified:
+backend 2aeba22271be329d65cc2267e273a3973fc7b6ec; Cloudflare
+d3c98265-6541-4af3-96ac-87ad803a5e0d; hosted HTML T258 and versioned JS/SW
+match local bytes. Agent healthy (40.5-second staleness), unchanged. Mobile
+screenshot inspected; browser check /tmp/charlie-T258-ui.py.
 
 ## T257 — thesis shared-connection status recovery
 
