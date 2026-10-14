@@ -4,6 +4,20 @@ Updated: October 14, 2026
 
 ## T247 — saved assignment archive on Home and Activity
 
+### T247 verified release receipt
+
+Backend e96e8783758b883a3d29ef8147ea600fbea90372 and Cloudflare
+f0e11801-98be-4b62-bce7-060a59d7d7ad verified. Hosted app/service-worker hashes match
+release assets. 1392 safe backend tests, 165 frontend tests, Python compilation,
+model gate and production build passed. Full-app synthetic archive checks passed
+at 390/1280px, including following the archive's exact assignment link. Logs:
+/tmp/charlie-T247-{backend,build,deploy}.log and /tmp/charlie-archive-{frontend,ui}.log.
+
+Live ABT-filtered archive GET returned 200/private-no-store with one metadata-only
+assignment and no next page; unauthenticated GET returned 401. Agent health ok,
+15.8-second staleness; unchanged agent not restarted. No live research was launched
+or changed. Multi-page behavior was tested only against synthetic/disposable data.
+
 Added "Find older assignments" to Home and Activity. The archive supports company
 filtering and load-more pagination across all saved dates, with explicit status and
 links to exact assignments. Completed remains distinct from approved. Reads return
