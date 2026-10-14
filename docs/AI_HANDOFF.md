@@ -2,7 +2,7 @@
 
 Updated: October 14, 2026
 
-## T262 — Lab selected-source generation and browser-only direction
+## T262–T263 — Lab selected-source generation and browser-only direction
 
 User confirmed no AlphaSense API/MCP access. Browser collection in the separate
 Operations chat is the required integration. Ongoing build automation now reads
@@ -36,7 +36,10 @@ production build passed. New isolated PostgreSQL tests cover saved-selection
 submission, replay after config changes, no collection command, synthetic draft
 delivery, stale manifests, and worker identity changes before model calls. Mocked
 390/1280px full-app checks verify selection-bound submission and layout. No paid
-QA, live config writes or investor approvals. Release verification pending.
+QA, live config writes or investor approvals. T263 additionally gates generation
+on the server capability receipt, so an older backend cannot silently treat a
+Lab run as a browser-collection request during rollout. Synthetic mobile/desktop
+checks cover both unavailable and available capabilities. Release verification pending.
 
 Next: exact-byte imports for iCloud-only/research-storage selections, richer
 browser receipt metadata and relevance guidance, full note/version integration,

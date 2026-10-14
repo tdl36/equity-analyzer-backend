@@ -365,7 +365,9 @@ function LabStock({
     style: {
       overflowWrap: 'anywhere'
     }
-  }, b))) : /*#__PURE__*/React.createElement("p", null, "The selected stored bytes passed this check."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "This does not verify external-source freshness, licensing or equality with iCloud originals. No research was started. Originals are rechecked when a run starts. Generated outputs remain drafts for your review."))), checkResult && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement(ResearchAssignment, {
+  }, b))) : /*#__PURE__*/React.createElement("p", null, "The selected stored bytes passed this check."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "This does not verify external-source freshness, licensing or equality with iCloud originals. No research was started. Originals are rechecked when a run starts. Generated outputs remain drafts for your review."))), checkResult && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && checkResult.generationAvailable !== true && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "The connected server does not yet support generation from Lab selections. Refresh after the backend update finishes."), checkResult?.generationAvailable === true && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement(ResearchAssignment, {
     embedded: true,
     key: `${task}:${saved.revision}:${checkResult.digest}`,
     api: api,
