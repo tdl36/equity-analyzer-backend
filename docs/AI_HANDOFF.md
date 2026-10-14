@@ -4,6 +4,16 @@ Updated: October 14, 2026
 
 ## T251 — immutable historical acquisition metadata foundation
 
+### T251 verified release receipt
+
+Backend revision d87930314716ad57777069fa340a72bf0bb58f5b verified. Cloudflare
+6a5451c0-b075-45aa-9ca1-cc844768fda2 deployed; hosted app and service-worker bytes
+match local assets exactly. Agent healthy at 20.3-second staleness, unchanged and
+not restarted. Safe backend suite 1396, frontend suite 169, focused storage tests,
+compilation, model policy and production build passed. This is storage groundwork;
+provider adapters and public evidence presentation are still pending, and production
+historical ingestion remains disabled. No live sources or research were changed.
+
 Historical original storage can now retain bounded provider identity, observed
 HTTPS endpoint, timezone-qualified acquisition time and collector version. Metadata
 is compared on replay alongside exact bytes/date/kind; existing receipts cannot be
@@ -25,7 +35,7 @@ retrieval identity semantics. Their current content-hash-plus-day IDs cannot acc
 changing per-call timestamps on same-day replays; resolve that before wiring. Then
 expose safe provenance metadata in the read-only evidence view. Metadata alone must
 not clear source-provenance/security/corporate-action/filing-completeness gaps.
-Release verification pending; all eight priorities remain open to acceptance.
+Release verified above; all eight priorities remain open to acceptance.
 
 ## T250 — preserve assignment review during invalid status responses
 
