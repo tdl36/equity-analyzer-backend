@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {AssignmentHistory} from './assignment-history';
 import {activityRows,activityAge,collectionHealth,workLane,nextAction,workOverview,focusRows,activityDestination,recentAssignments} from './activity-model.mjs';
 function AnalystRunInspection({api,row}) {
  const [state,setState]=React.useState({loading:true}),[revision,setRevision]=React.useState(0);
@@ -64,6 +65,7 @@ export function ActivityWorkspace({api,onNavigate,compact=false}) {
     </article>)}
   </section>}
   {!compact&&matching.length>limit&&<button className="activity-open" onClick={()=>setLimit(n=>n+20)}>Show more · {matching.length-limit} remaining</button>}
+  <AssignmentHistory api={api}/>
   {data&&<p className="activity-foot">Snapshot {activityAge(data.asOf)} · Refreshes every 15 seconds while visible.{!compact&&<> {data.scope} Mac collection report: {activityAge(data.collectionLastSeen)}.</>}</p>}
  </section>;
 }

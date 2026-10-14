@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { AssignmentHistory } from './assignment-history';
 import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination, recentAssignments } from './activity-model.mjs';
 function AnalystRunInspection({
   api,
@@ -297,7 +298,9 @@ export function ActivityWorkspace({
   }, " ", r.ticker))))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
     onClick: () => setLimit(n => n + 20)
-  }, "Show more \xB7 ", matching.length - limit, " remaining"), data && /*#__PURE__*/React.createElement("p", {
+  }, "Show more \xB7 ", matching.length - limit, " remaining"), /*#__PURE__*/React.createElement(AssignmentHistory, {
+    api: api
+  }), data && /*#__PURE__*/React.createElement("p", {
     className: "activity-foot"
   }, "Snapshot ", activityAge(data.asOf), " \xB7 Refreshes every 15 seconds while visible.", !compact && /*#__PURE__*/React.createElement(React.Fragment, null, " ", data.scope, " Mac collection report: ", activityAge(data.collectionLastSeen), ".")));
 }

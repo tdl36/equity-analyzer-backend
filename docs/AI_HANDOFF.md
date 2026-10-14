@@ -2,6 +2,29 @@
 
 Updated: October 14, 2026
 
+## T247 — saved assignment archive on Home and Activity
+
+Added "Find older assignments" to Home and Activity. The archive supports company
+filtering and load-more pagination across all saved dates, with explicit status and
+links to exact assignments. Completed remains distinct from approved. Reads return
+only metadata and never wake the coordinator or expose research/source bodies.
+The 30-row keyset pages preserve created_at/id ordering and filter-bound cursors.
+Failures loading older pages retain loaded rows and offer retry. Closing, changing
+company or unmounting aborts pending work and invalidates stale responses.
+
+165 frontend tests and synthetic full-app 390/1280px checks cover retained rows on
+failed page load, retry, ticker filter/empty results, exact saved-assignment links,
+continued output review, GET-only requests and no overflow. Mobile screenshot
+inspected. Backend tests cover 65 historical rows, equal timestamps, insertion
+between pages, invalid filters and no coordinator wake. Exact suite and deployment
+verification follow below. No paid QA, research decisions or original changes.
+
+Next: inspect coherent company-workspace entry points and output labels so the
+same archive/review path is discoverable from an individual company. Preserve
+historical ingestion/mapping/provenance and real unattended acceptance gaps; all
+eight priorities remain open. The archive is navigation, not approval or recovery
+of an ambiguous provider attempt.
+
 ## T246 — direct access to finished assignments on Home
 
 ### T246 release receipt

@@ -200,6 +200,17 @@ class Coordinator:
                     cur.execute('INSERT INTO app_settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()',(KEY,json.dumps(value)))
                 cur.execute('SELECT value FROM app_settings WHERE key=%s',(KEY,));r=cur.fetchone()
             return jsonify(obj(r['value']) if r else DEFAULTS)
+        @bp.get('/api/research/assignment-history')
+        def assignment_history():
+            from research_assignment_history import read_page
+            try:
+                if set(request.args)-{'ticker','cursor'} or any(len(request.args.getlist(k))!=1 for k in request.args):
+                    raise ValueError('Invalid archive filters.')
+                with self.db() as (_,cur):
+                    data=read_page(cur,request.args.get('ticker',''),request.args.get('cursor'))
+                response=jsonify(data);response.headers['Cache-Control']='private, no-store';return response
+            except (ValueError,TypeError,AttributeError):
+                return jsonify(error='Saved assignment history could not be read with these filters. Reload the archive.'),400
         @bp.route('/api/research/assignments',methods=['GET','POST'])
         def assignments():
             if request.method=='POST':
