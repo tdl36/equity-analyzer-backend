@@ -2,6 +2,32 @@
 
 Updated: October 14, 2026
 
+## Pending Lab note versions — draft ledger checkpoint (not released)
+
+Started the full Lab note workflow with pipeline_lab_notes.py and isolated PostgreSQL
+tests. The append-only ledger uses stable note/edit identities, optimistic revisions,
+replay checks and per-note concurrency locks. Each draft revision retains its exact
+source IDs, hashes, sizes, quality issues and markdown. An edit cannot substitute
+sources or change ticker; stale/concurrent edits do not overwrite newer work.
+Every stored version is explicitly draft and investorApproved=false. There is no
+publication or approval route. Existing research_notes and original Pipeline are
+untouched. The schema helper is not invoked in production; T268 remains live.
+
+Next: connect a dedicated Lab note-generation adapter to the existing full note
+quality controls using the frozen selection, not by relabeling the shorter assignment
+summary artifact as a full research note. Add bounded authenticated draft/history/
+edit endpoints, sanitized review rendering with revision comparison, and export in
+Calibri/black. Keep acceptance explicit, preserve prior accepted versions and never
+silently invoke legacy acceptance (which publishes the ticker's current note).
+Only register the new schema/routes alongside the completed integration and full
+release procedure. Real-source quality and investor acceptance remain outstanding.
+
+Validation: 1466 safe backend tests, Python compilation and model-policy check
+passed; focused ledger tests reran after tightening the UTF-8 draft byte bound.
+Tests cover immutable source packs, replay after later versions, concurrent edits
+and rejection of approval-bearing payloads. This is a local unpushed checkpoint;
+no live schema, data, model call or deployed behavior changed.
+
 ## T268 — Task-specific source-selection guidance in Lab
 
 Lab now provides collapsible thesis-versus-note guidance for each suggested source
