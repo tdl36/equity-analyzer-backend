@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T257 — thesis shared-connection status recovery
+
+Investment thesis no longer offers a device-local API-key entry form. A failed
+shared provider status check now shows an unavailable state with an explicit
+read-only retry; only a confirmed missing connection directs to central Settings.
+Malformed status responses are unavailable, not missing. Storage cleanup failures
+cannot turn a successful server status response into a missing-key prompt.
+Production read-only status confirmed all three providers configured (not a paid
+provider validation). 173 frontend tests, model-policy gate and build passed.
+Synthetic 390/1280px tests cover failure, retry recovery, configured/missing states,
+no local-key prompt, overflow and GET-only traffic. Backend unchanged; no paid
+calls or research mutations. Deployment verification pending.
+
 ## T256 — explicit currency and share-basis compatibility gaps
 
 ### T256 verified release receipt

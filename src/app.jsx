@@ -99,7 +99,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-14T256';
+        const BUILD_VERSION = '2026-10-14T257';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -866,9 +866,11 @@ Regulatory, execution, or macro risks that could derail the thesis:
         const refreshProviderStatus = async () => {
             const response = await fetch(`${API_URL}/api/provider-credentials`);
             if (!response.ok) throw Error('Shared provider settings are unavailable.');
-            sharedProviders = (await response.json()).providers || {};
-            for (const store of [localStorage,sessionStorage]) {
-                try { store.removeItem(STORAGE_KEY); store.removeItem(GEMINI_STORAGE_KEY); store.removeItem('charlie_gemini_key'); } catch {}
+            const providers = (await response.json()).providers;
+            if (!providers || ['anthropic','gemini','openai'].some(p => typeof providers[p]?.configured !== 'boolean')) throw Error('Shared provider settings are unavailable.');
+            sharedProviders = providers;
+            for (const name of ['localStorage','sessionStorage']) {
+                try { const store = window[name]; store.removeItem(STORAGE_KEY); store.removeItem(GEMINI_STORAGE_KEY); store.removeItem('charlie_gemini_key'); } catch {}
             }
             try {
                 const request = indexedDB.open('EquityAnalyzerDB', 1);
@@ -1579,6 +1581,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
             const [sharedOpenaiInput,setSharedOpenaiInput] = useState('');
             const [apiKeySaved, setApiKeySaved] = useState(loadApiKeyFromStorage() || '');
             const [apiKeyChecked, setApiKeyChecked] = useState(false);
+            const [providerStatusError, setProviderStatusError] = useState('');
+            const [providerStatusRetry, setProviderStatusRetry] = useState(0);
             const [savedAnalyses, setSavedAnalyses] = useState([]);
             const [currentTicker, setCurrentTicker] = useState(null);
             const [documents, setDocuments] = useState([]);
@@ -7462,13 +7466,16 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     if (settings.emailCredentials) {try{localStorage.setItem('emailCredentials',settings.emailCredentials);setEmailData(JSON.parse(settings.emailCredentials));}catch{}}
                 }).catch(()=>{});
                 let live = true;
-                const refresh = () => refreshProviderStatus().then(() => {
+                const refresh = () => {
+                    if (live) { setApiKeyChecked(false); setProviderStatusError(''); }
+                    return refreshProviderStatus().then(() => {
                     if (live) { setApiKeySaved(loadApiKeyFromStorage()); setGeminiApiKey(loadGeminiKeyFromStorage()); setApiKeyChecked(true); }
-                }).catch(() => { if (live) setApiKeyChecked(true); });
+                }).catch(() => { if (live) { setProviderStatusError('Charlie could not check the shared connection. Your saved research is unaffected.'); setApiKeyChecked(true); } });
+                };
                 refresh();
                 window.addEventListener('focus',refresh);
                 return () => {live=false;window.removeEventListener('focus',refresh);};
-            }, [authToken, authLoading]);
+            }, [authToken, authLoading, providerStatusRetry]);
 
             // Reconnect to background analysis job on mount
             useEffect(() => {
@@ -15981,33 +15988,12 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     </div>
                                 )}
                                 
-                                {/* Show API key prompt only after checking storage */}
-                                {!batchUpdateMode && apiKeyChecked && !apiKeySaved && (
-                                    <div className="mb-6 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl">
-                                        <div className="text-center mb-6">
-                                            <div className="w-16 h-16 bg-amber-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                                <Key className="w-8 h-8 text-amber-400" />
-                                            </div>
-                                            <h3 className="font-bold text-xl mb-2">API Key Required</h3>
-                                            <p className="text-slate-400 text-sm">Enter your Anthropic API key to analyze documents</p>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <input 
-                                                type="password" 
-                                                value={apiKeyInput} 
-                                                onChange={e => setApiKeyInput(e.target.value)} 
-                                                onKeyPress={e => e.key === 'Enter' && saveKey()} 
-                                                placeholder="sk-ant-api03-..." 
-                                                className="w-full px-4 py-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-xl text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-base placeholder-slate-500" 
-                                            />
-                                            <button 
-                                                onClick={saveKey} 
-                                                className="w-full px-6 py-4 bg-amber-500/80 hover:bg-amber-500/90 backdrop-blur-sm border border-amber-400/30 shadow-lg shadow-amber-500/20 active:bg-amber-800 rounded-xl font-semibold text-lg transition-all active:scale-[0.98]"
-                                            >
-                                                Save API Key
-                                            </button>
-                                        </div>
-                                        <p className="text-xs text-slate-500 text-center mt-4">Your key is stored locally on this device only</p>
+                                {!batchUpdateMode && apiKeyChecked && (providerStatusError || !apiKeySaved) && (
+                                    <div role="status" className="mb-6 bg-white/5 border border-white/10 rounded-2xl p-6">
+                                        <h3 className="font-bold text-xl mb-2">{providerStatusError ? 'Shared connection check unavailable' : 'Shared Claude connection needs setup'}</h3>
+                                        <p className="text-slate-400 text-sm mb-4">{providerStatusError || 'Charlie uses one shared Claude connection for all devices. Configure it once in Settings → Connections.'}</p>
+                                        <button onClick={() => setProviderStatusRetry(n => n + 1)} className="px-4 py-2 rounded-lg bg-white/10 mr-2">Retry connection check</button>
+                                        {!providerStatusError && <button onClick={() => switchTab('settings')} className="px-4 py-2 rounded-lg bg-blue-600">Open Settings</button>}
                                     </div>
                                 )}
 
