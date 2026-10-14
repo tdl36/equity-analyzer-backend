@@ -40,6 +40,21 @@ appendix/chart data alongside draft versions, and record bounded call intent bef
 model dispatch so interrupted paid calls cannot silently replay. No generation
 adapter, review UI or export is complete yet; keep T268 live until integration.
 
+Generation evidence checkpoint: the draft ledger now optionally retains a bounded
+sources appendix, structured segment chart data and provider stop reason. Prose
+edits preserve this evidence exactly; replacing or stripping it requires a new
+sourced draft. Negative segment profit is retained, while non-finite/boolean values,
+duplicate chart identities and oversized fields are rejected. Missing sources,
+missing charts and output-limit truncation remain explicit quality warnings; every
+generated draft carries an investor-verification caveat. These are model claims,
+not a source-verification certificate. Legacy checkpoint drafts remain readable.
+The new pipeline_lab_note_evidence.py is not wired to generation or production.
+Validation: 14 focused tests and all 1475 safe backend tests passed; Python
+compilation and model policy passed. No model calls or live writes.
+Next concrete implementation: persist generation call intent/result with immutable
+source/context identity before adding dispatch, then parse the full-note response
+into this evidence contract. Never invoke the legacy side-effectful generator.
+
 Next: connect a dedicated Lab note-generation adapter to the existing full note
 quality controls using the frozen selection, not by relabeling the shorter assignment
 summary artifact as a full research note. Add bounded authenticated draft/history/

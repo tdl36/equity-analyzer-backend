@@ -19,7 +19,8 @@ def schema(cur):
 
 
 def normalized(value):
-    if not isinstance(value,dict) or set(value)!={'title','markdown','sourcePack','qualityIssues'}:
+    required = {'title','markdown','sourcePack','qualityIssues'}
+    if not isinstance(value,dict) or not required <= set(value) or set(value) - required - {'generationEvidence'}:
         raise ValueError('A title, draft, frozen source pack and explicit quality issues are required.')
     title=value['title'];markdown=value['markdown'];sources=value['sourcePack'];issues=value['qualityIssues']
     if not isinstance(title,str) or not 1<=len(title.strip())<=240:raise ValueError('A bounded note title is required.')
@@ -36,8 +37,18 @@ def normalized(value):
                 or type(s['bytes']) is not int or not 0<s['bytes']<=15_000_000):raise ValueError('Invalid original identity, hash or size.')
         result.append(dict(s))
     if len({s['reference'] for s in result})!=len(result) or len({s['filename'] for s in result})!=len(result) or sum(s['bytes'] for s in result)>60_000_000:raise ValueError('Duplicate or oversized source pack.')
-    return {'title':title.strip(),'markdown':markdown,'sourcePack':sorted(result,key=lambda s:s['reference']),
-            'qualityIssues':issues,'status':'draft','investorApproved':False}
+    normalized_value = {'title':title.strip(),'markdown':markdown,'sourcePack':sorted(result,key=lambda s:s['reference']),
+            'qualityIssues':list(issues),'status':'draft','investorApproved':False}
+    if 'generationEvidence' in value:
+        from pipeline_lab_note_evidence import normalize, issues as evidence_issues
+        evidence = normalize(value['generationEvidence'])
+        normalized_value['generationEvidence'] = evidence
+        for issue in evidence_issues(evidence):
+            if issue not in normalized_value['qualityIssues']:
+                normalized_value['qualityIssues'].append(issue)
+        if len(normalized_value['qualityIssues']) > 100:
+            raise ValueError('Quality issues exceed their bound.')
+    return normalized_value
 
 
 def obj(value):return json.loads(value) if isinstance(value,str) else value
@@ -64,6 +75,8 @@ def append(cur,note_id,ticker,event_id,expected_revision,payload):
     if latest and latest['ticker']!=ticker:raise ValueError('Note belongs to a different ticker.')
     if latest and obj(latest['payload'])['sourcePack']!=value['sourcePack']:
         raise ValueError('Editing cannot substitute the frozen source pack. Start a separate sourced draft.')
+    if latest and obj(latest['payload']).get('generationEvidence') != value.get('generationEvidence'):
+        raise ValueError('Editing cannot substitute generated evidence. Start a separate sourced draft.')
     cur.execute('INSERT INTO pipeline_lab_note_versions(note_id,revision,event_id,ticker,payload,payload_hash) VALUES(%s,%s,%s,%s,%s::jsonb,%s)',
                 (note_id,revision+1,event_id,ticker,json.dumps(value),digest))
     return {'noteId':note_id,'revision':revision+1,'replayed':False,'status':'draft'}
@@ -134,6 +147,8 @@ def edit(cur, note_id, event_id, expected_revision, changes):
         raise ValueError('The requested draft revision does not exist.')
     payload = {**changes, 'sourcePack': base['sourcePack'],
                'qualityIssues': base['qualityIssues']}
+    if 'generationEvidence' in base:
+        payload['generationEvidence'] = base['generationEvidence']
     # Edits retain existing caveats; they never inherit a claim of fresh review.
     # Approval remains false on every revision regardless of quality issue count.
     return append(cur, note_id, base['ticker'], event_id, expected_revision, payload)

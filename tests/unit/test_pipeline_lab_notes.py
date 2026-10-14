@@ -77,3 +77,19 @@ class DraftVersions(unittest.TestCase):
         for extra in ('qualityIssues','sourcePack','investorApproved'):
             with self.assertRaises(ValueError), self.db(True) as (_,c):
                 edit(c,self.note,str(uuid.uuid4()),3,{**changes,extra:[]})
+    def test_generated_evidence_retained_on_edits_and_cannot_be_replaced(self):
+        from pipeline_lab_notes import edit,read
+        evidence={'sourcesMarkdown':'Fixture report p2','chartSpecs':[],'stopReason':'max_tokens'}
+        payload={**self.payload,'generationEvidence':evidence}
+        self.save(payload=payload)
+        with self.db(True) as (_,c):
+            edit(c,self.note,str(uuid.uuid4()),1,{'title':'Edited','markdown':'New prose'})
+            draft=read(c,self.note)
+            self.assertEqual(draft['generationEvidence'],evidence)
+            self.assertTrue(any('output limit' in i for i in draft['qualityIssues']))
+            self.assertTrue(any('investor verification' in i for i in draft['qualityIssues']))
+        changed={**payload,'generationEvidence':{**evidence,'sourcesMarkdown':'Different'}}
+        with self.assertRaisesRegex(ValueError,'generated evidence'):
+            self.save(2,str(uuid.uuid4()),changed)
+        with self.assertRaisesRegex(ValueError,'generated evidence'):
+            self.save(2,str(uuid.uuid4()),self.payload)
