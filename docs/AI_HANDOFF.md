@@ -2,6 +2,32 @@
 
 Updated: October 14, 2026
 
+## Pending Lab iCloud import — exact-path reader checkpoint (not released)
+
+Added pipeline_lab_local.py and synthetic filesystem tests. The reader accepts only
+an exact catalog folder/filename under the configured STOCKS or CATALYSTS ticker,
+walks directory descriptors without following symlinks, rejects placeholders and
+unavailable/oversized sources, bounds reads to 15 MB, detects in-read changes, and
+can require the frozen SHA-256 on retry. It never searches by filename, hydrates,
+uploads, moves files or starts research. Same names in different folders remain
+separate. This module is deliberately not wired to the running agent or UI yet.
+Production remains verified T266; iCloud import is still unavailable in Lab.
+Validation: 1437 backend and 178 frontend tests, Python compilation and model-policy
+check passed. All filesystem tests use temporary synthetic originals. No agent
+restart, production import or paid research occurred. This local checkpoint is
+not pushed or deployed; finish the durable command integration before releasing.
+
+Next concrete step: add a durable Lab import command/receipt in PostgreSQL using
+saved task/revision + exact source references and one client request identity;
+agent must persist its frozen hash manifest before upload, then use this reader
+with expected hashes on retries. Receive originals idempotently with exact-byte
+receipts and filename-conflict protection. Update only the chosen Lab task after
+all receipts verify and only if its revision remains unchanged. Surface stale
+settings, offline Mac, missing/download-needed sources and conflicts explicitly.
+Then wire the Lab import/retry/status UI, test restart/lost responses and deploy
+through the complete release procedure. Do not reuse the in-memory filename-only
+legacy fetch path, and do not claim this helper establishes live import acceptance.
+
 ## T266 — Recorded collection provenance in Lab
 
 Lab source rows now expose a collapsible recorded browser-collection receipt:
