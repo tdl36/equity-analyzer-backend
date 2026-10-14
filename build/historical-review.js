@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { HistoricalCandidate } from './historical-candidate';
-import { historicalReview, historicalInventory } from './historical-review-model.mjs';
+import { historicalReview, historicalInventory, historicalEditionReadiness } from './historical-review-model.mjs';
 
 // Read-only inspection; never retrieves providers or writes research.
 export function HistoricalReview({
@@ -52,9 +52,26 @@ export function HistoricalReview({
         var [sources, retrievals, reviews] = await Promise.all(['historical-originals', 'historical-retrievals', 'historical-reviews'].map(path => read(`${url}/${path}`, controller.signal)));
         var inventory = historicalInventory(sources, retrievals, reviews, assignmentId, editionId);
         if (token === generation.current) setState({
-          busy: false,
+          busy: true,
           ...inventory
         });
+        try {
+          var selection = encodeURIComponent(JSON.stringify({
+            baseline: sources.baseline
+          }));
+          var coverage = historicalEditionReadiness(await read(`${url}/historical-edition-readiness?selection=${selection}`, controller.signal), sources.baseline);
+          if (token === generation.current) setState({
+            busy: false,
+            ...inventory,
+            coverage
+          });
+        } catch (error) {
+          if (token === generation.current) setState({
+            busy: false,
+            ...inventory,
+            coverageError: error.message
+          });
+        }
       }
     } catch (error) {
       controller.abort();
@@ -73,7 +90,13 @@ export function HistoricalReview({
     role: "status"
   }, "Checking saved evidence\u2026"), state.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, state.error), state.sources && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(HistoricalCandidate, {
+  }, state.error), state.sources && /*#__PURE__*/React.createElement(React.Fragment, null, state.coverageError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "Saved date coverage unavailable: ", state.coverageError), state.coverage && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Saved financial date coverage"
+  }, /*#__PURE__*/React.createElement("h5", null, "Coverage at saved financial dates"), /*#__PURE__*/React.createElement("p", null, "Fiscal year ends are calendar anchors, not verified trading days. Missing prices stay missing; Charlie does not substitute a nearby trading session."), state.coverage.needsDateReview ? /*#__PURE__*/React.createElement("p", null, "The saved annual periods need review before dates can be checked.") : state.coverage.rows.map(row => /*#__PURE__*/React.createElement("p", {
+    key: row.date
+  }, /*#__PURE__*/React.createElement("strong", null, row.date), " \xB7 ", row.message)), /*#__PURE__*/React.createElement("p", null, "These checks do not establish a valuation or update saved research.")), /*#__PURE__*/React.createElement(HistoricalCandidate, {
     url: url,
     baseline: state.sources.baseline,
     originals: state.sources.originals

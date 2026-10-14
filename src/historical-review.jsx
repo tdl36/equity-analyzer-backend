@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {HistoricalCandidate} from './historical-candidate';
-import {historicalReview,historicalInventory} from './historical-review-model.mjs';
+import {historicalReview,historicalInventory,historicalEditionReadiness} from './historical-review-model.mjs';
 
 // Read-only inspection; never retrieves providers or writes research.
 export function HistoricalReview({api, assignmentId, editionId}) {
@@ -26,7 +26,14 @@ export function HistoricalReview({api, assignmentId, editionId}) {
       } else {
         const [sources,retrievals,reviews] = await Promise.all(['historical-originals','historical-retrievals','historical-reviews'].map(path=>read(`${url}/${path}`,controller.signal)));
         const inventory = historicalInventory(sources,retrievals,reviews,assignmentId,editionId);
-        if (token === generation.current) setState({busy:false,...inventory});
+        if (token === generation.current) setState({busy:true,...inventory});
+        try {
+          const selection=encodeURIComponent(JSON.stringify({baseline:sources.baseline}));
+          const coverage=historicalEditionReadiness(await read(`${url}/historical-edition-readiness?selection=${selection}`,controller.signal),sources.baseline);
+          if (token === generation.current) setState({busy:false,...inventory,coverage});
+        } catch (error) {
+          if (token === generation.current) setState({busy:false,...inventory,coverageError:error.message});
+        }
       }
     } catch (error) {
       controller.abort();
@@ -40,6 +47,13 @@ export function HistoricalReview({api, assignmentId, editionId}) {
     {state.busy && <p role="status">Checking saved evidence…</p>}
     {state.error && <p role="alert">{state.error}</p>}
     {state.sources && <>
+      {state.coverageError && <p role="alert">Saved date coverage unavailable: {state.coverageError}</p>}
+      {state.coverage && <section aria-label="Saved financial date coverage">
+        <h5>Coverage at saved financial dates</h5>
+        <p>Fiscal year ends are calendar anchors, not verified trading days. Missing prices stay missing; Charlie does not substitute a nearby trading session.</p>
+        {state.coverage.needsDateReview ? <p>The saved annual periods need review before dates can be checked.</p> : state.coverage.rows.map(row=><p key={row.date}><strong>{row.date}</strong> · {row.message}</p>)}
+        <p>These checks do not establish a valuation or update saved research.</p>
+      </section>}
       <HistoricalCandidate url={url} baseline={state.sources.baseline} originals={state.sources.originals}/>
       <h5>Retained originals</h5>
       {!state.sources.originals.length && <p>No historical originals retained for this assignment.</p>}

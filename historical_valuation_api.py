@@ -66,6 +66,21 @@ def create_blueprint(get_db, authenticated=lambda: False, *, ingestion_config=No
             raise ValueError('Select a frozen baseline and exact inputs.')
         return selection
 
+    @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/historical-edition-readiness')
+    def edition_readiness(aid, eid):
+        if not authenticated():
+            return jsonify(error='Sign in to inspect saved financial dates.'), 403
+        try:
+            selection = bounded_selection({'baseline'})
+            from historical_valuation_review import _baseline
+            _baseline(selection['baseline'])
+            from historical_valuation_candidate_context import edition_readiness_from_storage
+            with get_db() as (_, cur):
+                result = edition_readiness_from_storage(cur, aid, eid, selection['baseline'])
+            return jsonify(result)
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+            return jsonify(error='Saved financial dates could not be checked for this edition. Reload its evidence; no retrieval or research was started.'), 409
+
     @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/historical-readiness')
     def batch_readiness(aid, eid):
         if not authenticated():

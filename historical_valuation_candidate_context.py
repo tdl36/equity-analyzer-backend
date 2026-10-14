@@ -87,3 +87,27 @@ def replay_readiness_from_storage(cur, assignment_id, edition_id, snapshot):
     if current != snapshot:
         raise ValueError('Historical evidence or target changed; prepare a new checkpoint.')
     return current
+
+
+def edition_readiness_from_storage(cur, assignment_id, edition_id, expected_baseline):
+    """Derive calendar anchors from the edition's frozen financials, then inspect.
+
+    No caller-supplied amounts/dates, fresh quote, inferred trading session or
+    persisted coordinator mutation. load_context keeps assignment input/vintage
+    locked while the date policy verifies the same combined financial digest.
+    """
+    from historical_valuation_dates import frozen_dates
+    from historical_valuation_readiness import readiness
+    expected = _baseline(expected_baseline)
+    baseline, identity = load_context(cur, assignment_id, edition_id)
+    if baseline != expected:
+        raise ValueError('The saved target changed; reload its evidence.')
+    cur.execute('SELECT input,result FROM mp_jobs WHERE id=%s', (baseline['assignmentId'],))
+    row = cur.fetchone()
+    policy = frozen_dates(row['result']['visualFundamentals'], baseline,
+                          assignment_input=row['input'])
+    result = {'datePolicy': policy, 'valuationReady': False, 'dispatchAllowed': False}
+    if policy['payload']['dates']:
+        records = _complete_inventory(cur, baseline['assignmentId'])
+        result['readiness'] = readiness(records, baseline, **identity, dates=policy['payload']['dates'])
+    return result

@@ -81,3 +81,42 @@ class ReadinessContextTests(unittest.TestCase):
         self.assertTrue(all(r['status']=='needs_evidence' for r in self.build()['payload']['observations']))
         self.retain([{**self.records[0],'id':f'price-{i}'} for i in range(61)])
         with self.assertRaisesRegex(ValueError,'planning bound'):self.build()
+
+    def install_annuals(self, annuals):
+        import json
+        from onepager_corrections import digest
+        from historical_valuation_context import load_context
+        with self.db(True) as (_,cur):
+            cur.execute('SELECT input,result FROM mp_jobs WHERE id=%s',(AID,))
+            row=cur.fetchone();financials=row['result']['visualFundamentals']
+            financials['annuals']=annuals;financials['asOf']='2026-10-12'
+            value=digest({'input':row['input'],'fundamentals':financials,'vintage':financials})
+            cur.execute('UPDATE mp_jobs SET result=%s::jsonb WHERE id=%s',(json.dumps(row['result']),AID))
+            cur.execute("UPDATE onepager_editions SET record=jsonb_set(record,'{fundamentalsDigest}',%s::jsonb) WHERE id=%s",(json.dumps(value),EID))
+            self.baseline,_=load_context(cur,AID,EID)
+
+    def edition_readiness(self):
+        from historical_valuation_candidate_context import edition_readiness_from_storage
+        with self.db() as (_,cur):return edition_readiness_from_storage(cur,AID,EID,self.baseline)
+
+    def test_edition_dates_are_from_locked_frozen_financials_not_caller_input(self):
+        self.install_annuals([{'start':'2022-03-04','end':'2023-03-03'},
+                             {'start':'2024-03-04','end':'2025-03-03'}])
+        self.retain();result=self.edition_readiness()
+        self.assertEqual(result['datePolicy']['payload']['dates'],['2023-03-03','2025-03-03'])
+        self.assertEqual([r['status'] for r in result['readiness']['payload']['observations']],['needs_evidence','selected'])
+        self.assertFalse(result['datePolicy']['payload']['tradingDatesVerified'])
+        self.assertFalse(result['dispatchAllowed'])
+
+    def test_conflicting_calendar_anchors_do_not_read_original_bodies(self):
+        self.install_annuals([{'start':'2024-03-04','end':'2025-03-03'}]*2)
+        with patch('historical_valuation_candidate_context.read_records') as read:
+            result=self.edition_readiness();read.assert_not_called()
+        self.assertNotIn('readiness',result)
+        self.assertEqual(result['datePolicy']['payload']['status'],'needs_date_review')
+
+    def test_edition_readiness_rejects_changed_financial_vintage(self):
+        self.install_annuals([])
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET result=jsonb_set(result,'{visualFundamentals,asOf}','\"2026-10-11\"') WHERE id=%s",(AID,))
+        with self.assertRaises(ValueError):self.edition_readiness()

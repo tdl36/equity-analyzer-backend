@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T245 — saved-date evidence coverage in one-pager review
+
+The saved-evidence panel now automatically checks historical coverage at the saved
+annual fiscal-period ends, without the investor entering dates. Calendar anchors
+are explicitly not verified trading sessions: exact-date gaps remain visible and
+no adjacent price is substituted. Dates are derived on the server from the locked
+financial snapshot and verified combined baseline. Invalid/conflicting periods
+withhold the date series. The authenticated read-only endpoint accepts only the
+expected baseline, never proposed dates or financial amounts. No provider retrieval,
+paid dispatch, thesis edits or approvals are enabled.
+
+Frontend validates matching baselines/dates, safe status qualifiers and remaining
+valuation checks before display. Failed date coverage leaves the original inventory
+available with a visible error; stale responses are discarded using the existing
+abort/generation guard. Manual retained-input inspection remains available.
+
+Synthetic full-app checks at 390/1280px cover automatic coverage, manual and auto
+candidate previews, missing/ambiguous results, stale input clearing, existing output
+links/retry/download, no overflow and GET-only requests. Mobile coverage screenshot
+reviewed. Real-source coverage/financial quality is still unproven: ABT has no
+historical originals. Exact tests and deployment receipts follow below.
+
+Next: source ingestion remains disabled pending verified provider configuration,
+security/share-class mapping and provenance. Do not treat this evidence UI as a
+completed historical valuation. Continue the next independent Home/workspace
+navigation priority while retaining those acceptance gaps and investor review.
+Acceptance remains open across the eight priorities.
+
 ## T244 — historical readiness for frozen date batches
 
 ### T244 release receipt

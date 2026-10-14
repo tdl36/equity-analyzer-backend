@@ -86,3 +86,43 @@ export function historicalPlan(value, baseline, date) {
  if(p.candidate || !p.gaps.length || p.gaps.some(g=>!g || !['price','earnings'].includes(g.input) || !['missing_coverage','ambiguous_receipts'].includes(g.code))) throw Error('Historical coverage is incomplete or inconsistent. Reload evidence.');
  return {coverage:p.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.code==='missing_coverage'?'No retained original covers this exact date.':'Multiple retained originals qualify. Choose the originals explicitly below.'}`)};
 }
+
+export function historicalEditionReadiness(value, baseline) {
+  const policy=value?.datePolicy, p=policy?.payload, ready=value?.readiness, r=ready?.payload;
+  const hash=x=>typeof x==='string' && /^[a-f0-9]{64}$/.test(x);
+  const date=x=>typeof x==='string' && /^20\d{2}-\d{2}-\d{2}$/.test(x) && Number.isFinite(Date.parse(x)) && new Date(x).toISOString().slice(0,10)===x;
+  const matches=x=>matchingBaselines([baseline,x],baseline?.assignmentId,baseline?.parentEditionId);
+  const fail=()=>{throw Error('Saved date coverage does not match this edition. Reload its evidence.');};
+  if(value?.valuationReady!==false || value?.dispatchAllowed!==false || !hash(policy?.datePolicyDigest) ||
+     p?.version!==1 || p?.policy!=='exact_fiscal_period_end_v1' || !matches(p.baseline) ||
+     p.tradingDatesVerified!==false || p.valuationReady!==false || !date(p.asOf) ||
+     !Array.isArray(p.dates) || p.dates.length>30 || new Set(p.dates).size!==p.dates.length ||
+     p.dates.some(d=>!date(d)||d>=p.asOf) || !Array.isArray(p.anchors) || p.anchors.length!==p.dates.length ||
+     !Array.isArray(p.gaps) || p.gaps.length>30) fail();
+  if(p.status==='needs_date_review') {
+    if(p.dates.length || !p.gaps.length || ready) fail();
+    return {needsDateReview:true,rows:[]};
+  }
+  if(p.status!=='dates_available'||!p.dates.length||p.gaps.length || !hash(ready?.readinessDigest) ||
+     r?.version!==1||!matches(r.baseline)||r.valuationReady!==false||r.dispatchAllowed!==false||r.investorReviewRequired!==true||
+     !Array.isArray(r.dates)||JSON.stringify(r.dates)!==JSON.stringify(p.dates)||
+     !Array.isArray(r.observations)||r.observations.length!==p.dates.length ||
+     !Array.isArray(r.unresolvedChecks)||!['security_currency_mapping','corporate_actions','filing_inventory_completeness','source_provenance','investor_review'].every(x=>r.unresolvedChecks.includes(x))) fail();
+  const rows=r.observations.map((row,index)=>{
+    const anchor=p.anchors[index],day=p.dates[index];
+    if(anchor?.date!==day||anchor.periodEnd!==day||anchor.basis!=='fiscal_period_end'||!date(anchor.periodStart)||
+       anchor.periodStart>=day||row?.date!==day||!hash(row.planDigest)||!Array.isArray(row.gaps)) fail();
+    if(row.status==='selected') {
+      const s=row.selection;
+      if(row.gaps.length||!hash(row.candidateDigest)||s?.date!==day||
+         ['priceSource','earningsSource'].some(k=>typeof s[k]?.id!=='string'||!s[k].id||!hash(s[k].sha256))) fail();
+      return {date:day,message:'Inputs matched; valuation checks and investor review remain.'};
+    }
+    if(!['needs_evidence','ambiguous'].includes(row.status)||!row.gaps.length||row.selection||row.candidateDigest||
+       row.gaps.some(g=>!['price','earnings'].includes(g?.input)||!['missing_coverage','ambiguous_receipts'].includes(g.code))) fail();
+    return {date:day,message:row.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.code==='missing_coverage'?'exact-date coverage missing':'multiple eligible originals require review'}`).join(' · ')};
+  });
+  const selected=r.observations.every(x=>x.status==='selected');
+  if(r.status!==(selected?'inputs_selected':'needs_evidence_review')) fail();
+  return {needsDateReview:false,rows};
+}

@@ -104,3 +104,23 @@ class CandidateApiTests(unittest.TestCase):
             query={'selection':json.dumps({'baseline':self.baseline,'dates':dates})}
             self.assertEqual(self.client(True,db).get(url,query_string=query).status_code,409)
         db.assert_not_called()
+
+    def test_edition_readiness_rejects_dates_and_unauthenticated_reads(self):
+        url=self.preview_url.replace('historical-candidate','historical-edition-readiness')
+        db=Mock(side_effect=AssertionError('Unexpected database access'))
+        self.assertEqual(self.client(False,db).get(url).status_code,403)
+        for selection in ({'baseline':self.baseline,'dates':['2025-03-03']},{'baseline':{}},{}):
+            self.assertEqual(self.client(True,db).get(url,query_string={'selection':json.dumps(selection)}).status_code,409)
+        db.assert_not_called()
+
+    def test_edition_readiness_uses_saved_dates_and_never_writes(self):
+        from tests.unit.test_historical_valuation_readiness_context import ReadinessContextTests
+        ReadinessContextTests.install_annuals(self,[{'start':'2024-03-04','end':'2025-03-03'}])
+        url=self.preview_url.replace('historical-candidate','historical-edition-readiness')
+        query={'selection':json.dumps({'baseline':self.baseline})}
+        r=self.client().get(url,query_string=query)
+        self.assertEqual(r.status_code,200,r.json)
+        self.assertEqual(r.headers['Cache-Control'],'private, no-store')
+        self.assertEqual(r.json['datePolicy']['payload']['dates'],['2025-03-03'])
+        self.assertFalse(r.json['dispatchAllowed'])
+        self.assertEqual(self.client().post(url,json={}).status_code,405)
