@@ -112,7 +112,9 @@ function LabStock({
     [notice, setNotice] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [generation, setGeneration] = React.useState(0),
-    [collect, setCollect] = React.useState(false);
+    [collect, setCollect] = React.useState(false),
+    [checkResult, setCheckResult] = React.useState(null),
+    [checking, setChecking] = React.useState(false);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -171,6 +173,31 @@ function LabStock({
     } finally {
       lock.current = false;
       if (alive.current) setBusy(false);
+    }
+  };
+  var check = async () => {
+    if (lock.current || !saved || dirty) return;
+    lock.current = true;
+    setChecking(true);
+    setCheckResult(null);
+    setError('');
+    try {
+      var d = await read(api, `/api/pipeline-lab/check/${ticker}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          revision: saved.revision,
+          task
+        })
+      });
+      if (alive.current) setCheckResult(d);
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    } finally {
+      lock.current = false;
+      if (alive.current) setChecking(false);
     }
   };
   var shown = visibleLabDocuments(rows, query, group, sort),
@@ -289,7 +316,21 @@ function LabStock({
     },
     disabled: busy || !dirty,
     onClick: save
-  }, busy ? 'Saving…' : 'Save Lab settings')), /*#__PURE__*/React.createElement("hr", {
+  }, busy ? 'Saving…' : 'Save Lab settings'), /*#__PURE__*/React.createElement("button", {
+    style: {
+      marginTop: 16,
+      marginLeft: 8
+    },
+    disabled: busy || checking || dirty || !saved,
+    onClick: check
+  }, checking ? 'Checking stored originals…' : 'Check selected originals'), dirty && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Save your selection before checking the stored originals.")), checkResult && !dirty && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement("div", {
+    role: "status"
+  }, /*#__PURE__*/React.createElement("p", null, checkResult.verified.length, " selected original(s) checked against stored bytes."), checkResult.blockers.length > 0 ? /*#__PURE__*/React.createElement("ul", null, checkResult.blockers.map((b, i) => /*#__PURE__*/React.createElement("li", {
+    key: i,
+    style: {
+      overflowWrap: 'anywhere'
+    }
+  }, b))) : /*#__PURE__*/React.createElement("p", null, "The selected stored bytes passed this check."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "This does not verify external-source freshness, licensing or equality with iCloud originals. No research was started. Generation from Lab selections is still being built; originals must be rechecked when a run starts.")))), /*#__PURE__*/React.createElement("hr", {
     style: {
       margin: '24px 0'
     }

@@ -2,6 +2,28 @@
 
 Updated: October 14, 2026
 
+## T261 — Pipeline Lab stored-original preflight
+
+Added a read-only Check selected originals action for centrally saved Lab task
+selections. It resolves exact document_files IDs within the ticker, rejects stale
+configuration revisions, bounds the pack to eight originals / 15 MB each / 60 MB
+total, decodes and hashes stored bytes, and identifies missing, invalid, unsupported
+or same-filename selections. Empty selection never expands to all files. iCloud
+and research-storage selections remain explicit blockers until their import and
+execution paths are supported. No bodies or credentials are returned.
+
+This is a check, not a persisted immutable source pack, provenance/licensing proof,
+freshness check, iCloud equality receipt or permission to dispatch research. Lab
+generation remains unavailable. Original Pipeline is unchanged. Next: persist a
+bounded immutable pack with byte revalidation at dispatch, then connect an explicit
+reviewable thesis mode and draft note mode with idempotent jobs; no filename-only
+handoff. Preserve T259 historical-mapping checkpoint.
+
+Validation: 1414 safe backend tests, 176 frontend tests, compilation, model policy
+and production build passed. Synthetic full-app 390/1280px tests exercised the new
+check action, task isolation, saves and no generation requests; mobile inspected.
+Release verification pending below. No live config writes or paid/model QA.
+
 ## T260 — isolated Research Pipeline Lab preview
 
 User explicitly requested retaining the existing Pipeline, including its direct
