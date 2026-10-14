@@ -2,6 +2,31 @@
 
 Updated: October 14, 2026
 
+## Pending Lab iCloud import — durable transaction checkpoint (not released)
+
+Added pipeline_lab_icloud.py: durable PostgreSQL request identity, per-stock
+pending-request exclusion, saved task/revision and exact folder references,
+immutable hash-manifest freeze, atomic all-original import with byte receipts,
+revision-checked task-only selection updates, cancellation and read-only completion
+replay after later settings changes. Filename conflicts, changed hashes, stale
+settings and missing identities roll back all copies and configuration changes.
+No schema migration is needed; namespaced app_settings records hold the bounded
+command/receipt. No API or agent registration exists yet, so production stays T266.
+
+Next: register authenticated user queue/status/cancel and agent-only pending/freeze/
+complete routes, with bounded request bodies and actionable status. Wire an agent
+poll to persist/freeze all hashes before uploading any originals, read on retries
+using the frozen hashes, and reconcile existing completion receipts before reads.
+Then add Lab request identity persistence, progress/retry/cancel controls and exact
+receipt reconciliation. Test Mac interruption and lost responses, then complete
+release markers/build/deploy and verify live reads. Preserve queued/frozen records
+on errors; catch validation errors outside commit contexts to ensure rollback.
+This checkpoint and its predecessor are local only, not pushed or deployed.
+Validation: 1443 safe backend tests, touched Python compilation and model-policy
+check passed. Disposable PostgreSQL tests cover restart/replay, concurrent request
+IDs, immutable manifests, cancellation, byte conflicts and stale configurations.
+No production writes, live original reads, agent restart or paid research occurred.
+
 ## Pending Lab iCloud import — exact-path reader checkpoint (not released)
 
 Added pipeline_lab_local.py and synthetic filesystem tests. The reader accepts only
