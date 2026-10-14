@@ -88,6 +88,19 @@ model-policy checks passed. No paid calls, live writes or production release.
 No production integration yet. Next: persist the complete frozen context and plan,
 including these representation warnings, then wire prompt and journal dispatch.
 
+Frozen-plan checkpoint: pipeline_lab_note_plan.py persists bounded context, full-note
+prompt text, ticker/title, model/output cap, original hashes, representation hash,
+batch count, PDF-conversion policy and representation warnings. Stable note IDs
+replay only identical plans. Concurrent conflicting plans have one winner; changed
+extraction, batch count or warnings block dispatch. No source-byte copies or secrets
+are stored in this plan. Three disposable PostgreSQL tests cover replay/conflicts,
+concurrency, bounds and representation drift. All 1494 safe backend tests,
+compilation and model-policy checks passed. This remains unregistered and unpushed.
+Next: build the coordinator using this stored plan, existing full-note playbook,
+source preparation and journal; carry warnings into final drafts and use the frozen
+final-batch/ticker/title when materializing. Then connect authenticated submission,
+review UI/export and the full release procedure. No production generation yet.
+
 Next concrete implementation: connect frozen source/context preparation and the
 full-note prompt to the call journal, with final-batch identity frozen in the
 coordinator (store_draft is internal and trusts that coordinator for ticker/title).
