@@ -22,7 +22,12 @@ handoff. Preserve T259 historical-mapping checkpoint.
 Validation: 1414 safe backend tests, 176 frontend tests, compilation, model policy
 and production build passed. Synthetic full-app 390/1280px tests exercised the new
 check action, task isolation, saves and no generation requests; mobile inspected.
-Release verification pending below. No live config writes or paid/model QA.
+Release verified: backend dea92819a5401722f8e8d4fef2d091e5033fa3a4;
+Cloudflare ba215a91-9ac7-44fb-b2e2-218fbd79e704; hosted HTML T261 and
+versioned JS/SW bytes match. Read-only check rejects unauthenticated access (401)
+and absent saved ABT settings (409/private/no-store). Live successful byte checks
+were not exercised because no Lab configuration is saved. Agent healthy at 14.3
+seconds, unchanged. No live config writes or paid/model QA.
 
 ## T260 — isolated Research Pipeline Lab preview
 
