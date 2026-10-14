@@ -2,142 +2,58 @@
 
 Updated: October 14, 2026
 
-## Pending Lab note versions — draft ledger checkpoint (not released)
+## Pending Lab full notes — local checkpoints, not released
 
-Started the full Lab note workflow with pipeline_lab_notes.py and isolated PostgreSQL
-tests. The append-only ledger uses stable note/edit identities, optimistic revisions,
-replay checks and per-note concurrency locks. Each draft revision retains its exact
-source IDs, hashes, sizes, quality issues and markdown. An edit cannot substitute
-sources or change ticker; stale/concurrent edits do not overwrite newer work.
-Every stored version is explicitly draft and investorApproved=false. There is no
-publication or approval route. Existing research_notes and original Pipeline are
-untouched. The schema helper is not invoked in production; T268 remains live.
+Production remains T268. The following modules are local/unpushed and deliberately
+unregistered: no new schema, API, worker, paid call or user-visible behavior is live.
+Original Research Pipeline and research_notes remain untouched.
 
-Additional local checkpoint: single-revision reads, bounded cursor-based history
-(metadata only), and prose-only editing are implemented in the ledger. Editing
-loads the specified baseline and retains server-owned source identities and quality
-caveats. Exact retries still resolve after newer edits; stale edits cannot overwrite.
-No endpoints or schema registration have been enabled. Seven focused disposable
-PostgreSQL tests and all 1468 safe backend tests pass; compilation and model policy
-pass. Production remains T268. Next integration step is unchanged.
+- pipeline_lab_notes.py: append-only draft revisions, source identities, optimistic
+  edits, replay and bounded history. Prose edits preserve provenance/quality issues.
+  Every version is draft and investorApproved=false; no publication route.
+- pipeline_lab_notes_api.py: injected authenticated review/history/edit adapter,
+  bounded bodies and no-store responses. No create/accept route, not registered.
+- pipeline_lab_note_evidence.py / pipeline_lab_note_response.py: retained sources
+  appendix, chart specs, stop reason and visible missing/truncation caveats. Strict
+  reply boundaries/JSON; no arbitrary-text fallback or paid repair. Completed raw
+  replies materialize idempotently and cannot overwrite later investor edits.
+- pipeline_lab_note_calls.py: durable intent before injected provider invocation,
+  immutable bounded replies, replay without spending, uncertain outcomes never
+  automatically retried. Call identity binds hashes, model and output cap.
+- pipeline_lab_note_sources.py: exact ID/hash/name/eligibility checks, no omitted or
+  substituted source, original PDF blocks. PDF text fallback requires explicit
+  policy; all extracted representations carry fidelity warnings and content hashes.
+  Uses existing notegen planning and preserves original files.
+- pipeline_lab_note_plan.py: immutable bounded context, prompt, ticker/title, model,
+  cap, source hashes, representation hash, batch count and warnings. No source-byte
+  copy. Conflicting concurrent plans and representation drift are rejected.
+- pipeline_lab_note_run.py: coordinator connects stored plans, source checks, journal
+  and draft materialization. Synthetic multi-batch merging and restart reuse work.
+  Truncated intermediate replies stop; final completed replies can materialize
+  without rereading originals. The injected provider still needs input-budget and
+  model/account-policy enforcement before production use.
+- NEW pipeline_lab_note_jobs.py: durable queued/running/attention/draft states.
+  Transactional plan+enqueue, SKIP LOCKED claims and renewable five-minute leases.
+  Expired workers become attention, never queued automatically. Lease identities
+  fence renewal/settlement; draft status requires an actual saved revision. Replay
+  of submission cannot reset running, attention or completed work. Not scheduled.
 
-Pending HTTP review adapter (pipeline_lab_notes_api.py): authenticated single-draft
-and bounded history reads plus prose-only revision writes. Authentication precedes
-all reads/writes, responses are private/no-store, edits have byte and field limits,
-and stale edits/replays retain ledger semantics. No create/accept/publication route.
-The adapter remains unregistered: these routes are not available in live Charlie.
-Validation: all 1471 safe backend tests, compilation and model policy passed.
-Three disposable PostgreSQL/Flask checks cover auth, history, exact-revision reads,
-replay after later edits, size limits and attempts to alter provenance/approval.
+Latest focused validation: four disposable PostgreSQL queue tests cover replay,
+concurrent claims, expiry, stale owners and actual saved-draft checks. All 1503
+safe backend tests, Python compilation and model-policy checks passed. No paid QA.
 
-Generation integration map: app_v3.py:_generate_research_note owns the existing
-full-note playbook, notegen.plan_batches, page/text attachments, chart parsing and
-DOCX rendering. Do not call it directly for Lab: it selects by filename, reads live
-thesis context, writes legacy research_notes and sends Telegram notifications.
-Build a separate adapter with verified frozen ID/hash inputs and pinned context;
-reuse the playbook/planner/rendering without those side effects. Persist sources
-appendix/chart data alongside draft versions, and record bounded call intent before
-model dispatch so interrupted paid calls cannot silently replay. No generation
-adapter, review UI or export is complete yet; keep T268 live until integration.
+Next concrete action: wire authenticated submission to freeze the existing full-note
+playbook/context and enforce account/model/input budgets. Add the worker integration
+with lease renewal during long calls and ownership checks before each new call;
+reconcile interrupted jobs against durable replies/drafts without retrying ambiguous
+paid outcomes. Then connect review UI/export in Calibri/black and explicit acceptance
+history, register schemas/routes, and follow the full release procedure. Do not expose
+these helpers as complete end-to-end automation before real authorized acceptance.
 
-Generation evidence checkpoint: the draft ledger now optionally retains a bounded
-sources appendix, structured segment chart data and provider stop reason. Prose
-edits preserve this evidence exactly; replacing or stripping it requires a new
-sourced draft. Negative segment profit is retained, while non-finite/boolean values,
-duplicate chart identities and oversized fields are rejected. Missing sources,
-missing charts and output-limit truncation remain explicit quality warnings; every
-generated draft carries an investor-verification caveat. These are model claims,
-not a source-verification certificate. Legacy checkpoint drafts remain readable.
-The new pipeline_lab_note_evidence.py is not wired to generation or production.
-Validation: 14 focused tests and all 1475 safe backend tests passed; Python
-compilation and model policy passed. No model calls or live writes.
-Call-journal checkpoint: pipeline_lab_note_calls.py commits a bounded frozen call
-identity before invoking an injected provider function. One reservation wins under
-concurrency. Saved replies replay without calling the provider; an interrupted
-intent, provider failure or response-save failure returns attention and cannot
-redispatch automatically. Source-pack/prompt/context hashes, pinned model and token
-cap bind each note/batch identity. Replies are bounded and immutable. Exceptions
-are not logged or returned because they may contain private request material.
-Five disposable PostgreSQL tests verify commit-before-call, replay, concurrency,
-immutable receipts and response-save failure, using synthetic provider callbacks.
-Validation: 1479-test safe suite passed; the fifth focused failure-injection test
-was added afterward and all five journal tests passed. Compilation/model policy
-passed. No real provider adapter, schema registration or production dispatch was enabled.
-Response/materialization checkpoint: pipeline_lab_note_response.py parses the
-saved full-note format into draft prose, source appendix and four fiscal-year
-segment series. Missing optional sections and output truncation remain warnings;
-missing/duplicate/overlapping note boundaries, malformed chart JSON and duplicate
-JSON keys fail explicitly. No arbitrary-text fallback or repair model call occurs.
-A completed journal reply materializes with a deterministic event identity, so
-replaying after an investor edit cannot overwrite it. Uncertain replies cannot
-create drafts; parsing failure preserves the completed raw reply for recovery.
-Six synthetic/parser and disposable PostgreSQL tests cover these paths. All 1486
-safe backend tests, compilation and model-policy validation passed. No paid calls.
-Source-preparation checkpoint: pipeline_lab_note_sources.py rechecks selected
-original IDs, eligibility, exact bytes and filenames before planning. Every selected
-source must appear exactly once; omitted/unreadable or substituted originals block
-generation. PDFs retain original document blocks; a planner's PDF-to-text fallback
-requires explicit permission. Extracted representations carry a visual-fidelity
-warning and the ordered actual attachment content has its own SHA-256 identity.
-The helper defaults to the existing notegen planner but makes no provider calls.
-Five focused tests cover changed/missing bytes, skipped/duplicate/substituted
-sources, original PDF attachment, text-conversion warnings/hash changes and the
-existing planner with a synthetic text file. The 1490-test safe suite passed before
-the fifth test was added; all five focused tests then passed. Compilation and
-model-policy checks passed. No paid calls, live writes or production release.
-No production integration yet. Next: persist the complete frozen context and plan,
-including these representation warnings, then wire prompt and journal dispatch.
-
-Frozen-plan checkpoint: pipeline_lab_note_plan.py persists bounded context, full-note
-prompt text, ticker/title, model/output cap, original hashes, representation hash,
-batch count, PDF-conversion policy and representation warnings. Stable note IDs
-replay only identical plans. Concurrent conflicting plans have one winner; changed
-extraction, batch count or warnings block dispatch. No source-byte copies or secrets
-are stored in this plan. Three disposable PostgreSQL tests cover replay/conflicts,
-concurrency, bounds and representation drift. All 1494 safe backend tests,
-compilation and model-policy checks passed. This remains unregistered and unpushed.
-Next: build the coordinator using this stored plan, existing full-note playbook,
-source preparation and journal; carry warnings into final drafts and use the frozen
-final-batch/ticker/title when materializing. Then connect authenticated submission,
-review UI/export and the full release procedure. No production generation yet.
-
-Coordinator checkpoint: pipeline_lab_note_run.execute now connects frozen plans,
-exact source preparation, per-batch call journal and final draft materialization.
-It rechecks representations before dispatch, uses stored context/prompt/model/caps,
-resumes saved replies without another call, blocks truncated intermediate replies,
-and carries representation warnings into drafts. Existing drafts return unchanged;
-completed final replies can materialize without reloading originals. Malformed
-saved replies require review rather than a paid repair/retry. Synthetic integration
-covers complete/replay, provider uncertainty, malformed saved output and changed
-originals. The 1498-test safe suite passed; afterward a two-batch merge/truncation
-test was added and all five coordinator tests passed. Compilation and model policy
-passed. No real provider is wired and no production route/worker is registered.
-Next: authenticated submission must freeze the existing full-note playbook and
-context, enforce account/model/input-budget policy, and persist queue/status for
-restart recovery. Then add review UI/export, acceptance history and full release.
-The injected provider adapter must validate input budget; the coordinator's bounded
-merge text is not itself a provider-token-limit check. T268 remains live.
-
-Next concrete implementation: connect frozen source/context preparation and the
-full-note prompt to the call journal, with final-batch identity frozen in the
-coordinator (store_draft is internal and trusts that coordinator for ticker/title).
-Then add review UI/export and register only after complete integration. Never invoke
-the legacy side-effectful generator. T268 remains live; checkpoints are unpushed.
-
-Next: connect a dedicated Lab note-generation adapter to the existing full note
-quality controls using the frozen selection, not by relabeling the shorter assignment
-summary artifact as a full research note. Add bounded authenticated draft/history/
-edit endpoints, sanitized review rendering with revision comparison, and export in
-Calibri/black. Keep acceptance explicit, preserve prior accepted versions and never
-silently invoke legacy acceptance (which publishes the ticker's current note).
-Only register the new schema/routes alongside the completed integration and full
-release procedure. Real-source quality and investor acceptance remain outstanding.
-
-Validation: 1466 safe backend tests, Python compilation and model-policy check
-passed; focused ledger tests reran after tightening the UTF-8 draft byte bound.
-Tests cover immutable source packs, replay after later versions, concurrent edits
-and rejection of approval-bearing payloads. This is a local unpushed checkpoint;
-no live schema, data, model call or deployed behavior changed.
+Existing full-note integration map: app_v3.py:_generate_research_note owns playbook,
+planner, attachment building, charts and DOCX. Do NOT invoke it directly: it selects
+by filename, reads live thesis, writes legacy research_notes and sends Telegram.
+Reuse bounded pieces without those side effects. No real provider adapter is wired.
 
 ## T268 — Task-specific source-selection guidance in Lab
 
