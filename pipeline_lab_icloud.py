@@ -54,7 +54,7 @@ def enqueue(cur,ticker,task,revision,request_id):
     cur.execute('SELECT value FROM app_settings WHERE key LIKE %s',(PREFIX+'%',))
     for row in cur.fetchall():
         other=json.loads(row['value']) if isinstance(row['value'],str) else row['value']
-        if other['input']['ticker']==ticker and other['status'] in ('queued','frozen'):
+        if other['input']['ticker']==ticker and other['status'] in ('queued','frozen','attention'):
             raise ValueError('An iCloud import is already pending for this stock. Resume that request.')
     job={'requestId':key[len(PREFIX):],'input':signature,'references':refs,'status':'queued','researchStarted':False}
     put(cur,key,job);return job
@@ -122,3 +122,24 @@ def cancel(cur,request_id):
     if not job:raise ValueError('Import request not found.')
     if job['status']=='complete':return job
     job={**job,'status':'cancelled'};put(cur,key,job);return job
+
+ISSUES={
+    'source_unavailable':'Original unavailable or changed at its exact iCloud path. Check download status, file identity and Mac permissions, then retry or cancel.',
+    'import_unavailable':'Import connection or receipt unavailable. Retry to reconcile the saved request; existing originals remain preserved.',
+    'settings_conflict':'Saved settings or stored originals conflict with this request. Review the sources and cancel this request before starting a new import.',
+}
+
+def attention(cur,request_id,code):
+    if not isinstance(code,str) or code not in ISSUES:raise ValueError('Unknown import issue.')
+    key=job_key(request_id);lock(cur,key);job=load(cur,key)
+    if not job:raise ValueError('Import request not found.')
+    if job['status'] in ('complete','cancelled'):return job
+    job={**job,'status':'attention','issueCode':code,'issue':ISSUES[code]};put(cur,key,job);return job
+
+
+def retry(cur,request_id):
+    key=job_key(request_id);lock(cur,key);job=load(cur,key)
+    if not job:raise ValueError('Import request not found.')
+    if job['status']!='attention':return job
+    job={k:v for k,v in job.items() if k not in ('issue','issueCode')}
+    job['status']='frozen' if 'manifest' in job else 'queued';put(cur,key,job);return job

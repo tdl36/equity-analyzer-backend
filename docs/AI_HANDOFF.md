@@ -2,6 +2,36 @@
 
 Updated: October 14, 2026
 
+## Pending Lab iCloud import — HTTP/agent adapters checkpoint (not released)
+
+Added pipeline_lab_icloud_api.py with bounded JSON user queue/list/status/cancel
+routes and additionally credential-gated agent pending/freeze/complete routes.
+Responses are private/no-store. Agent completion keeps transaction errors outside
+the commit context. Added pipeline_lab_icloud_agent.py: one bounded request per
+poll, server status reconciliation before source reads, durable server-side hash
+freeze before the first body upload, exact-path/hash-bound retries and exact
+completion receipt checks. Lost freeze or completion responses stop that poll;
+subsequent polls reconcile rather than substituting sources. No model calls.
+
+Both adapters remain unregistered and uncalled in production. T266 remains live.
+Bounded attention codes and explicit retry are also implemented: pending polls
+exclude attention requests; retry restores queued/frozen state without changing
+identities, and the stock cannot create a competing request while attention remains.
+Next concrete integration: wire agent failures to these bounded attention reports;
+register the blueprint with normal app authentication
+and the existing Mac ApiKey predicate; add a scheduled agent poll using existing
+credentials (one job per poll). Add Lab import request-ID persistence, pending
+status/retry/cancel and receipt-driven config reload. Then run desktop/mobile and
+restart/lost-response checks, bump all release markers, build, push/deploy, restart
+the changed agent and verify live authenticated reads. Do not start real imports
+or paid research just for QA. Existing originals and legacy Pipeline stay intact.
+
+Validation: 1459 safe backend tests, compilation and model-policy check passed.
+New HTTP/agent fixtures cover credential denial, request bounds, lost responses,
+source changes after freeze, cancellation, bad receipts and attention retry. All
+sources are synthetic; no production writes or agent restart. Local checkpoint
+only; complete integration and the full release before claiming availability.
+
 ## Pending Lab iCloud import — durable transaction checkpoint (not released)
 
 Added pipeline_lab_icloud.py: durable PostgreSQL request identity, per-stock
