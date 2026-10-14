@@ -2,6 +2,31 @@
 
 Updated: October 14, 2026
 
+## T244 — historical readiness for frozen date batches
+
+Added an authenticated read-only historical-readiness API for one to thirty exact
+frozen dates. It reads the complete assignment-scoped retained inventory once under
+the target/source locks, then returns per-date selected receipts, plan/candidate
+digests and explicit missing/ambiguous coverage. No original bodies leave the API.
+The readiness digest binds the baseline and all dates; replay rejects changed
+sources, competing receipts or target changes. Inputs selected never implies a
+validated valuation or permission to dispatch: valuationReady and dispatchAllowed
+remain false, and mapping, corporate actions, filing completeness, provenance and
+investor review remain unresolved. No live coordinator transitions or paid calls.
+
+Synthetic/disposable PostgreSQL coverage includes one body load per batch, absent
+schema without DDL, partial coverage, foreign/over-bound inventory, changed targets,
+corrupted bytes, concurrent target/receipt edits, request bounds and authentication.
+Frontend behavior is unchanged apart from the release marker. Validation and live
+release verification are recorded below after deployment.
+
+Next: connect the batch readiness result to the saved one-pager evidence display
+using existing frozen financial dates, with explicit gaps and no new provider
+calls. Before durable coordinator checkpoint writes, define the canonical date
+policy and verify source-ingestion mapping/provenance. ABT still has no retained
+historical originals; real valuation acceptance and all eight phase acceptances
+remain open. This release does not claim ticker-only valuation completion.
+
 ## T243 — automatic retained-input matching
 
 Historical input preview now offers Find matching retained inputs for an exact

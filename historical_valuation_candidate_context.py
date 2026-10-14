@@ -45,6 +45,12 @@ def plan_from_storage(cur, assignment_id, edition_id, price_date, expected_basel
         raise ValueError('The saved target changed; reload its evidence before planning inputs.')
     # Validate identity/date before inventory access. Missing coverage is explicit.
     plan_selection([], baseline, price_date=price_date, **identity)
+    records = _complete_inventory(cur, baseline['assignmentId'])
+    return plan_selection(records, baseline, price_date=price_date, **identity)
+
+
+def _complete_inventory(cur, assignment_id):
+    """Caller holds assignment lock, shared with trusted ingestion writers."""
     cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
     records = []
     if cur.fetchone()['name']:
@@ -56,4 +62,28 @@ def plan_from_storage(cur, assignment_id, edition_id, price_date, expected_basel
         if rows:
             refs = [{'id':row['source_id'],'sha256':row['sha256']} for row in rows]
             records = read_records(cur, refs, assignment_id=assignment_id)
-    return plan_selection(records, baseline, price_date=price_date, **identity)
+    return records
+
+
+def readiness_from_storage(cur, assignment_id, edition_id, dates, expected_baseline):
+    """One locked inventory snapshot for the entire frozen date batch."""
+    from historical_valuation_readiness import readiness
+    expected = _baseline(expected_baseline)
+    baseline, identity = load_context(cur, assignment_id, edition_id)
+    if baseline != expected:
+        raise ValueError('The saved target changed; reload before checking readiness.')
+    # Fail malformed batches before fetching any original bodies.
+    readiness([], baseline, dates=dates, **identity)
+    records = _complete_inventory(cur, baseline['assignmentId'])
+    return readiness(records, baseline, dates=dates, **identity)
+
+
+def replay_readiness_from_storage(cur, assignment_id, edition_id, snapshot):
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get('payload'), dict):
+        raise ValueError('A complete historical readiness checkpoint is required.')
+    payload = snapshot['payload']
+    current = readiness_from_storage(cur, assignment_id, edition_id,
+                                     payload.get('dates'), payload.get('baseline'))
+    if current != snapshot:
+        raise ValueError('Historical evidence or target changed; prepare a new checkpoint.')
+    return current

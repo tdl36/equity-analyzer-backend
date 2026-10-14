@@ -79,3 +79,28 @@ class CandidateApiTests(unittest.TestCase):
         for selection in ('[]','x'*4097,'{"date":"2025-03-03","date":"2025-03-04","baseline":{}}',json.dumps({'baseline':self.baseline,'date':'bad'})):
             self.assertEqual(self.client(True,db).get(url,query_string={'selection':selection}).status_code,409)
         db.assert_not_called()
+
+    def test_batch_readiness_is_private_readonly_and_bound_to_target(self):
+        url=self.preview_url.replace('historical-candidate','historical-readiness')
+        query={'selection':json.dumps({'baseline':self.baseline,'dates':['2025-03-02','2025-03-03']})}
+        self.retain()
+        response=self.client().get(url,query_string=query)
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(response.headers['Cache-Control'],'private, no-store')
+        self.assertEqual([r['status'] for r in response.json['payload']['observations']],['needs_evidence','selected'])
+        self.assertFalse(response.json['payload']['dispatchAllowed'])
+        self.assertFalse(response.json['payload']['valuationReady'])
+        self.assertNotIn('Time Series (Daily)',response.text)
+        self.assertEqual(self.client().post(url,json={}).status_code,405)
+        self.baseline['fundamentalsDigest']='e'*64
+        query['selection']=json.dumps({'baseline':self.baseline,'dates':['2025-03-03']})
+        self.assertEqual(self.client().get(url,query_string=query).status_code,409)
+
+    def test_batch_readiness_rejects_auth_and_invalid_dates_before_database(self):
+        url=self.preview_url.replace('historical-candidate','historical-readiness')
+        db=Mock(side_effect=AssertionError('Unexpected database access'))
+        self.assertEqual(self.client(False,db).get(url).status_code,403)
+        for dates in ([],['bad'],['2025-03-03']*2,[True],['2025-03-03']*31):
+            query={'selection':json.dumps({'baseline':self.baseline,'dates':dates})}
+            self.assertEqual(self.client(True,db).get(url,query_string=query).status_code,409)
+        db.assert_not_called()
