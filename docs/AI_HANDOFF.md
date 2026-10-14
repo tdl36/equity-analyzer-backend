@@ -4,6 +4,16 @@ Updated: October 14, 2026
 
 ## T254 — historical candidate versions bind acquisition evidence
 
+### T254 verified release receipt
+
+Backend health verified b88f487fd9383c2586e080ac063c6c90791c81b9. Cloudflare
+4652089f-89bd-4e4e-a8e5-e770bb727a31 deployed; hosted HTML references T254 and
+versioned app/service-worker bytes exactly match local assets. Agent healthy at
+33.3-second staleness, unchanged/not restarted. 1401 backend and 171 frontend tests,
+14 focused candidate/provenance tests, compilation, model policy and build passed.
+No live evidence retrieval, paid QA or investor approval. No UI behavior changed;
+per-original consistency presentation remains the next action below.
+
 Candidate assembly now includes bounded acquisition consistency diagnostics for
 retained originals: expected provider, fixed adapter endpoint (including saved SEC
 issuer CIK), collector version and UTC retrieval date. Checks never fetch URLs or
@@ -23,7 +33,7 @@ source-provenance warning, not the new per-original consistency details.
 compilation, model-policy gate and production build passed. Synthetic tests cover
 metadata-only replay invalidation, wrong issuer endpoint/date and continued lack
 of approval. Logs /tmp/charlie-consistency-{focused,suite}.log and
-/tmp/charlie-T254-{front,build}.log. No live acquisition or paid QA. Release pending.
+/tmp/charlie-T254-{front,build}.log. No live acquisition or paid QA. Release verified above.
 
 Next: present per-original acquisition consistency gaps in the input preview,
 then address security/currency/share basis and filing completeness with bounded
