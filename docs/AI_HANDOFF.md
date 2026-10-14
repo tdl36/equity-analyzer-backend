@@ -2,6 +2,27 @@
 
 Updated: October 14, 2026
 
+## T248 — company-scoped saved assignment archive
+
+Stock Analysis now has a "Find older [ticker] assignments" entry beside the saved
+assignment workspace. It reuses the read-only archive, locked to the current company,
+without asking the investor to re-enter its ticker. The existing Home/Activity
+archive retains its all-company filter. Changing company/API remounts the archive,
+clears old rows and aborts old requests, preventing cross-company results from
+persisting. Exact saved-assignment links preserve the current review route.
+
+165 frontend tests and full-app synthetic 390/1280px checks pass: Home pagination,
+failed-page retry, filtering, exact archive navigation, company-only request scope,
+company heading, hidden redundant filter, output reviews and no overflow/mutations.
+Mobile company archive screenshot inspected. No backend/agent changes or paid QA.
+Logs /tmp/charlie-company-archive-{tests,build,ui}.log. Release verification follows.
+
+Next: examine the ticker-only assignment intake and its recovery/status explanation
+for unnecessary decisions and inconsistent output labels. Keep source/date/output
+choices frozen and investor review explicit. Historical valuation/source provenance,
+legacy ambiguous provider outcomes and real unattended acceptance remain open;
+do not claim all eight priorities complete or replay paid calls for acceptance.
+
 ## T247 — saved assignment archive on Home and Activity
 
 ### T247 verified release receipt

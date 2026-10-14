@@ -3,7 +3,18 @@ import { historyPage, appendHistory } from './assignment-history-model.mjs';
 import { activityAge } from './activity-model.mjs';
 import { routeHash } from './workspace-model.mjs';
 export function AssignmentHistory({
-  api
+  api,
+  ticker = ''
+}) {
+  return /*#__PURE__*/React.createElement(HistoryBrowser, {
+    key: api + '|' + ticker,
+    api: api,
+    ticker: ticker
+  });
+}
+function HistoryBrowser({
+  api,
+  ticker
 }) {
   var [open, setOpen] = React.useState(false),
     [query, setQuery] = React.useState(''),
@@ -31,14 +42,14 @@ export function AssignmentHistory({
     }));
     try {
       var params = new URLSearchParams();
-      if (filter) params.set('ticker', filter);
+      if (ticker || filter) params.set('ticker', ticker || filter);
       if (cursor) params.set('cursor', cursor);
       var response = await fetch(`${api}/api/research/assignment-history?${params}`, {
         signal: AbortSignal.any([c.signal, AbortSignal.timeout(30000)])
       });
       var data = await response.json();
       if (!response.ok) throw Error(data.error || 'Saved assignments are unavailable.');
-      var page = historyPage(data, filter);
+      var page = historyPage(data, ticker || filter);
       if (token === generation.current) setState(s => ({
         rows: more ? appendHistory(s.rows, page.rows) : page.rows,
         cursor: page.cursor,
@@ -87,7 +98,7 @@ export function AssignmentHistory({
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(v => !v),
     "aria-expanded": open
-  }, open ? 'Close assignment archive' : 'Find older assignments'), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, "Saved assignments"), /*#__PURE__*/React.createElement("p", null, "Browse across dates and companies. Finished work still requires your review."), /*#__PURE__*/React.createElement("form", {
+  }, open ? 'Close assignment archive' : ticker ? `Find older ${ticker} assignments` : 'Find older assignments'), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, ticker ? `${ticker} saved assignments` : 'Saved assignments'), /*#__PURE__*/React.createElement("p", null, ticker ? 'Browse all saved dates for this company.' : 'Browse across dates and companies.', " Finished work still requires your review."), !ticker && /*#__PURE__*/React.createElement("form", {
     className: "activity-toolbar",
     onSubmit: e => {
       e.preventDefault();

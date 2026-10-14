@@ -10,6 +10,7 @@ import { ResearchCoverage } from './research-coverage';
 import { workId } from './workspace-model.mjs';
 import * as React from 'react';
 import { ResearchAssignment } from './research-assignment';
+import { AssignmentHistory } from './assignment-history';
 import { sections, label, supported, reportStats, thesisDraft, downloadText } from './stock-analysis-model.mjs';
 function Field({
   value,
@@ -304,7 +305,10 @@ export function StockAnalysis({
       setSelected(id);
       setReload(x => x + 1);
     }
-  })), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
+  })), /*#__PURE__*/React.createElement(AssignmentHistory, {
+    api: api,
+    ticker: ticker
+  }), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)

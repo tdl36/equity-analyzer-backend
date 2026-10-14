@@ -9,6 +9,7 @@ import {ResearchCoverage} from './research-coverage';
 import {workId} from './workspace-model.mjs';
 import * as React from 'react';
 import {ResearchAssignment} from './research-assignment';
+import {AssignmentHistory} from './assignment-history';
 import {sections,label,supported,reportStats,thesisDraft,downloadText} from './stock-analysis-model.mjs';
 
 function Field({value,path,citations,sources,onOriginal,busy}){
@@ -41,6 +42,7 @@ export function StockAnalysis({api,ticker,revision,disabled,onDraft,routeWork=''
  return <section className={'stock-analysis'+(assignmentFocus?' assignment-focused':'')} aria-label="Stock analysis"><style>{styles}</style>
  {!assignmentFocus&&<header className="sa-heading"><div><small>CHARLIE / STOCK RESEARCH STUDIO</small><h3>Understand the business.<br/>Test the investment case.</h3><p>Structured research, a source-linked visual, and a record of what changed.</p></div><div className="sa-company"><strong>{ticker}</strong><span>{revision?'Case baseline R'+revision:'No saved case baseline'}</span></div></header>}
  <section aria-label="Saved assignments"><ResearchAssignment focusId={assignmentFocus} onClearFocus={()=>onWorkChange?.('')} api={api} ticker={ticker} disabled={disabled} onReport={id=>{onWorkChange?.('analysis:'+id);setSelected(id);setReload(x=>x+1);}}/></section>
+ <AssignmentHistory api={api} ticker={ticker}/>
  {!assignmentFocus&&<>{error&&<p role="alert">{error} <button onClick={()=>setReload(x=>x+1)}>Reload</button></p>}
  <details className="sa-prepare"><summary>Originals arriving from AlphaSense</summary><p>Eligible originals saved by the collector upload automatically while the Mac agent is running and connected. Each upload verifies the original file. Importing does not start research.</p>{importState?.updated?<><small>Last Mac update: {new Date(importState.updated).toLocaleString()}. This is the last reported state; an offline Mac cannot send new updates.</small>{importState.rows.length?importState.rows.map(x=><article key={x.document}><strong>{x.filename}</strong><p>{({queued:'Waiting for Mac upload',uploading:'Uploading and verifying',imported:'Original verified in Charlie',attention:'Import needs attention — retry scheduled'})[x.status]||x.status}</p>{x.issue&&<p>{x.issue}</p>}</article>):<p>No automatic imports reported for this company yet.</p>}</>:<p>Import status unavailable. Check the Mac agent and connection; this does not mean there are no queued originals.</p>}</details>
  <details className="sa-prepare"><summary>Use originals already in Charlie</summary><fieldset disabled={disabled||busy||!inventory||!!error||unfinished}>
