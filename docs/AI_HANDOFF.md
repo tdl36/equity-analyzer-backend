@@ -13,7 +13,11 @@ Production read-only status confirmed all three providers configured (not a paid
 provider validation). 173 frontend tests, model-policy gate and build passed.
 Synthetic 390/1280px tests cover failure, retry recovery, configured/missing states,
 no local-key prompt, overflow and GET-only traffic. Backend unchanged; no paid
-calls or research mutations. Deployment verification pending.
+calls or research mutations. Release verified: backend revision
+9ce87c90abb72de19bbdf437bff47f90144093ca; Cloudflare
+5e02eaa4-c06b-40ae-a293-d3c8ca66f9e8; hosted HTML T257 and versioned JS/SW
+bytes match local assets. Agent healthy (22.2-second staleness), unchanged.
+UI regression script: /tmp/charlie-T257-ui.py; screenshots checked at 390px.
 
 ## T256 — explicit currency and share-basis compatibility gaps
 
