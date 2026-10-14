@@ -17215,7 +17215,7 @@ def pipeline_documents(ticker):
                     'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
                     'docName': row.get('doc_name', ''),
                     'docType': row.get('doc_type', ''),
-                    'publishedDate': row['published_date'].isoformat() if row.get('published_date') else None,
+                    'publishedDate': source_fields({'published': str(row.get('published_date') or '')})['publishedDate'],
                     'weight': 1.0,
                 })
 
