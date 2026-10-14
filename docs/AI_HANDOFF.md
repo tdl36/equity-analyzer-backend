@@ -19,7 +19,19 @@ transport details; attention jobs wait for explicit retry. UI polling shows queu
 frozen and attention states and reloads inventory/config after verified completion.
 Mac awake/online, running agent and downloaded files remain explicit dependencies.
 
-Release verification pending. Synthetic PostgreSQL, filesystem and HTTP/agent tests
+Verified release: backend e700f3420fc0d0139c0601bb13cf65d0f08beb1c;
+Cloudflare 0517fb96-c539-4360-88bf-5469951d4ef7; hosted T267 HTML and
+JS/SW match local bytes. 1461 backend / 178 frontend tests, Python compilation,
+model-policy check and production build passed. The first build exposed a JSX
+extension mismatch in the new component import; fixed and rebuilt successfully.
+Generated bundle retains existing intentional Markdown line-break whitespace.
+Live ABT import-list and authenticated agent-pending endpoints returned 200 with
+zero requests. ABT inventory remained 60 documents. No live import was submitted.
+Before agent restart, running pipeline/transcription counts were zero. Restarted
+agent, inspected new stderr (no traceback/import errors), and verified heartbeat
+healthy at 6.7 seconds. Existing startup inventory scans delayed the first heartbeat
+for several minutes; account for that dependency on future restarts.
+Synthetic PostgreSQL, filesystem and HTTP/agent tests
 cover exact paths, cancellation, concurrent requests, immutable manifests, atomic
 rollback and lost responses. Mocked mobile/desktop UI checks cover a lost queue
 response, reload, same identity reconciliation and receipt-driven selection reload.
