@@ -12,7 +12,15 @@ sign-in, foreign-host, fragment and malformed URLs. No source bodies or arbitrar
 metadata are returned. Opening the disclosure does not change source selection.
 No originals, legacy Pipeline settings, collector schedule or agent were changed.
 
-Release verification pending. Remaining order: durable exact-folder iCloud import
+Verified release: backend 80918c4a2c8221af4f9f888e349e2e39787cee05,
+Cloudflare 2eb3172a-f85d-4b0d-b028-51aca9bc8a27; hosted HTML T266 and
+JS/SW exact-byte matches. 1432 backend and 178 frontend tests, compilation, model
+policy and build passed. Mocked 390/1280px checks confirm disclosure/link rendering,
+retained checkbox selection and import replay, with no overflow. Live read-only ABT
+inventory returned 60 documents, eight recorded receipts and eight observed links.
+Agent recovered from deployment transition to healthy at 12 seconds. One inventory
+read during transition failed; repeat after readiness succeeded. No live research,
+source changes or approvals. Remaining order: durable exact-folder iCloud import
 with source identity and restart recovery; richer observed type/author/window
 metadata; task relevance; full note draft versions; opt-in orchestration and real
 investor acceptance. The existing filename-only/in-memory iCloud fetch path is not
