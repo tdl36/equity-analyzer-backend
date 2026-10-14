@@ -101,6 +101,23 @@ source preparation and journal; carry warnings into final drafts and use the fro
 final-batch/ticker/title when materializing. Then connect authenticated submission,
 review UI/export and the full release procedure. No production generation yet.
 
+Coordinator checkpoint: pipeline_lab_note_run.execute now connects frozen plans,
+exact source preparation, per-batch call journal and final draft materialization.
+It rechecks representations before dispatch, uses stored context/prompt/model/caps,
+resumes saved replies without another call, blocks truncated intermediate replies,
+and carries representation warnings into drafts. Existing drafts return unchanged;
+completed final replies can materialize without reloading originals. Malformed
+saved replies require review rather than a paid repair/retry. Synthetic integration
+covers complete/replay, provider uncertainty, malformed saved output and changed
+originals. The 1498-test safe suite passed; afterward a two-batch merge/truncation
+test was added and all five coordinator tests passed. Compilation and model policy
+passed. No real provider is wired and no production route/worker is registered.
+Next: authenticated submission must freeze the existing full-note playbook and
+context, enforce account/model/input-budget policy, and persist queue/status for
+restart recovery. Then add review UI/export, acceptance history and full release.
+The injected provider adapter must validate input budget; the coordinator's bounded
+merge text is not itself a provider-token-limit check. T268 remains live.
+
 Next concrete implementation: connect frozen source/context preparation and the
 full-note prompt to the call journal, with final-batch identity frozen in the
 coordinator (store_draft is internal and trusts that coordinator for ticker/title).

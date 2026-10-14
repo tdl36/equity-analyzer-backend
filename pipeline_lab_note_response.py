@@ -61,7 +61,7 @@ def parse(response, title, source_pack):
     return {key:checked[key] for key in payload}
 
 
-def store_draft(cur, note_id, batch, ticker, title):
+def store_draft(cur, note_id, batch, ticker, title, representation_warnings=()):
     """Materialize a completed final reply in the caller's transaction.
 
     The future coordinator must supply its frozen final batch/ticker/title. No
@@ -77,5 +77,9 @@ def store_draft(cur, note_id, batch, ticker, title):
     if not row or row['status'] != 'complete':
         raise ValueError('A completed provider reply is required before saving a draft.')
     payload = parse(obj(row['response']),title,obj(row['request'])['sourcePack'])
+    for warning in representation_warnings:
+        issue = warning['reference'] + ': ' + warning['issue']
+        if issue not in payload['qualityIssues']:
+            payload['qualityIssues'].append(issue)
     event = str(uuid.uuid5(uuid.UUID(note_id),'generated-draft'))
     return append(cur,note_id,ticker,event,0,payload)
