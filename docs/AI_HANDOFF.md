@@ -4,6 +4,20 @@ Updated: October 14, 2026
 
 ## T244 — historical readiness for frozen date batches
 
+### T244 release receipt
+
+Verified backend b55806ea33c792bfd24f7cfa6da7f0ed87db8f33; Cloudflare deployment
+d1c6c961-cec5-4f56-9a27-94711341d46f. Hosted app and service-worker bytes exactly
+match local release assets. Safe backend suite: 1379 passed; frontend: 159 passed;
+Python compilation, model-policy gate against 75097e5 and production build passed.
+Logs: /tmp/charlie-T244-{backend,frontend,build,deploy}.log. No UI layout changed.
+
+Live authenticated ABT GET for two historical dates returned 200, private/no-store,
+needs_evidence_review on both dates, valuationReady=false and dispatchAllowed=false.
+This is honest absent-evidence behavior, not real-source valuation acceptance.
+Mac agent health was ok with 18.2-second staleness; unchanged agent was not restarted.
+No provider call, original import, saved research mutation or approval occurred.
+
 Added an authenticated read-only historical-readiness API for one to thirty exact
 frozen dates. It reads the complete assignment-scoped retained inventory once under
 the target/source locks, then returns per-date selected receipts, plan/candidate
