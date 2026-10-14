@@ -2,6 +2,30 @@
 
 Updated: October 14, 2026
 
+## T252 — acquisition metadata wired into historical adapters
+
+SEC and compact price adapters now retain provider, fixed observed endpoint,
+UTC acquisition timestamp and collector version with exact originals and receipts.
+Price query strings/credentials never enter metadata. New original identity uses
+the reserved retrieval UUID (or a fresh UUID for internal unreserved ingestion),
+so two independent same-day acquisitions cannot overwrite each other's timestamps.
+Identical bytes from independent acquisitions remain separate evidence; selection
+may correctly require disambiguation. Existing hash/day receipts remain untouched.
+
+Reserved replay still returns the exact retained receipt without another provider
+request. Synthetic PostgreSQL interruption tests verify bytes and acquisition
+metadata commit together and survive response loss; direct replay is blocked.
+1398 backend tests, 169 frontend tests, compilation, policy gate and build passed.
+23 focused adapter/retrieval tests passed. Logs /tmp/charlie-acquisition-{focused,suite}.log
+and /tmp/charlie-T252-{front,build}.log. No live source retrieval or paid QA.
+Production historical ingestion remains disabled; provenanceVerified=false and
+valuation/source/corporate-action gaps remain unchanged. Release verification pending.
+
+Next: expose retained acquisition metadata safely in the read-only historical
+original inventory and evidence view, including explicit missing legacy metadata.
+Do not infer certified provenance from an endpoint or hash. Real-source quality and
+all eight priorities still require their outstanding acceptance evidence.
+
 ## T251 — immutable historical acquisition metadata foundation
 
 ### T251 verified release receipt

@@ -5,6 +5,7 @@ No caller-supplied URLs, replacement of originals, or investor approval.
 """
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 import requests
 from historical_valuation_context import load_context
@@ -52,16 +53,21 @@ def ingest_sec(get_db, aid, eid, *, user_agent, session=None, retrieval_id=None)
     except (ValueError, TypeError, UnicodeError, RecursionError):
         raise ValueError('SEC response did not verify the saved issuer and facts.') from None
     sha = hashlib.sha256(raw).hexdigest()
-    # Include trusted retrieval date so a later vintage cannot reuse an old date.
-    day = datetime.now(timezone.utc).date().isoformat()
-    record = dict(assignmentId=aid, id=f'sec-companyfacts:{sha}:{day}', sha256=sha,
-                  kind='sec_companyfacts', retrievedDate=day, content=raw)
+    acquired = datetime.now(timezone.utc)
+    day = acquired.date().isoformat()
+    # One acquisition identity per provider attempt; reservation replay returns its
+    # retained receipt without contacting the provider or inventing a new timestamp.
+    acquisition = retrieval_id or str(uuid.uuid4())
+    metadata = dict(provider='sec', observedUrl=url, retrievedAt=acquired.isoformat(),
+                    collectorVersion='historical-sec-v1')
+    record = dict(assignmentId=aid, id=f'sec-companyfacts:{acquisition}', sha256=sha,
+                  kind='sec_companyfacts', retrievedDate=day, content=raw, provenance=metadata)
     with get_db(commit=True) as (_, cur):
         after, current_identity = load_context(cur, aid, eid)
         if before != after or identity != current_identity:
             raise ValueError('The target changed during retrieval; no original was recorded.')
         receipt = save_original(cur, record)
-        result = {**receipt, 'kind':'sec_companyfacts', 'retrievedDate':day, 'sourceUrl':url,
+        result = {**receipt, 'provenance':metadata, 'provenanceVerified':False, 'kind':'sec_companyfacts', 'retrievedDate':day, 'sourceUrl':url,
                   'caveat':'Current SEC response retained. Historical filing completeness and share basis remain unverified.'}
         if retrieval_id:
             from historical_valuation_retrieval import retain_receipt
@@ -109,17 +115,23 @@ def ingest_prices(get_db, aid, eid, price_date, *, api_key, session=None, retrie
     except requests.RequestException:
         raise ValueError('Price retrieval unavailable; inspect provider access without automatically retrying.') from None
     sha = hashlib.sha256(raw).hexdigest()
-    receipt = {'id':f'daily-prices:{sha}:{day}', 'sha256':sha}
+    acquired = datetime.now(timezone.utc)
+    day = acquired.date().isoformat()
+    acquisition = retrieval_id or str(uuid.uuid4())
+    receipt = {'id':f'daily-prices:{acquisition}', 'sha256':sha}
+    # Retain the fixed endpoint only: provider query parameters contain a secret.
+    metadata = dict(provider='alphavantage', observedUrl='https://www.alphavantage.co/query',
+                    retrievedAt=acquired.isoformat(), collectorVersion='historical-prices-v1')
     extracted = daily_close_from_original(raw, receipt, symbol, price_date, day)
     if extracted['status'] != 'extracted':
         raise ValueError('Requested raw daily price could not be verified. Check date coverage and provider access; no premium or adjusted-price fallback was used.')
-    record = dict(receipt, assignmentId=aid, kind='daily_prices', retrievedDate=day, content=raw)
+    record = dict(receipt, assignmentId=aid, kind='daily_prices', retrievedDate=day, content=raw, provenance=metadata)
     with get_db(commit=True) as (_, cur):
         after, current_identity = load_context(cur, aid, eid)
         if before != after or identity != current_identity:
             raise ValueError('The target changed during retrieval; no original was recorded.')
         saved = save_original(cur, record)
-        result = {**saved, 'kind':'daily_prices', 'retrievedDate':day,
+        result = {**saved, 'provenance':metadata, 'provenanceVerified':False, 'kind':'daily_prices', 'retrievedDate':day,
                   'sourceUrl':'https://www.alphavantage.co/documentation/#daily',
                   'coverage':'compact', 'priceDate':price_date,
                   'caveat':'Exact raw daily response retained. Share class, currency and corporate-action compatibility remain unverified.'}

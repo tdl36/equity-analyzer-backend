@@ -174,8 +174,12 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(self.run_fetch(Mock(side_effect=AssertionError('duplicate provider access'))),saved[0])
         session.get.assert_called_once()
         with self.db() as (_,cur):
-            cur.execute('SELECT content FROM historical_valuation_originals WHERE assignment_id=%s',(AID,))
-            self.assertEqual(bytes(cur.fetchone()['content']),raw)
+            cur.execute('SELECT content,provenance FROM historical_valuation_originals WHERE assignment_id=%s',(AID,))
+            row=cur.fetchone()
+            self.assertEqual(bytes(row['content']),raw)
+            self.assertEqual(row['provenance'],saved[0]['provenance'])
+            self.assertFalse(saved[0]['provenanceVerified'])
+            self.assertNotIn('synthetic-key',json.dumps(row['provenance']))
 
     def test_price_receipt_survives_response_loss_and_direct_replay_is_blocked(self):
         import json
@@ -197,8 +201,12 @@ class RetrievalTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'already has an outcome'):ingest()
         session.get.assert_called_once()
         with self.db() as (_,cur):
-            cur.execute('SELECT content FROM historical_valuation_originals WHERE assignment_id=%s',(AID,))
-            self.assertEqual(bytes(cur.fetchone()['content']),raw)
+            cur.execute('SELECT content,provenance FROM historical_valuation_originals WHERE assignment_id=%s',(AID,))
+            row=cur.fetchone()
+            self.assertEqual(bytes(row['content']),raw)
+            self.assertEqual(row['provenance'],saved[0]['provenance'])
+            self.assertFalse(saved[0]['provenanceVerified'])
+            self.assertNotIn('synthetic-key',json.dumps(row['provenance']))
 
     def test_wrong_price_date_rejected_before_provider_access(self):
         from historical_valuation_ingest import ingest_prices
