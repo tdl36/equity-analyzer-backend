@@ -510,7 +510,7 @@ export function AutomationsWorkspace({
     className: "workspace-notice"
   }, "Local development session. Mac-agent jobs are connected to production; review configuration before starting a run."), /*#__PURE__*/React.createElement("div", {
     className: "workspace-create-grid"
-  }, [['desk', 'Research desk', 'Coordinate company teams, review aging theses, and track research runs.'], ['analysts', 'Analyst team', 'Review pending investigations, coverage, and earnings activities.'], ['pipeline', 'Research pipeline', 'Generate notes and refresh investment theses across your universe.'], ['feed', 'Podcast feed', 'Filter new episodes and material mentions of companies you cover.'], ['agents', 'Research agents', 'Configure multi-perspective analysis and catalyst investigations.']].map(([id, title, description]) => /*#__PURE__*/React.createElement("button", {
+  }, [['desk', 'Research desk', 'Coordinate company teams, review aging theses, and track research runs.'], ['analysts', 'Analyst team', 'Review pending investigations, coverage, and earnings activities.'], ['pipeline', 'Research pipeline', 'Generate notes and refresh investment theses across your universe.'], ['pipelinelab', 'Research Pipeline Lab', 'Try independent source settings and coordinated assignments alongside the original Pipeline.'], ['feed', 'Podcast feed', 'Filter new episodes and material mentions of companies you cover.'], ['agents', 'Research agents', 'Configure multi-perspective analysis and catalyst investigations.']].map(([id, title, description]) => /*#__PURE__*/React.createElement("button", {
     className: "workspace-create-card",
     key: id,
     onClick: () => onNavigate(id)

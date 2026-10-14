@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T260 — isolated Research Pipeline Lab preview
+
+User explicitly requested retaining the existing Pipeline, including its direct
+thesis-update option, while experimenting separately. Added pipelinelab under
+Automations with the same stock universe. No original Pipeline handlers or
+controls changed. Lab source settings use a separate per-ticker app_settings
+namespace, optimistic revisions and idempotent save replay. Explicit empty thesis
+and note selections stay empty. Concurrent-device conflicts preserve local edits.
+
+The Lab keeps same-named inventory records separate by storage ID / iCloud folder,
+provides search, suggested-type filters, date/name sorting, task selections and
+bulk selection. Added/modified dates are explicitly not publication dates; inventory
+presence is not exact-byte proof. Partial inventory failures disable saving. No
+files move. Existing coordinated ResearchAssignment controls can be opened within
+the Lab, but explicitly use their own source policy rather than the Lab selection.
+
+This is a preview, not a complete clone of every execution feature: saved Lab
+selections are NOT yet wired to note/thesis generation. Original Pipeline remains
+the execution option for those selections/workflows. Do not imply that source
+refresh runs merely by opening settings. Do not claim full automation complete.
+
+176 frontend tests, 1411 backend tests, compilation, model policy and build passed.
+Synthetic 390/1280px full-app checks verified separate task selections, reopening
+saved settings, duplicate names, filters and no generation requests. Mobile render
+inspected. No paid QA, thesis changes, approvals or live config writes. Release
+verification pending.
+
+Next user-facing priority: wire Lab selections to a bounded immutable source pack
+and explicit generation modes, retaining original Pipeline unchanged. Add verified
+publication/type metadata and managed collection freshness. Do not send selected
+filenames to legacy generation until identity ambiguity and empty-selection
+semantics are resolved. Historical valuation work remains at T259's checkpoint.
+
 ## T259 — internal pending security-mapping evidence contract
 
 Added a pure source-bound security-mapping adapter and replay checks. It freezes

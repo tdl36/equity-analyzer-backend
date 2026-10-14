@@ -29493,6 +29493,9 @@ _research_automation = research_automation.ResearchAutomation(
 app.register_blueprint(_research_automation.blueprint)
 
 
+import pipeline_lab
+app.register_blueprint(pipeline_lab.create_blueprint(get_db))
+
 app.register_blueprint(provider_credentials.create_blueprint(get_db, lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
 if __name__ == '__main__':
