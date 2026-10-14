@@ -79,3 +79,14 @@ function workLink(row,view,section,kind) {
  const work=validWork(view,section,kind+':'+row.jobId);
  return work?{work}:{};
 }
+
+// Keep finished coordinating assignments discoverable on Home without displacing
+// stalled work or implying investor approval. Backend owns the recent time window.
+export function recentAssignments(data) {
+ const seen=new Set();
+ return [...(data?.items||[])].filter(row=>row.workflow==='research_assignment' &&
+   row.bucket==='recent' && ['complete','completed'].includes(row.status) &&
+   activityDestination(row).work)
+  .sort((a,b)=>(parseTimestamp(b.updatedAt)?.getTime()||0)-(parseTimestamp(a.updatedAt)?.getTime()||0))
+  .filter(row=>{if(seen.has(row.jobId))return false;seen.add(row.jobId);return true;}).slice(0,3);
+}

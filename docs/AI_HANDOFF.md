@@ -2,6 +2,28 @@
 
 Updated: October 14, 2026
 
+## T246 — direct access to finished assignments on Home
+
+Home now keeps up to three recent completed coordinating assignments visible in
+"Recently finished assignments", with a direct "Review saved outputs" button for
+the exact company and assignment. Stalled/current work keeps its existing four
+slots. Completion is explicitly distinguished from investor approval; collection,
+cancelled, malformed and duplicate rows are excluded. Backend recent-window scope
+is unchanged, so this is not a complete archive of older saved assignments.
+
+163 frontend tests, model-policy gate and production build pass. Synthetic full-app
+390/1280px checks verified Home with simultaneous stalled work and partial snapshot
+warnings, the exact assignment click destination, existing saved-output preview,
+summary retry, thesis link, downloads, no overflow and GET-only activity. Mobile
+screenshot inspected after the splash disappeared. The first desktop URL assertion
+was made before React navigation completed; corrected the test to await navigation.
+No backend or agent behavior changed, and no paid QA or approval occurred.
+
+Next: strengthen Home/company navigation to older saved assignments beyond the
+24-hour Activity window, without implying completed jobs have been approved. Keep
+historical valuation/source-ingestion gaps visible; all eight acceptance priorities
+remain open. Release verification follows below.
+
 ## T245 — saved-date evidence coverage in one-pager review
 
 ### T245 verified release receipt

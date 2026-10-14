@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {activityRows,activityAge,collectionHealth,workLane,nextAction,workOverview,focusRows,activityDestination} from './activity-model.mjs';
+import {activityRows,activityAge,collectionHealth,workLane,nextAction,workOverview,focusRows,activityDestination,recentAssignments} from './activity-model.mjs';
 function AnalystRunInspection({api,row}) {
  const [state,setState]=React.useState({loading:true}),[revision,setRevision]=React.useState(0);
  React.useEffect(()=>{let current=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);setState({loading:true});
@@ -39,6 +39,7 @@ export function ActivityWorkspace({api,onNavigate,compact=false}) {
  React.useEffect(()=>setLimit(20),[filter,query]);
  const matching=activityRows(data,filter,query);
  const rows=compact?focusRows(data).slice(0,4):matching.slice(0,limit);
+ const finished=compact?recentAssignments(data):[];
  const counts=workOverview(data);counts.focus=counts.blocked+counts.review;
  const lanes={blocked:'Check progress',review:'Your review',processing:'Processing',waiting:'Waiting',recent:'Finished',older:'Older unfinished'};
 
@@ -53,6 +54,15 @@ export function ActivityWorkspace({api,onNavigate,compact=false}) {
   {!data&&!error&&<p role="status">Loading activity…</p>}
   {data&&!rows.length&&<p className="workspace-empty">{query?'No matching work.':compact?'No current unfinished work. Older unresolved records remain in Activity.':filter==='focus'?'No current decisions or stalled jobs in this snapshot.':filter==='processing'?'No jobs currently reporting processing.':filter==='waiting'?'No jobs currently waiting.':filter==='older'?'No older unfinished records in this snapshot.':'No recently finished work in the last 24 hours.'}</p>}
   <div className="activity-list">{rows.map(r=><article className={'activity-row activity-'+r.bucket} key={r.id}><div className="activity-company"><strong>{r.ticker||'GENERAL'}</strong><small>{r.title}</small></div><div className="activity-detail"><div className="activity-row-title"><strong>{r.error&&r.step===r.error?'Collection needs attention':r.step}</strong><span className="activity-status">{lanes[workLane(r)]}</span></div>{r.stages!=null&&<p>{r.stages}/12 research stages saved</p>}{r.warning&&<p className="activity-warning">{r.warning}</p>}{r.error&&(r.error.length>200?<details className="activity-warning"><summary>{r.error.slice(0,180)}… <span>View full issue</span></summary><p>{r.error}</p></details>:<p className="activity-warning">{r.error}</p>)}{r.stale&&<p className="activity-warning">No saved progress for {r.quietMinutes==null?'an unknown period':r.quietMinutes+' minutes'}. Open the job to inspect what is waiting.</p>}<p className="activity-next"><strong>Next:</strong> {nextAction(r)}</p><small>Updated {activityAge(r.updatedAt)} · Started {activityAge(r.createdAt)}</small></div>{r.workflow==='agent_runs'?<button className="activity-open" aria-expanded={inspecting===r.jobId} onClick={()=>setInspecting(inspecting===r.jobId?'':r.jobId)}>{inspecting===r.jobId?'Close saved run':'Inspect saved run'}<span className="sr-only"> {r.ticker}</span></button>:<button className="activity-open" onClick={()=>{const d=activityDestination(r);onNavigate(d.view,r.ticker,d.section,d.work);}}>Open work ↗<span className="sr-only"> {r.ticker} {r.title}</span></button>}{r.workflow==='agent_runs'&&inspecting===r.jobId&&<AnalystRunInspection api={api} row={r}/>}</article>)}</div>
+  {compact&&finished.length>0&&<section aria-label="Recently finished assignments">
+    <h3>Recently finished assignments</h3>
+    <p>Open the saved outputs to review them. Finished does not mean investor-approved.</p>
+    {finished.map(r=><article className="activity-row" key={r.jobId}>
+      <div className="activity-company"><strong>{r.ticker}</strong><small>Research assignment</small></div>
+      <div className="activity-detail"><p>{r.step||'Saved assignment outputs'}</p><small>Updated {activityAge(r.updatedAt)}</small></div>
+      <button className="activity-open" onClick={()=>{const d=activityDestination(r);onNavigate(d.view,r.ticker,d.section,d.work);}}>Review saved outputs ↗<span className="sr-only"> {r.ticker}</span></button>
+    </article>)}
+  </section>}
   {!compact&&matching.length>limit&&<button className="activity-open" onClick={()=>setLimit(n=>n+20)}>Show more · {matching.length-limit} remaining</button>}
   {data&&<p className="activity-foot">Snapshot {activityAge(data.asOf)} · Refreshes every 15 seconds while visible.{!compact&&<> {data.scope} Mac collection report: {activityAge(data.collectionLastSeen)}.</>}</p>}
  </section>;

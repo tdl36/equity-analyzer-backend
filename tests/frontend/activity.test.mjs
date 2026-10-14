@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {activityDestination,activityRows,activityAge,macConnected,collectionHealth,workLane,nextAction,workOverview,focusRows} from '../../src/activity-model.mjs';
+import {activityDestination,activityRows,activityAge,macConnected,collectionHealth,workLane,nextAction,workOverview,focusRows,recentAssignments} from '../../src/activity-model.mjs';
 import {readRoute,routeHash,VIEWS} from '../../src/workspace-model.mjs';
 test('activity is reachable without company context',()=>{assert.ok(VIEWS.includes('activity'));assert.deepEqual(readRoute(routeHash('activity')),{view:'activity',ticker:''});});
 test('filters find work across tickers without mixing attention and active',()=>{const data={items:[{ticker:'UNH',title:'Research',step:'Review',bucket:'active'},{ticker:'SYK',title:'Collection',step:'Sign in',bucket:'attention'}]};assert.equal(activityRows(data,'active','unh').length,1);assert.equal(activityRows(data,'attention','SYK').length,1);assert.equal(activityRows(data,'active','SYK').length,0);});
@@ -56,4 +56,15 @@ test('unstarted analyst jobs explain start recovery without a paid retry',()=>{
  assert.match(nextAction({...row,bucket:'attention'}),/backend worker availability/);
  assert.match(nextAction({...row,startRecovery:false}),/unavailable/);
  assert.doesNotMatch(nextAction(row),/collection delivery/i);
+});
+
+test('Home retains recent completed assignment links without treating collection as output',()=>{
+ const ids=Array.from({length:5},(_,i)=>`00000000-0000-4000-8000-00000000000${i}`);
+ const row=(i)=>({jobId:ids[i],workflow:'research_assignment',ticker:'ABT',bucket:'recent',status:'complete',updatedAt:`2026-10-10T12:0${i}:00Z`});
+ const items=[...ids.map((_,i)=>row(i)),row(4),{...row(3),workflow:'collection_control'},{...row(2),status:'cancelled'},{...row(1),jobId:'bad'},{...row(0),bucket:'attention'}];
+ const before=JSON.stringify(items);
+ assert.deepEqual(recentAssignments({items}).map(r=>r.jobId),[ids[4],ids[3],ids[2]]);
+ assert.equal(activityDestination(recentAssignments({items})[0]).work,'assignment:'+ids[4]);
+ assert.equal(JSON.stringify(items),before);
+ assert.deepEqual(recentAssignments({items:[{...row(0),bucket:'older'}]}),[]);
 });

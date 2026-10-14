@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination } from './activity-model.mjs';
+import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination, recentAssignments } from './activity-model.mjs';
 function AnalystRunInspection({
   api,
   row
@@ -169,6 +169,7 @@ export function ActivityWorkspace({
   React.useEffect(() => setLimit(20), [filter, query]);
   var matching = activityRows(data, filter, query);
   var rows = compact ? focusRows(data).slice(0, 4) : matching.slice(0, limit);
+  var finished = compact ? recentAssignments(data) : [];
   var counts = workOverview(data);
   counts.focus = counts.blocked + counts.review;
   var lanes = {
@@ -276,7 +277,24 @@ export function ActivityWorkspace({
   }, " ", r.ticker, " ", r.title)), r.workflow === 'agent_runs' && inspecting === r.jobId && /*#__PURE__*/React.createElement(AnalystRunInspection, {
     api: api,
     row: r
-  })))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {
+  })))), compact && finished.length > 0 && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Recently finished assignments"
+  }, /*#__PURE__*/React.createElement("h3", null, "Recently finished assignments"), /*#__PURE__*/React.createElement("p", null, "Open the saved outputs to review them. Finished does not mean investor-approved."), finished.map(r => /*#__PURE__*/React.createElement("article", {
+    className: "activity-row",
+    key: r.jobId
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "activity-company"
+  }, /*#__PURE__*/React.createElement("strong", null, r.ticker), /*#__PURE__*/React.createElement("small", null, "Research assignment")), /*#__PURE__*/React.createElement("div", {
+    className: "activity-detail"
+  }, /*#__PURE__*/React.createElement("p", null, r.step || 'Saved assignment outputs'), /*#__PURE__*/React.createElement("small", null, "Updated ", activityAge(r.updatedAt))), /*#__PURE__*/React.createElement("button", {
+    className: "activity-open",
+    onClick: () => {
+      var d = activityDestination(r);
+      onNavigate(d.view, r.ticker, d.section, d.work);
+    }
+  }, "Review saved outputs \u2197", /*#__PURE__*/React.createElement("span", {
+    className: "sr-only"
+  }, " ", r.ticker))))), !compact && matching.length > limit && /*#__PURE__*/React.createElement("button", {
     className: "activity-open",
     onClick: () => setLimit(n => n + 20)
   }, "Show more \xB7 ", matching.length - limit, " remaining"), data && /*#__PURE__*/React.createElement("p", {
