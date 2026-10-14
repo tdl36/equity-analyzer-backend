@@ -63,9 +63,20 @@ immutable receipts and response-save failure, using synthetic provider callbacks
 Validation: 1479-test safe suite passed; the fifth focused failure-injection test
 was added afterward and all five journal tests passed. Compilation/model policy
 passed. No real provider adapter, schema registration or production dispatch was enabled.
-Next concrete implementation: parse the full-note response into the evidence
-contract and connect the frozen source/context adapter to this call journal. Then
-add review UI/export and register only after complete integration. Never invoke
+Response/materialization checkpoint: pipeline_lab_note_response.py parses the
+saved full-note format into draft prose, source appendix and four fiscal-year
+segment series. Missing optional sections and output truncation remain warnings;
+missing/duplicate/overlapping note boundaries, malformed chart JSON and duplicate
+JSON keys fail explicitly. No arbitrary-text fallback or repair model call occurs.
+A completed journal reply materializes with a deterministic event identity, so
+replaying after an investor edit cannot overwrite it. Uncertain replies cannot
+create drafts; parsing failure preserves the completed raw reply for recovery.
+Six synthetic/parser and disposable PostgreSQL tests cover these paths. All 1486
+safe backend tests, compilation and model-policy validation passed. No paid calls.
+Next concrete implementation: connect frozen source/context preparation and the
+full-note prompt to the call journal, with final-batch identity frozen in the
+coordinator (store_draft is internal and trusts that coordinator for ticker/title).
+Then add review UI/export and register only after complete integration. Never invoke
 the legacy side-effectful generator. T268 remains live; checkpoints are unpushed.
 
 Next: connect a dedicated Lab note-generation adapter to the existing full note
