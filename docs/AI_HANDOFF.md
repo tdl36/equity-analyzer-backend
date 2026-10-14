@@ -4,6 +4,21 @@ Updated: October 14, 2026
 
 ## T250 — preserve assignment review during invalid status responses
 
+### T250 verified release receipt
+
+Backend health verified revision 97451e9f487b9113c50ebe65ddc0dd7e2571dc18.
+Cloudflare 0f5818c4-43fd-4de1-b7b2-9b94f57cc32e deployed; hosted JavaScript and
+service-worker hashes exactly match release assets. Agent healthy at 33.7-second
+staleness, unchanged/not restarted. 169 frontend tests, build and policy gate
+passed; mobile/desktop polling recovery validated with synthetic fixtures only.
+No backend changes, paid QA, research mutation or investor approval.
+
+Provenance next action: historical_valuation_source_store currently retains exact
+bytes, kind and retrieval date but no provider/observed URL identity. Extend trusted
+receipt metadata and its immutable comparison before enabling any ingestion path;
+legacy rows must stay explicitly unverified. Do not certify provenance from hashes
+alone or accept client-supplied URLs as trusted evidence.
+
 The saved-assignment list now validates response structure, company identity,
 unique job IDs, supported status and basic input/artifact shape before replacing
 visible jobs. Invalid polling retains the last good list, displays an actionable
@@ -15,7 +30,7 @@ No retries, approvals, provider changes or backend mutations were introduced.
 synthetic 390/1280px checks verified good → malformed → good polling: saved output
 links remain visible, new submission blocks during uncertainty and recovers with
 valid status. All fixture calls were GET. Logs /tmp/charlie-list-ui.log and
-/tmp/charlie-T250-{tests,build}.log. Release verification pending.
+/tmp/charlie-T250-{tests,build}.log. Release verification recorded above.
 
 Next: historical valuation source provenance remains the earliest independent
 engineering gap. Continue from the existing receipt/date/readiness modules;
