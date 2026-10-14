@@ -51,3 +51,22 @@ export function labCollectionStatus(data,ticker,now=Date.now()) {
     if(open.length)return `${open.length} collection request(s) pending · last reported status`;
     return policy?.lastSuccess?`Collection verified through ${policy.lastSuccess} · not a guarantee of complete coverage`:policy?'No successful collection recorded for this policy':'No recurring collection policy reported';
 }
+
+// Selection guidance only: no content review, confidence score or auto-selection.
+export function taskSourceGuide(type,task) {
+    const thesis={
+        'Transcripts':'Test changes in guidance, operating drivers and management assumptions against the current thesis. Check the Q&A for contrary evidence.',
+        'Filings':'Reconcile reported numbers, cash flow, accounting changes and risks. Keep an older filing when it supplies a necessary baseline.',
+        'Releases':'Identify new results or events that could change the thesis; distinguish company claims from independently supported evidence.',
+        'Presentations':'Check strategy, targets and unit economics against actual results. Targets are management expectations, not established outcomes.',
+        'Broker research':'Compare assumptions, forecasts and valuation with the thesis. Include relevant disagreement; multiple reports may repeat the same underlying evidence.'
+    };
+    const note={
+        'Transcripts':'Focus the note on this event: key statements, Q&A, surprises and unresolved questions. Include a prior transcript only when comparison is useful.',
+        'Filings':'Select the filing sections needed to answer the note’s question. Pair a new result with the relevant prior-period baseline when needed.',
+        'Releases':'Use as the primary event account; separate reported facts, management claims and your interpretation.',
+        'Presentations':'Use the slides relevant to the event or question; retain charts and stated assumptions rather than relying only on extracted text.',
+        'Broker research':'Use for a named analyst view, forecast change or disagreement relevant to this note. Attribute views and distinguish them from company facts.'
+    };
+    return (task==='note'?note:thesis)[type] || (task==='note'?'Review the original and include it only if it helps answer this note’s event or question.':'Review the original for material changes, contrary evidence or a necessary baseline before including it.');
+}

@@ -23,6 +23,9 @@ search, and a successful collection is not exhaustive coverage.
 - Stored browser-collected sources expose recorded import hashes, collection-run
   identity and safe observed AlphaSense links in an expandable receipt. This is
   historical metadata, not a fresh byte check or proof of exhaustive collection.
+- Per-type thesis/note guidance explains how to review a source without claiming
+  its contents were assessed. Selected-only review and hidden-selection counts
+  make the chosen pack easier to inspect. Filters never change selections.
 - Stock cards show last reported collection state and verified-through dates.
   Stale Mac snapshots and unavailable status are explicit. Existing collection
   schedules/history/recovery are linked per ticker.

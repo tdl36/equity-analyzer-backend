@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T268 — Task-specific source-selection guidance in Lab
+
+Lab now provides collapsible thesis-versus-note guidance for each suggested source
+type: thesis guidance emphasizes changed assumptions, contrary evidence and useful
+baselines; note guidance emphasizes the specific event/question and attribution.
+The UI explicitly says these are type-based prompts, not content review or relevance
+scores. No source is selected automatically. A Review selected sources only toggle
+helps inspect the chosen pack; the screen counts selections outside the current
+filters, including missing files, so a narrow view cannot imply they were removed.
+Legacy Pipeline and stored selections remain unchanged by filtering.
+
+Release verification pending. Remaining: richer recorded metadata and observed type,
+author and collection-window details; full note draft/version integration; opt-in
+orchestration and a real investor-authorized acceptance run. These prompts are not
+an automated relevance assessment or a proof of professional research quality.
+
 ## T267 — Lab iCloud import integration
 
 Wired the three prior local checkpoints into authenticated API routes, the existing

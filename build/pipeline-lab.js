@@ -2,7 +2,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -143,7 +143,8 @@ function LabStock({
     [collect, setCollect] = React.useState(false),
     [checkResult, setCheckResult] = React.useState(null),
     [checking, setChecking] = React.useState(false),
-    [pendingImport, setPendingImport] = React.useState(false);
+    [pendingImport, setPendingImport] = React.useState(false),
+    [selectedOnly, setSelectedOnly] = React.useState(false);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -279,7 +280,7 @@ function LabStock({
       if (alive.current) setBusy(false);
     }
   };
-  var shown = visibleLabDocuments(recentLabDocuments(rows, recency), query, group, sort),
+  var shown = visibleLabDocuments(recentLabDocuments(rows, recency), query, group, sort).filter(r => !selectedOnly || selection[task].includes(r.key)),
     selected = new Set(selection[task]);
   var missing = selection[task].filter(k => !rows.some(r => r.key === k));
   var toggle = key => setSelection(s => ({
@@ -354,7 +355,11 @@ function LabStock({
     value: "date"
   }, "Newest available date"), /*#__PURE__*/React.createElement("option", {
     value: "name"
-  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("div", {
+  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: selectedOnly,
+    onChange: e => setSelectedOnly(e.target.checked)
+  }), " Review selected sources only (", selection[task].length, ")")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, selection[task].filter(k => !shown.some(r => r.key === k)).length, " selected source(s) outside this view, including missing sources. Filters do not change the saved selection.")), /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions"
   }, /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -403,7 +408,11 @@ function LabStock({
     }
   }, /*#__PURE__*/React.createElement("label", {
     htmlFor: `lab-source-${r.key}`
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), r.originalReceiptRecorded && /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), /*#__PURE__*/React.createElement("details", {
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("summary", null, "How to use for ", task === 'note' ? 'a note' : 'the thesis'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, taskSourceGuide(r.type, task))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Guidance based on the suggested document type, not a review of its contents. Recency alone does not establish relevance; selection remains yours."))), r.originalReceiptRecorded && /*#__PURE__*/React.createElement("details", {
     onClick: e => e.stopPropagation(),
     style: {
       marginTop: 8

@@ -32,3 +32,12 @@ test('collection history never claims a live feed or successful pending delivery
  data.snapshot.requests=[{ticker:'ABT',status:'queued'}];assert.match(labCollectionStatus(data,'ABT'),/pending/);
  data.updatedAt='2020-01-01';assert.match(labCollectionStatus(data,'ABT'),/stale/);
 });
+import {taskSourceGuide} from '../../src/pipeline-lab-model.mjs';
+test('task source guidance separates thesis challenge from event notes without scoring contents',()=>{
+ assert.match(taskSourceGuide('Transcripts','thesis'),/contrary evidence/);
+ assert.match(taskSourceGuide('Transcripts','note'),/this event/);
+ assert.match(taskSourceGuide('Broker research','thesis'),/same underlying evidence/);
+ assert.match(taskSourceGuide('Broker research','note'),/Attribute views/);
+ assert.match(taskSourceGuide('unknown','thesis'),/Review the original/);
+ assert.notEqual(taskSourceGuide('Filings','note'),taskSourceGuide('Filings','thesis'));
+});
