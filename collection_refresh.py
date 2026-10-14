@@ -27,6 +27,8 @@ class RefreshManager:
                 issue TEXT, result TEXT);
             CREATE TABLE IF NOT EXISTS refresh_worker (
                 id INTEGER PRIMARY KEY CHECK(id=1), checked REAL, status TEXT);
+            CREATE TABLE IF NOT EXISTS refresh_claim_order (
+                request_id TEXT PRIMARY KEY, turn INTEGER NOT NULL);
         ''')
 
     def validate(self, config):
@@ -249,12 +251,20 @@ class RefreshManager:
             if self.db.execute("SELECT id FROM refresh_requests WHERE lease_until>? AND status IN ('collecting','verifying')", (stamp,)).fetchone():
                 return None
             row = self.db.execute("""SELECT q.* FROM refresh_requests q JOIN refresh_policies p ON p.ticker=q.ticker
+                LEFT JOIN refresh_claim_order c ON c.request_id=q.id
                 WHERE q.status IN ('queued','collecting','verifying') AND (q.lease_until IS NULL OR q.lease_until<=?)
                 AND (json_extract(p.config,'$.enabled')=1 OR json_extract(q.config,'$.manual')=1)
-                AND (? IS NULL OR q.id=?) ORDER BY q.created LIMIT 1""", (stamp,request_id,request_id)).fetchone()
+                AND (? IS NULL OR q.id=?)
+                ORDER BY COALESCE(c.turn,0),q.created,q.id LIMIT 1""", (stamp,request_id,request_id)).fetchone()
             if not row:
                 return None
             owner = str(uuid.uuid4())
+            # Persist fair turns under the same worker lock as the lease. A
+            # requeued import wait must not monopolize the oldest queue entry.
+            # A sequence also works when clocks repeat or move backwards.
+            turn = self.db.execute('SELECT COALESCE(MAX(turn),0)+1 FROM refresh_claim_order').fetchone()[0]
+            self.db.execute('''INSERT INTO refresh_claim_order(request_id,turn) VALUES(?,?)
+                ON CONFLICT(request_id) DO UPDATE SET turn=excluded.turn''', (row['id'],turn))
             self.db.execute("UPDATE refresh_requests SET status='collecting',owner=?,lease_until=?,issue=NULL WHERE id=?", (owner,stamp+1800,row['id']))
             result = dict(row)
             result.update(owner=owner, lease_until=stamp+1800, status='collecting', config=json.loads(row['config']), collection=self.c.status(row['run']))

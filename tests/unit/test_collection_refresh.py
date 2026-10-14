@@ -18,6 +18,54 @@ class RefreshTests(unittest.TestCase):
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
 
+    def queued_pair(self):
+        self.m.save(self.cfg)
+        first = self.m.trigger('MDT')
+        self.clock += 1
+        (self.c.stocks/'ABT').mkdir()
+        self.m.save(dict(self.cfg,ticker='ABT'))
+        return first,self.m.trigger('ABT')
+
+    def test_requeued_oldest_does_not_starve_other_requests_after_restart(self):
+        first,second = self.queued_pair()
+        claimed = self.m.claim()
+        self.assertEqual(claimed['id'],first)
+        frozen = claimed['collection']
+        self.m.mark(first,claimed['owner'],'queued','Cloud import pending')
+        # Reconstruct the manager; fairness must survive a worker restart.
+        self.m = RefreshManager(self.c,lambda:self.clock)
+        newer = self.m.claim()
+        self.assertEqual(newer['id'],second)
+        self.m.mark(second,newer['owner'],'queued')
+        resumed = self.m.claim()
+        self.assertEqual(resumed['id'],first)
+        self.assertEqual(resumed['collection'],frozen)
+        self.assertNotEqual(resumed['owner'],claimed['owner'])
+        with self.assertRaises(ValueError):
+            self.m.preflight(first,claimed['owner'])
+
+    def test_fair_claim_keeps_global_lease_and_expired_request_recoverable(self):
+        first,second = self.queued_pair()
+        claim = self.m.claim()
+        self.assertIsNone(self.m.claim())
+        self.assertIsNone(self.m.claim(second))
+        self.clock += 1801
+        following = self.m.claim()
+        self.assertEqual(following['id'],second)
+        self.m.mark(second,following['owner'],'queued')
+        resumed = self.m.claim()
+        self.assertEqual(resumed['id'],first)
+        self.assertNotEqual(resumed['owner'],claim['owner'])
+
+    def test_explicit_request_still_selects_requested_eligible_work(self):
+        first,second = self.queued_pair()
+        claim = self.m.claim(first)
+        self.m.mark(first,claim['owner'],'queued')
+        explicit = self.m.claim(first)
+        self.assertEqual(explicit['id'],first)
+        self.m.mark(first,explicit['owner'],'queued')
+        self.assertEqual(self.m.claim()['id'],second)
+
     def test_local_midnight_window_and_frozen_retry(self):
         previous = os.environ.get('TZ')
         def restore_zone():

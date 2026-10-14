@@ -2,6 +2,24 @@
 
 Updated: October 12, 2026
 
+## T240 — fair collection pickup
+
+Queued requests now receive durable turns under the existing exclusive worker
+lock. After a request is released or its lease expires, other eligible requests
+are considered before it is picked again. Previously the oldest import-blocked
+request could monopolize every wake. A separate small SQLite table preserves
+ordering across restarts without changing frozen requests, source windows, import
+retry timing or paid dispatch. Explicit request selection still works and cannot
+bypass an active global worker lease. Unknown import outcomes remain unresolved.
+
+Validation: 30 focused collection tests, 1329 safe backend tests and 156 frontend
+tests passed; Python compilation, model policy against 75097e5 and production build
+passed. Tests cover repeated requeue, restart, expired lease, stale owner, exact
+source-window preservation and explicit request selection. No paid QA or research
+approval. Deployment verification follows. Next: resume historical valuation
+integration, while operations owns the existing import/log-access blocker. Live
+unattended acceptance and all eight priority acceptance criteria remain open.
+
 ## T239 — compact research issue banner
 
 The global banner retains the company/status, issue count, saved-work destination,
