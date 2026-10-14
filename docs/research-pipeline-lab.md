@@ -25,6 +25,10 @@ search, and a successful collection is not exhaustive coverage.
   schedules/history/recovery are linked per ticker.
 - Check selected originals validates stored bytes, permissions, IDs, nonempty
   selections and pack bounds (8 originals, 15 MB each, 60 MB total).
+- Import selected Research originals copies saved Research-storage selections with
+  exact-byte receipts, atomic conflict handling and replay after lost responses.
+  Originals remain in place; only that task’s selection changes. Import starts no
+  research and does not establish source freshness or licensing permission.
 - Generate from saved selection creates an existing coordinated research
   assignment. Its immutable manifest binds saved task/revision, original IDs,
   filenames, sizes and SHA-256 hashes. The originals remain in existing storage;
@@ -44,9 +48,9 @@ search, and a successful collection is not exhaustive coverage.
 
 ## Outstanding acceptance and implementation
 
-1. Add a deliberate exact-byte import path for iCloud-only and research-storage
-   selections; currently they block selected-source generation. Preserve original
-   paths and same-name conflicts. Do not resolve identity by filename alone.
+1. Add a deliberate exact-byte import path for iCloud-only selections; these still
+   block selected-source generation. Research-storage imports are implemented.
+   Preserve original paths and same-name conflicts; never resolve by filename alone.
 2. Expand browser-collected metadata (type, publisher, author, publication date,
    observed URLs and collection window) and connect receipts to the catalog.
    Present uncertainty; do not classify a publisher as a broker without evidence.

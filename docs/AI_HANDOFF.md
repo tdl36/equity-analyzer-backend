@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T265 — Exact-byte Research-storage imports for Lab
+
+Lab can deliberately copy saved Research-storage selections into the stored-original
+research path. Imports verify exact bytes, preserve the Research originals, and
+update only the selected Lab task. Filename conflicts, stale revisions, cross-stock
+IDs and reference-only targets block the entire transaction. Durable receipts and
+client request identity reconcile a lost response without duplicate copies. No
+research starts during import. Research storage is labeled separately in the catalog.
+
+Validation: isolated PostgreSQL tests cover atomic rollback, unchanged originals,
+separate task settings, replay, byte conflicts, invalid bytes and excluded targets.
+Release verification pending. iCloud-only import remains unsupported; do not confuse
+this bounded Research-storage copy with the full browser-to-draft acceptance path.
+Next: iCloud exact-identity import, richer metadata/relevance, full draft-note
+versioning and opt-in orchestration. Legacy Pipeline behavior remains unchanged.
+
 ## T262–T264 — Lab selected-source generation and browser-only direction
 
 User confirmed no AlphaSense API/MCP access. Browser collection in the separate

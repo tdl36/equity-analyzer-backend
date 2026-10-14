@@ -3,7 +3,7 @@ import {parseTimestamp} from './workspace-model.mjs';
 export function labDocuments(documents, files) {
     if (!Array.isArray(documents) || !Array.isArray(files)) throw Error('Source inventory unavailable.');
     const rows = [
-        ...documents.map(d => ({...d, key: 'charlie:'+d.id, location:'Charlie', folder:'Stored originals', date:d.publishedDate||d.createdAt, dateLabel:d.publishedDate?'Published':'Added', ready:true})),
+        ...documents.map(d => ({...d, key: 'charlie:'+d.id, location:'Charlie', folder:String(d.id).startsWith('research_')?'Research storage':'Stored originals', date:d.publishedDate||d.createdAt, dateLabel:d.publishedDate?'Published':'Added', ready:true})),
         ...files.map(d => ({...d, key:'icloud:'+JSON.stringify([d.folder||'main',d.filename]), location:'iCloud', folder:d.folder||'main', date:d.modified, dateLabel:'File modified', ready:false}))
     ];
     const seen=new Set();

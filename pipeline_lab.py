@@ -148,4 +148,6 @@ def create_blueprint(get_db):
             result = check_originals(ticker, body['task'], current['revision'], refs, documents)
         return jsonify(**result, task=body['task'], revision=current['revision'],
                        checkedOnly=True, generationAvailable=not result['blockers'])
+    from pipeline_lab_import import register
+    register(bp,get_db)
     return bp

@@ -11,7 +11,11 @@ async function read(api, path, options = {}) {
     signal: AbortSignal.timeout(25000)
   });
   var d = await r.json();
-  if (!r.ok) throw Error(d.error || 'Pipeline Lab could not load.');
+  if (!r.ok) {
+    var e = Error(d.error || 'Pipeline Lab could not load.');
+    e.status = r.status;
+    throw e;
+  }
   return d;
 }
 export function PipelineLab({
@@ -137,7 +141,8 @@ function LabStock({
     [generation, setGeneration] = React.useState(0),
     [collect, setCollect] = React.useState(false),
     [checkResult, setCheckResult] = React.useState(null),
-    [checking, setChecking] = React.useState(false);
+    [checking, setChecking] = React.useState(false),
+    [pendingImport, setPendingImport] = React.useState(false);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -165,6 +170,14 @@ function LabStock({
       live = false;
     };
   }, [api, ticker, generation]);
+  var importKey = 'charlie-lab-import-v1:' + api + ':' + ticker;
+  React.useEffect(() => {
+    try {
+      setPendingImport(!!sessionStorage.getItem(importKey));
+    } catch {
+      setError('Import retry storage is unavailable. Imports cannot start safely.');
+    }
+  }, [importKey]);
   var dirty = saved && JSON.stringify(selection) !== JSON.stringify(saved.selection);
   var close = () => {
     if (!dirty || window.confirm('Leave without saving your Lab selection changes?')) onClose();
@@ -221,6 +234,48 @@ function LabStock({
     } finally {
       lock.current = false;
       if (alive.current) setChecking(false);
+    }
+  };
+  var importResearch = async () => {
+    if (lock.current || !saved || dirty) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      var old = sessionStorage.getItem(importKey);
+      var body = old ? JSON.parse(old) : {
+        requestId: crypto.randomUUID(),
+        revision: saved.revision,
+        task
+      };
+      if (!body || typeof body.requestId !== 'string' || !Number.isInteger(body.revision) || !['thesis', 'note'].includes(body.task)) throw Error('Saved import request is unreadable. Preserve this session and inspect import status.');
+      if (!old) sessionStorage.setItem(importKey, JSON.stringify(body));
+      if (sessionStorage.getItem(importKey) !== JSON.stringify(body)) throw Error('Could not preserve import identity. No import was sent.');
+      setPendingImport(true);
+      var d = await read(api, `/api/pipeline-lab/import-research/${ticker}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      if (d.requestId !== body.requestId) throw Error('Import receipt does not match. Retry the same request to reconcile.');
+      sessionStorage.removeItem(importKey);
+      if (alive.current) {
+        setPendingImport(false);
+        setCheckResult(null);
+        setNotice(`${d.receipts.length} Research-storage original(s) matched exact bytes in Charlie. This task’s selection was updated; no research was started.`);
+        setGeneration(n => n + 1);
+      }
+    } catch (e) {
+      if ([400, 409].includes(e.status)) {
+        sessionStorage.removeItem(importKey);
+        if (alive.current) setPendingImport(false);
+      }
+      if (alive.current) setError(e.message);
+    } finally {
+      lock.current = false;
+      if (alive.current) setBusy(false);
     }
   };
   var shown = visibleLabDocuments(recentLabDocuments(rows, recency), query, group, sort),
@@ -344,7 +399,14 @@ function LabStock({
       minWidth: 0,
       overflowWrap: 'anywhere'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), (pendingImport || selection[task].some(r => r.startsWith('charlie:research_'))) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("p", null, "Import selected Research-storage originals into Charlie using exact byte checks. Existing originals stay in place. Different same-named files block the whole import. iCloud-only files still require a separate import path."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || checking || dirty,
+    onClick: importResearch
+  }, pendingImport ? 'Retry same Research import' : 'Import selected Research originals')), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     style: {
       marginTop: 16
