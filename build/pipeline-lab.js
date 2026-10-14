@@ -379,7 +379,7 @@ function LabStock({
     style: {
       marginTop: 16
     }
-  }, shown.map(r => /*#__PURE__*/React.createElement("label", {
+  }, shown.map(r => /*#__PURE__*/React.createElement("div", {
     key: r.key,
     style: {
       display: 'flex',
@@ -389,6 +389,7 @@ function LabStock({
       alignItems: 'flex-start'
     }
   }, /*#__PURE__*/React.createElement("input", {
+    id: `lab-source-${r.key}`,
     type: "checkbox",
     disabled: busy,
     checked: selected.has(r.key),
@@ -399,7 +400,19 @@ function LabStock({
       minWidth: 0,
       overflowWrap: 'anywhere'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), (pendingImport || selection[task].some(r => r.startsWith('charlie:research_'))) && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("label", {
+    htmlFor: `lab-source-${r.key}`
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), r.originalReceiptRecorded && /*#__PURE__*/React.createElement("details", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("summary", null, "Recorded browser collection receipt"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "This records an earlier import, not a fresh byte check or proof that the search found every relevant source. Use Check selected originals before generation.")), r.collectionRun && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Collection run: ", r.collectionRun)), r.recordedSha256 && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Recorded SHA-256: ", r.recordedSha256)), r.sourceUrl && /*#__PURE__*/React.createElement("a", {
+    href: r.sourceUrl,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    onClick: e => e.stopPropagation()
+  }, "Open observed AlphaSense source \u2197")))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), (pendingImport || selection[task].some(r => r.startsWith('charlie:research_'))) && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
     }

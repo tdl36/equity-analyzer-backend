@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T266 — Recorded collection provenance in Lab
+
+Lab source rows now expose a collapsible recorded browser-collection receipt:
+observed AlphaSense research permalink, collection run and recorded SHA-256.
+This is explicitly historical metadata, not a fresh byte check, source sufficiency
+or exhaustive-search claim. The inventory allowlists fields and rejects credential,
+sign-in, foreign-host, fragment and malformed URLs. No source bodies or arbitrary
+metadata are returned. Opening the disclosure does not change source selection.
+No originals, legacy Pipeline settings, collector schedule or agent were changed.
+
+Release verification pending. Remaining order: durable exact-folder iCloud import
+with source identity and restart recovery; richer observed type/author/window
+metadata; task relevance; full note draft versions; opt-in orchestration and real
+investor acceptance. The existing filename-only/in-memory iCloud fetch path is not
+an adequate foundation for replay-safe Lab imports; do not reuse it implicitly.
+
 ## T265 — Exact-byte Research-storage imports for Lab
 
 Lab can deliberately copy saved Research-storage selections into the stored-original

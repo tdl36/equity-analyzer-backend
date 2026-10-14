@@ -20,6 +20,9 @@ search, and a successful collection is not exhaustive coverage.
 - Search title/publisher/folder, suggested document-type filters, newest sorting
   and 30/90/365-day filters. Recorded publication dates are distinct from fallback
   added/modified dates. No originals are moved to organize the view.
+- Stored browser-collected sources expose recorded import hashes, collection-run
+  identity and safe observed AlphaSense links in an expandable receipt. This is
+  historical metadata, not a fresh byte check or proof of exhaustive collection.
 - Stock cards show last reported collection state and verified-through dates.
   Stale Mac snapshots and unavailable status are explicit. Existing collection
   schedules/history/recovery are linked per ticker.
