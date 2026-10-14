@@ -4,6 +4,17 @@ Updated: October 14, 2026
 
 ## T256 — explicit currency and share-basis compatibility gaps
 
+### T256 verified release receipt
+
+Backend health verified 28e3b8de708659410738c645a58c729d12f42539. Cloudflare
+bd807f30-0591-4d86-8435-988416b8a96e deployed; hosted HTML references T256 and
+versioned app/service-worker bytes match local assets. Agent healthy at 7.9-second
+staleness, unchanged/not restarted. 1402 backend and 173 frontend tests passed,
+along with synthetic mobile/desktop checks, model-policy gate and production build.
+Historical ingestion remains disabled; this release makes missing currency and
+share-basis evidence explicit, not historical valuation complete. No paid QA,
+research mutation or investor approval.
+
 Historical candidates now freeze per-observation compatibility diagnostics. SEC
 EPS denomination is carried only from the extracted USD/shares fact; price currency
 remains unknown because the supported raw DAILY original does not establish it.
@@ -22,7 +33,7 @@ model-policy gate and build passed. Full-app synthetic 390/1280px checks passed 
 the USD-earnings/unknown-price distinction, retained review workflows and GET-only
 traffic; desktop rendering inspected. No live provider calls or paid QA. Logs
 /tmp/charlie-compat-{focused,suite,ui}.log and /tmp/charlie-T256-{front,build}.log.
-Release pending. Historical ingestion remains disabled.
+Release verified in the T256 receipt. Historical ingestion remains disabled.
 
 Next: a dedicated, source-bound security/currency mapping receipt is needed; the
 current two original types cannot prove it. Define that evidence contract and
