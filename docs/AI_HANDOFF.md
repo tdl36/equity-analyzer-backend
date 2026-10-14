@@ -21,6 +21,25 @@ No endpoints or schema registration have been enabled. Seven focused disposable
 PostgreSQL tests and all 1468 safe backend tests pass; compilation and model policy
 pass. Production remains T268. Next integration step is unchanged.
 
+Pending HTTP review adapter (pipeline_lab_notes_api.py): authenticated single-draft
+and bounded history reads plus prose-only revision writes. Authentication precedes
+all reads/writes, responses are private/no-store, edits have byte and field limits,
+and stale edits/replays retain ledger semantics. No create/accept/publication route.
+The adapter remains unregistered: these routes are not available in live Charlie.
+Validation: all 1471 safe backend tests, compilation and model policy passed.
+Three disposable PostgreSQL/Flask checks cover auth, history, exact-revision reads,
+replay after later edits, size limits and attempts to alter provenance/approval.
+
+Generation integration map: app_v3.py:_generate_research_note owns the existing
+full-note playbook, notegen.plan_batches, page/text attachments, chart parsing and
+DOCX rendering. Do not call it directly for Lab: it selects by filename, reads live
+thesis context, writes legacy research_notes and sends Telegram notifications.
+Build a separate adapter with verified frozen ID/hash inputs and pinned context;
+reuse the playbook/planner/rendering without those side effects. Persist sources
+appendix/chart data alongside draft versions, and record bounded call intent before
+model dispatch so interrupted paid calls cannot silently replay. No generation
+adapter, review UI or export is complete yet; keep T268 live until integration.
+
 Next: connect a dedicated Lab note-generation adapter to the existing full note
 quality controls using the frozen selection, not by relabeling the shorter assignment
 summary artifact as a full research note. Add bounded authenticated draft/history/
