@@ -36,4 +36,14 @@ def plan(data):
     if 'origin' in data:
         from research_assignment_origin import validate
         result['origin']=validate(data['origin'],ticker,outputs)
+    if 'labSelection' in data:
+        selection=data['labSelection']
+        if (not isinstance(selection,dict) or set(selection)!={'task','revision','digest'}
+                or selection['task'] not in ('thesis','note') or type(selection['revision']) is not int
+                or selection['revision']<1 or not isinstance(selection['digest'],str)
+                or not re.fullmatch(r'[0-9a-f]{64}',selection['digest'])):
+            raise ValueError('Check the saved Lab selection before starting.')
+        if selection['task']=='note' and 'thesis' in outputs:
+            raise ValueError('Use the separate thesis selection to prepare thesis proposals.')
+        result['labSelection']=dict(selection)
     return result

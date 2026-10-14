@@ -66,5 +66,5 @@ class OriginalChecks(unittest.TestCase):
         self.assertEqual(len(calls),1)
         r=client.post('/api/pipeline-lab/check/ABT',json={'revision':2,'task':'thesis'})
         self.assertEqual(r.status_code,200);self.assertEqual(r.json['blockers'],[])
-        self.assertFalse(r.json['generationAvailable']);self.assertEqual(calls[-1][1],('ABT',['5']))
+        self.assertTrue(r.json['generationAvailable']);self.assertEqual(calls[-1][1],('ABT',['5']))
         self.assertNotIn('file_data',r.get_data(as_text=True));self.assertIn('no-store',r.headers['Cache-Control'])

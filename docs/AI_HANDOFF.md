@@ -2,6 +2,48 @@
 
 Updated: October 14, 2026
 
+## T262 — Lab selected-source generation and browser-only direction
+
+User confirmed no AlphaSense API/MCP access. Browser collection in the separate
+Operations chat is the required integration. Ongoing build automation now reads
+docs/research-pipeline-lab.md and prioritizes its remaining sequence while keeping
+the original Pipeline intact. No new collection worker or live research launched.
+
+Checked Lab selections can now start the existing coordinated assignment engine:
+thesis selection defaults to a reviewable proposal; note selection defaults to a
+summary-note draft and cannot request thesis changes. Additional assignment outputs
+can share the chosen pack. Assignment notes are saved artifacts, not yet the
+original Pipeline's full note workflow or published research_notes records.
+
+Submission freezes task/revision/digest and exact stored IDs, filenames, lengths
+and hashes into the assignment. IDs/bytes are checked again at research submission
+and before worker calls. Missing, modified or restricted inputs block; an explicit
+empty selection never becomes all files. Same request replay retains the original
+manifest after settings change. This is an immutable manifest, not a duplicate byte
+archive. Saved-source runs skip collection commands; stop does not create a browser
+cancellation command. Browser collection + generation remains a separate explicit
+option, with Mac/agent/Chrome/MFA dependencies visible.
+
+The catalog now exposes allowlisted recorded publication/publisher metadata,
+recency filters and publisher search. Labels distinguish added/modified dates;
+calendar dates no longer shift a day in New York. Cards show last Mac-reported
+collection state and successful-through dates; stale status never implies current
+coverage. Same-named sources remain separate. Originals and legacy Pipeline
+settings/behavior are preserved.
+
+Validation: 1422 backend / 178 frontend tests, Python compilation, model policy and
+production build passed. New isolated PostgreSQL tests cover saved-selection
+submission, replay after config changes, no collection command, synthetic draft
+delivery, stale manifests, and worker identity changes before model calls. Mocked
+390/1280px full-app checks verify selection-bound submission and layout. No paid
+QA, live config writes or investor approvals. Release verification pending.
+
+Next: exact-byte imports for iCloud-only/research-storage selections, richer
+browser receipt metadata and relevance guidance, full note/version integration,
+and source-only refresh/inventory reconciliation in Lab settings. These remain
+open; do not declare all planned Lab features or unattended acceptance complete.
+Historical valuation remains at T259.
+
 ## T261 — Pipeline Lab stored-original preflight
 
 Added a read-only Check selected originals action for centrally saved Lab task

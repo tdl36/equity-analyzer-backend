@@ -1,4 +1,4 @@
-"""Isolated, centrally saved Pipeline Lab selections. No research dispatch."""
+"""Isolated, centrally saved Pipeline Lab selections. Selections and exact-original checks for coordinated research."""
 import base64
 import hashlib
 import json
@@ -38,6 +38,10 @@ def check_originals(ticker, task, revision, references, documents):
         if not row:
             blockers.append('A selected stored original is missing: ' + ref)
             continue
+        from company_research import eligible
+        if not eligible(row.get('metadata') or {}):
+            blockers.append('A selected original is excluded or reference-only: ' + ref)
+            continue
         try:
             encoded = row.get('file_data')
             if not isinstance(encoded, str) or not 0 < len(encoded) <= 20_000_000:
@@ -60,6 +64,27 @@ def check_originals(ticker, task, revision, references, documents):
                'originals': sorted(verified, key=lambda r: r['reference'])}
     digest = None if blockers else hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     return {'verified': verified, 'blockers': blockers, 'digest': digest}
+
+
+def resolve_selection(cur, ticker, selection):
+    """Freeze IDs and byte hashes from the saved task, inside assignment submission."""
+    cur.execute('SELECT value FROM app_settings WHERE key=%s FOR SHARE', ('pipeline_lab_v1:' + ticker,))
+    row = cur.fetchone()
+    current = json.loads(row['value']) if row and isinstance(row['value'], str) else (row['value'] if row else None)
+    if not current or current['revision'] != selection['revision']:
+        raise ValueError('Lab settings changed. Reload and check your saved selection again.')
+    refs = config(current['selection'])[selection['task']]
+    ids = [r[len('charlie:thesis_'):] for r in refs if r.startswith('charlie:thesis_')]
+    documents = {}
+    if ids and len(refs) <= 8:
+        cur.execute("SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s) FOR SHARE", (ticker, ids))
+        documents = {'charlie:thesis_' + str(d['id']): d for d in cur.fetchall()}
+    result = check_originals(ticker, selection['task'], selection['revision'], refs, documents)
+    if result['blockers']:
+        raise ValueError(' '.join(result['blockers']))
+    if result['digest'] != selection['digest']:
+        raise ValueError('Selected original bytes changed since your check. Check them again before starting.')
+    return [dict(r, documentId=r['reference'][len('charlie:thesis_'):]) for r in result['verified']]
 
 
 def create_blueprint(get_db):
@@ -118,9 +143,9 @@ def create_blueprint(get_db):
             if ids and len(refs) <= 8:
                 # Bound returned base64 before loading it into Python. Oversize rows
                 # remain visible as blockers rather than disappearing from selection.
-                cur.execute("SELECT id::text AS id, filename, CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s)", (ticker, ids))
+                cur.execute("SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s)", (ticker, ids))
                 documents = {'charlie:thesis_' + str(d['id']): d for d in cur.fetchall()}
             result = check_originals(ticker, body['task'], current['revision'], refs, documents)
         return jsonify(**result, task=body['task'], revision=current['revision'],
-                       checkedOnly=True, generationAvailable=False)
+                       checkedOnly=True, generationAvailable=not result['blockers'])
     return bp

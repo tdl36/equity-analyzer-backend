@@ -15,7 +15,9 @@ export function ResearchAssignment({
   disabled,
   focusId = '',
   onClearFocus,
-  origin = null
+  origin = null,
+  labSelection = null,
+  embedded = false
 }) {
   var [since, setSince] = React.useState(() => {
       var d = new Date();
@@ -23,7 +25,7 @@ export function ResearchAssignment({
       return date(d);
     }),
     [until, setUntil] = React.useState(() => date(new Date())),
-    [chosen, setChosen] = React.useState(origin ? ['visual'] : outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
+    [chosen, setChosen] = React.useState(labSelection ? labSelection.task === 'thesis' ? ['thesis'] : ['summary_note'] : origin ? ['visual'] : outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
     [horizon, setHorizon] = React.useState('12–24 months'),
     [instruction, setInstruction] = React.useState(''),
     [visualFundamentals, setVisualFundamentals] = React.useState(true),
@@ -37,7 +39,7 @@ export function ResearchAssignment({
     [ack, setAck] = React.useState(false),
     [preview, setPreview] = React.useState(null),
     [savedSubmission, setSavedSubmission] = React.useState(null);
-  var [defaultsReady, setDefaultsReady] = React.useState(!!origin),
+  var [defaultsReady, setDefaultsReady] = React.useState(!!origin || !!labSelection),
     [defaultsWarning, setDefaultsWarning] = React.useState('');
   var submissionStorageKey = submissionKey(api, ticker);
   var listPath = 'assignments?ticker=' + encodeURIComponent(ticker) + (focusId ? '&requestId=' + encodeURIComponent(focusId) : '');
@@ -70,7 +72,7 @@ export function ResearchAssignment({
   React.useEffect(() => {
     var live = true;
     setDefaultsWarning('');
-    if (origin) {
+    if (origin || labSelection) {
       setDefaultsReady(true);
       return () => {
         live = false;
@@ -94,7 +96,7 @@ export function ResearchAssignment({
     return () => {
       live = false;
     };
-  }, [api, !!origin]);
+  }, [api, !!origin, !!labSelection]);
   React.useEffect(() => {
     var live = true,
       inflight = false;
@@ -177,13 +179,16 @@ export function ResearchAssignment({
     if (!matchingReceipt(result, body)) throw Error('Assignment receipt does not match the saved request. Inspect saved assignments before retrying.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
-    return 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
+    return body.labSelection ? 'Assignment saved from your checked Lab selection. No new collection was requested. Drafts will be saved for review.' : 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
   }
   var start = () => mutate(async () => {
     var p = {
       ticker,
       since,
       until,
+      ...(labSelection ? {
+        labSelection
+      } : {}),
       outputs: [...chosen].sort(),
       horizon,
       instruction,
@@ -263,7 +268,7 @@ export function ResearchAssignment({
   }, "Open saved outputs \xB7 ", j.input.since, " \u2013 ", j.input.until)), /*#__PURE__*/React.createElement("details", {
     className: "assignment-history",
     open: j.status !== 'complete'
-  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', j.ticker, 'stock-analysis', 'assignment:' + j.input.origin.assignmentId)
   }, "saved one-pager"), " \xB7 ", j.input.origin.parentId ? 'accepted edition ' + j.input.origin.parentId.slice(0, 8) : 'original report ' + j.input.origin.runId.slice(0, 8), ". Outputs are separate drafts for review."), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -377,8 +382,8 @@ export function ResearchAssignment({
   }, "Stop assignment")))), !focusId && /*#__PURE__*/React.createElement("section", {
     "aria-label": "New research"
   }, origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
-    open: !!origin || !focusId && loaded && !jobs.length
-  }, /*#__PURE__*/React.createElement("summary", null, "Start new research"), !defaultsReady && /*#__PURE__*/React.createElement("p", {
+    open: !!labSelection || !!origin || !focusId && loaded && !jobs.length
+  }, /*#__PURE__*/React.createElement("summary", null, labSelection ? 'Generate from this saved selection' : 'Start new research'), labSelection && /*#__PURE__*/React.createElement("p", null, "Uses your saved ", labSelection.task, " selection, checked again at submission. Dates below describe your research context, not source publication or a new collection search. Draft notes are saved with this assignment; this does not replace a published Pipeline note."), !defaultsReady && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading your saved research choices\u2026"), defaultsWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -401,7 +406,7 @@ export function ResearchAssignment({
     onChange: e => setUntil(e.target.value)
   }))), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
-  }, outputs.map(([id, title]) => /*#__PURE__*/React.createElement("label", {
+  }, outputs.filter(([id]) => !labSelection || labSelection.task === 'thesis' || id !== 'thesis').map(([id, title]) => /*#__PURE__*/React.createElement("label", {
     className: "sa-check",
     key: id
   }, /*#__PURE__*/React.createElement("input", {
@@ -451,8 +456,8 @@ export function ResearchAssignment({
       return 'Output choices and horizon saved for your next assignment.';
     })
   }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
-    className: "sa-primary",
+    className: embedded ? "workspace-primary" : "sa-primary",
     disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
+  }, labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }

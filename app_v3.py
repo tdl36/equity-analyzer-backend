@@ -17174,6 +17174,7 @@ def pipeline_documents(ticker):
     """Return all documents for a ticker from both Thesis and Research storage."""
     ticker = ticker.upper()
     try:
+        from pipeline_source_metadata import fields as source_fields
         docs = []
         # Source 1: document_files (Thesis tab)
         with get_db() as (_, cur):
@@ -17184,6 +17185,7 @@ def pipeline_documents(ticker):
             for row in cur.fetchall():
                 docs.append({
                     'id': f'thesis_{row["id"]}',
+                    **source_fields(row.get('metadata')),
                     'source': 'thesis',
                     'filename': row['filename'],
                     'fileType': row.get('file_type', ''),
@@ -17213,6 +17215,7 @@ def pipeline_documents(ticker):
                     'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
                     'docName': row.get('doc_name', ''),
                     'docType': row.get('doc_type', ''),
+                    'publishedDate': row['published_date'].isoformat() if row.get('published_date') else None,
                     'weight': 1.0,
                 })
 

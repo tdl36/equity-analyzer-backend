@@ -16,3 +16,19 @@ test('same-name documents remain distinct across storage and folders',()=>{
  assert.throws(()=>labDocuments([{filename:'x'}],[]));
  assert.throws(()=>labDocuments([], [{filename:'x'},{filename:'x'}]));
 });
+import {recentLabDocuments} from '../../src/pipeline-lab-model.mjs';
+test('recency respects labeled dates, excludes unknown and future dates, and publisher search works',()=>{
+ const rows=labDocuments([{id:'thesis_1',filename:'a.pdf',publishedDate:'2026-10-01',publisher:'Broker A'},{id:'thesis_2',filename:'b.pdf',createdAt:'2025-01-01'},{id:'thesis_3',filename:'c.pdf'},{id:'thesis_4',filename:'d.pdf',publishedDate:'2027-01-01'}],[]);
+ assert.equal(recentLabDocuments(rows,'30',Date.parse('2026-10-14')).length,1);
+ assert.equal(recentLabDocuments(rows,'all').length,4);
+ assert.equal(visibleLabDocuments(rows,'Broker A','All','date')[0].dateLabel,'Published');
+});
+import {labCollectionStatus} from '../../src/pipeline-lab-model.mjs';
+test('collection history never claims a live feed or successful pending delivery',()=>{
+ assert.equal(labCollectionStatus(null,'ABT'),'Collection status unavailable');
+ const data={updatedAt:new Date().toISOString(),snapshot:{policies:[{ticker:'ABT',lastSuccess:'2026-10-01'}],requests:[]}};
+ assert.match(labCollectionStatus(data,'ABT'),/verified through 2026-10-01/);
+ data.snapshot.requests=[{ticker:'ABT',status:'needs_auth'}];assert.match(labCollectionStatus(data,'ABT'),/sign in/);
+ data.snapshot.requests=[{ticker:'ABT',status:'queued'}];assert.match(labCollectionStatus(data,'ABT'),/pending/);
+ data.updatedAt='2020-01-01';assert.match(labCollectionStatus(data,'ABT'),/stale/);
+});

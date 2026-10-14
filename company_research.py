@@ -224,11 +224,13 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     if current['version']!=version or current['model']!=model_identity():raise ValueError('Research configuration changed. Start a new revision.')
                     if budget_check():raise ValueError('Research budget limit reached. Review your budget before resuming.')
                     with get_db() as (_,cur):
-                        cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(row['ticker'],row['input']['filenames']))
+                        cur.execute('SELECT '+('id,' if row['input'].get('expectedOriginals') else '')+'filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(row['ticker'],row['input']['filenames']))
                         permissions=list(cur.fetchall())
                     if len(permissions)!=len(row['input']['filenames']) or any(not eligible(d.get('metadata') or {}) for d in permissions):
                         raise ValueError('Source availability or AI permission changed. Review your source pack before continuing.')
                     from command_thesis_bridge import file_hash
+                    from lab_source_identity import verify
+                    verify(row['input'].get('expectedOriginals'),permissions)
                     if any(file_hash(d)!=row['input']['hashes'].get(d['filename']) for d in permissions):
                         raise ValueError('Original source bytes changed. Start a new revision before continuing.')
                 def save(value):
@@ -243,7 +245,9 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     import notegen
                     from command_thesis_bridge import file_hash
                     with get_db() as (_,cur):
-                        cur.execute('SELECT filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s) ORDER BY filename',(row['ticker'],row['input']['filenames']));docs=list(cur.fetchall())
+                        cur.execute('SELECT '+('id,' if row['input'].get('expectedOriginals') else '')+'filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s) ORDER BY filename',(row['ticker'],row['input']['filenames']));docs=list(cur.fetchall())
+                    from lab_source_identity import verify
+                    verify(row['input'].get('expectedOriginals'),docs)
                     if len(docs)!=len(row['input']['filenames']):raise ValueError('Selected originals are missing. Restore them or start a new research revision.')
                     total=0
                     for d in docs:
@@ -306,6 +310,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             ident=str(uuid.UUID(data.get('requestId','')));names=data.get('filenames')
             if not isinstance(names,list) or not 1<=len(names)<=8 or any(not isinstance(n,str) or len(n)>255 for n in names) or len(set(names))!=len(names):raise ValueError('Select 1–8 distinct stored originals.')
             if data.get('confirmed') is not True:raise ValueError('Confirm the issuer and permitted source use before starting.')
+            from lab_source_identity import validate
+            expected_originals=validate(data.get('expectedOriginals'),names)
             studio_options={}
             if studio:
                 from stock_analysis import options
@@ -313,7 +319,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             revision=data.get('revision')
             if type(revision)!=int or revision<0:raise ValueError('Load the current case baseline.')
         except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400
-        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision,**studio_options})
+        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision,**studio_options,**({'expectedOriginals':expected_originals} if expected_originals is not None else {})})
         key=get_key(data.get('apiKey',''))
         from command_thesis_bridge import file_hash
         with get_db(commit=True) as (_,cur):
@@ -331,11 +337,15 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             current=baseline(cur,ticker)
             if len(json.dumps(current))>80000:return jsonify(error='Case exceeds the research context bound. Shorten working assumptions before starting.'),400
             if current['revision']!=revision:return jsonify(error='The investment case changed. Reload before starting research.'),409
-            cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,names));docs=list(cur.fetchall())
+            cur.execute('SELECT '+('id,' if expected_originals is not None else '')+'filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,names));docs=list(cur.fetchall())
             if len(docs)!=len(names) or any(not eligible(d.get('metadata') or {}) for d in docs):return jsonify(error='Sources missing or restricted. Reload your source selection.'),409
             try:hashes={d['filename']:file_hash(d) for d in docs}
             except (ValueError,TypeError):return jsonify(error='Original source bytes could not be verified.'),400
+            from lab_source_identity import verify
+            try:verify(expected_originals,docs)
+            except ValueError as exc:return jsonify(error=str(exc)),409
             frozen_input={'filenames':sorted(names),'hashes':hashes}
+            if expected_originals is not None:frozen_input['expectedOriginals']=expected_originals
             if studio:
                 cur.execute('INSERT INTO mp_companies(ticker,name) VALUES(%s,%s) ON CONFLICT(ticker) DO UPDATE SET ticker=EXCLUDED.ticker RETURNING id,name',(ticker,ticker))
                 company=dict(cur.fetchone())
