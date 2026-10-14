@@ -29347,6 +29347,16 @@ def _edition_investor_identity():
 
 app.register_blueprint(onepager_editions.create_blueprint(get_db, _edition_investor_identity))
 
+import historical_valuation_api
+def _historical_evidence_authenticated():
+    return bool(_edition_investor_identity()) or (
+        bool(CHARLIE_API_KEY) and hmac.compare_digest(
+            request.headers.get('Authorization', ''), 'ApiKey ' + CHARLIE_API_KEY))
+
+app.register_blueprint(historical_valuation_api.create_blueprint(
+    get_db, _historical_evidence_authenticated, read_only=True))
+
+
 import research_meeting_handoff
 app.register_blueprint(research_meeting_handoff.create_blueprint(get_db))
 

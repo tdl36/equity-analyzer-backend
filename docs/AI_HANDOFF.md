@@ -2,6 +2,31 @@
 
 Updated: October 12, 2026
 
+## T241 — historical evidence inspection integrated
+
+Saved recovered one-pager reviews now include a collapsed Historical valuation
+evidence panel. It reads retained-original inventory, unresolved retrievals and
+pending review versions for the bound edition, then rechecks saved evidence when
+opening a version. Empty history, unavailable context and changed baselines remain
+explicit. Parallel inventory responses must match all frozen financial/source/
+parent-edition digests; obsolete reads are aborted on navigation.
+
+Production registration requires an authenticated investor session or machine key
+and is explicitly read-only. POST is rejected before database/provider access,
+even if provider configuration is supplied. No retrieval, proposal creation,
+approval, automatic valuation calculation or paid call is enabled by this release.
+The full historical foundation and synthetic tests are now included as dependencies;
+its write/ingestion paths remain inaccessible in production. Targets still require
+a valid saved issuer identity and coherent edition; failures do not invent values.
+
+Validation: 106 focused historical tests, 1333 safe backend tests, 157 frontend
+tests, compilation, model policy against 75097e5 and production build passed.
+Synthetic full-app 390/1280px checks opened the new empty-evidence panel and existing
+previews, summary retry, thesis link and download; GET-only and no overflow.
+Production verification pending. Next: configured source provenance/entitlement,
+source-backed historical diagnostics and investor acceptance; all eight priorities
+and ticker-only unattended acceptance are still incomplete. Operations stays separate.
+
 ## T240 — fair collection pickup
 
 Queued requests now receive durable turns under the existing exclusive worker
