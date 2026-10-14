@@ -34,3 +34,26 @@ def replay_from_storage(cur, assignment_id, edition_id, snapshot):
     if current != snapshot:
         raise ValueError('Candidate evidence changed; prepare a new version.')
     return current
+
+
+def plan_from_storage(cur, assignment_id, edition_id, price_date, expected_baseline):
+    """Plan from the complete bounded inventory, never an arbitrary recent slice."""
+    from historical_valuation_selection import plan_selection
+    expected = _baseline(expected_baseline)
+    baseline, identity = load_context(cur, assignment_id, edition_id)
+    if baseline != expected:
+        raise ValueError('The saved target changed; reload its evidence before planning inputs.')
+    # Validate identity/date before inventory access. Missing coverage is explicit.
+    plan_selection([], baseline, price_date=price_date, **identity)
+    cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
+    records = []
+    if cur.fetchone()['name']:
+        cur.execute('''SELECT source_id,sha256 FROM historical_valuation_originals
+            WHERE assignment_id=%s ORDER BY source_id LIMIT 61 FOR SHARE''', (assignment_id,))
+        rows = cur.fetchall()
+        if len(rows)>60:
+            raise ValueError('Retained inventory exceeds the planning bound; source selection requires review.')
+        if rows:
+            refs = [{'id':row['source_id'],'sha256':row['sha256']} for row in rows]
+            records = read_records(cur, refs, assignment_id=assignment_id)
+    return plan_selection(records, baseline, price_date=price_date, **identity)

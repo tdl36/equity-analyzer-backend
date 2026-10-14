@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {historicalCandidate} from './historical-review-model.mjs';
+import {historicalCandidate,historicalPlan} from './historical-review-model.mjs';
 
 export function HistoricalCandidate({url,baseline,originals}) {
  const [date,setDate]=React.useState(''),[price,setPrice]=React.useState(''),[earnings,setEarnings]=React.useState(''),[state,setState]=React.useState({}),active=React.useRef(null),generation=React.useRef(0);
@@ -8,25 +8,28 @@ export function HistoricalCandidate({url,baseline,originals}) {
  React.useEffect(()=>{clear();setDate('');setPrice('');setEarnings('');return()=>{generation.current++;active.current?.abort();};},[identity]);
  const prices=originals.filter(r=>r.kind==='daily_prices'),facts=originals.filter(r=>r.kind==='sec_companyfacts');
  if(!prices.length||!facts.length)return null;
- async function preview(e){
+ async function preview(e,automatic=false){
   e.preventDefault();clear();const token=++generation.current,controller=new AbortController();active.current=controller;
   const chosenPrice=prices.find(r=>r.id===price),chosenEarnings=facts.find(r=>r.id===earnings);
-  if(!chosenPrice||!chosenEarnings){setState({error:'Reload saved evidence and choose the retained originals again.'});return;}
+  if(!automatic&&(!chosenPrice||!chosenEarnings)){setState({error:'Reload saved evidence and choose the retained originals again.'});return;}
   const receipt=r=>({id:r.id,sha256:r.sha256});
-  const selection={baseline,observation:{date,priceSource:receipt(chosenPrice),earningsSource:receipt(chosenEarnings)}};
+  const selection=automatic?{baseline,date}:{baseline,observation:{date,priceSource:receipt(chosenPrice),earningsSource:receipt(chosenEarnings)}};
   setState({busy:true});
-  try{const response=await fetch(url+'/historical-candidate?'+new URLSearchParams({selection:JSON.stringify(selection)}),{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(30000)])});
+  try{const response=await fetch(url+(automatic?'/historical-plan?':'/historical-candidate?')+new URLSearchParams({selection:JSON.stringify(selection)}),{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(30000)])});
    if(!response.ok)throw Error('These historical inputs could not be verified. Reload the saved evidence and check the selected date.');
-   const value=historicalCandidate(await response.json(),selection);if(token===generation.current)setState({value});
+   const data=await response.json();const result=automatic?historicalPlan(data,baseline,date):{value:historicalCandidate(data,selection)};if(token===generation.current)setState(result);
   }catch(error){if(token===generation.current)setState({error:error.message});}
  }
  return <section aria-label="Preview historical inputs"><h5>Preview retained inputs</h5>
  <p>Choose an exact completed trading date and retained originals. This reads existing evidence only.</p>
  <form onSubmit={preview} style={{display:'grid',gap:12,maxWidth:600}}>
  <label>Trading date<input style={{display:'block',width:'100%',minWidth:0}} type="date" required value={date} onChange={e=>{clear();setDate(e.target.value);}}/></label>
+ <button type="button" disabled={state.busy||!date} onClick={e=>preview(e,true)}>Find matching retained inputs</button>
+ <details><summary>Choose originals manually</summary>
  <label>Price original<select style={{display:'block',width:'100%',minWidth:0}} aria-label="Price original" required value={price} onChange={e=>{clear();setPrice(e.target.value);}}><option value="">Select retained prices</option>{prices.map((r,i)=><option key={r.id} value={r.id}>Daily prices · {r.retrievedDate} · {i+1}</option>)}</select></label>
  <label>Earnings original<select style={{display:'block',width:'100%',minWidth:0}} aria-label="Earnings original" required value={earnings} onChange={e=>{clear();setEarnings(e.target.value);}}><option value="">Select retained earnings</option>{facts.map((r,i)=><option key={r.id} value={r.id}>SEC company facts · {r.retrievedDate} · {i+1}</option>)}</select></label>
- <button disabled={state.busy||!date||!price||!earnings}>Preview retained inputs</button></form>
+ <button disabled={state.busy||!date||!price||!earnings}>Preview retained inputs</button></details></form>
+ {state.coverage&&<div role="status">{state.coverage.map((gap,i)=><p key={i}>{gap}</p>)}</div>}
  {state.busy&&<p role="status">Checking retained inputs…</p>}{state.error&&<p role="alert">{state.error}</p>}
  {state.value&&<div><h5>Unapproved input preview · {state.value.date}</h5><p>Raw closing price: {state.value.price}</p><p>Annual diluted EPS: {state.value.earnings}</p><p>Annual period ending {state.value.periodEnd} · filed {state.value.publishedDate}</p>{state.value.gaps.map((g,i)=><p key={i}>{g}</p>)}<p>These amounts do not establish a valuation. Currency and share-class mapping, corporate actions, filing completeness and source provenance still require review. Nothing has been saved or approved.</p></div>}
  </section>;

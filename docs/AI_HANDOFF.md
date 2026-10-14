@@ -2,6 +2,32 @@
 
 Updated: October 12, 2026
 
+## T243 — automatic retained-input matching
+
+Historical input preview now offers Find matching retained inputs for an exact
+requested date. An authenticated read-only plan endpoint checks the complete bounded
+assignment inventory and chooses a price/SEC pair only when each has one eligible
+receipt. Missing coverage and ambiguous sources stay explicit; manual receipt
+selection remains available in a collapsed section. No latest/first receipt or
+nearby-date fallback. Dates, source hashes, retrieval vintages and frozen baseline
+are bound to the plan; changed UI inputs clear old results. Candidate amounts stay
+unapproved, with mapping/corporate-action/provenance checks unresolved.
+
+The server rejects over-bound inventories instead of treating a recent slice as
+complete, checks source scope/exact bytes, and holds assignment/original locks.
+POST/provider retrieval/research writes remain disabled. This is deterministic
+matching over already-retained originals, not ticker-only collection or valuation.
+
+Validation: 1365 safe backend tests, 159 frontend tests, compilation, model policy
+against 75097e5 and required production build passed. Synthetic full-app checks at
+390/1280px covered automatic unique selection, ambiguous/missing coverage, manual
+selection, old-result clearing, existing deliverable flows and GET-only/no-overflow
+behavior. Mobile result screenshot inspected. No paid QA or investor decisions.
+Deployment verification pending. Next: coordinator integration can consume these
+plans without choosing ambiguous evidence; external currency/share/corporate-action
+validation and live unattended acceptance remain open. Continue independent Home
+and workspace work where those external evidence gaps block valuation progress.
+
 ## T242 — retained historical input preview
 
 Historical evidence panels with retained price and SEC originals now offer a

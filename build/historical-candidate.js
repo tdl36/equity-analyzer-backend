@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { historicalCandidate } from './historical-review-model.mjs';
+import { historicalCandidate, historicalPlan } from './historical-review-model.mjs';
 export function HistoricalCandidate({
   url,
   baseline,
@@ -30,7 +30,7 @@ export function HistoricalCandidate({
   var prices = originals.filter(r => r.kind === 'daily_prices'),
     facts = originals.filter(r => r.kind === 'sec_companyfacts');
   if (!prices.length || !facts.length) return null;
-  async function preview(e) {
+  async function preview(e, automatic = false) {
     e.preventDefault();
     clear();
     var token = ++generation.current,
@@ -38,7 +38,7 @@ export function HistoricalCandidate({
     active.current = controller;
     var chosenPrice = prices.find(r => r.id === price),
       chosenEarnings = facts.find(r => r.id === earnings);
-    if (!chosenPrice || !chosenEarnings) {
+    if (!automatic && (!chosenPrice || !chosenEarnings)) {
       setState({
         error: 'Reload saved evidence and choose the retained originals again.'
       });
@@ -48,7 +48,10 @@ export function HistoricalCandidate({
       id: r.id,
       sha256: r.sha256
     });
-    var selection = {
+    var selection = automatic ? {
+      baseline,
+      date
+    } : {
       baseline,
       observation: {
         date,
@@ -60,16 +63,17 @@ export function HistoricalCandidate({
       busy: true
     });
     try {
-      var response = await fetch(url + '/historical-candidate?' + new URLSearchParams({
+      var response = await fetch(url + (automatic ? '/historical-plan?' : '/historical-candidate?') + new URLSearchParams({
         selection: JSON.stringify(selection)
       }), {
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)])
       });
       if (!response.ok) throw Error('These historical inputs could not be verified. Reload the saved evidence and check the selected date.');
-      var value = historicalCandidate(await response.json(), selection);
-      if (token === generation.current) setState({
-        value
-      });
+      var data = await response.json();
+      var result = automatic ? historicalPlan(data, baseline, date) : {
+        value: historicalCandidate(data, selection)
+      };
+      if (token === generation.current) setState(result);
     } catch (error) {
       if (token === generation.current) setState({
         error: error.message
@@ -98,7 +102,11 @@ export function HistoricalCandidate({
       clear();
       setDate(e.target.value);
     }
-  })), /*#__PURE__*/React.createElement("label", null, "Price original", /*#__PURE__*/React.createElement("select", {
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: state.busy || !date,
+    onClick: e => preview(e, true)
+  }, "Find matching retained inputs"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Choose originals manually"), /*#__PURE__*/React.createElement("label", null, "Price original", /*#__PURE__*/React.createElement("select", {
     style: {
       display: 'block',
       width: '100%',
@@ -136,7 +144,11 @@ export function HistoricalCandidate({
     value: r.id
   }, "SEC company facts \xB7 ", r.retrievedDate, " \xB7 ", i + 1)))), /*#__PURE__*/React.createElement("button", {
     disabled: state.busy || !date || !price || !earnings
-  }, "Preview retained inputs")), state.busy && /*#__PURE__*/React.createElement("p", {
+  }, "Preview retained inputs"))), state.coverage && /*#__PURE__*/React.createElement("div", {
+    role: "status"
+  }, state.coverage.map((gap, i) => /*#__PURE__*/React.createElement("p", {
+    key: i
+  }, gap))), state.busy && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Checking retained inputs\u2026"), state.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"

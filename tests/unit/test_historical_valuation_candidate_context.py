@@ -95,3 +95,19 @@ class CandidateContextTests(unittest.TestCase):
                         other.execute("SET LOCAL lock_timeout='100ms'")
                         other.execute(query,args)
         self.assertEqual(self.assemble()['payload']['observations'][0]['status'],'inputs_extracted')
+
+    def test_planner_uses_complete_scoped_inventory_without_creating_schema(self):
+        from historical_valuation_candidate_context import plan_from_storage
+        def plan():
+            with self.db() as (_,cur):return plan_from_storage(cur,AID,EID,'2025-03-03',self.baseline)
+        self.assertEqual(plan()['payload']['status'],'needs_evidence')
+        with self.db() as (_,cur):
+            cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
+            self.assertIsNone(cur.fetchone()['name'])
+        self.retain()
+        self.assertEqual(plan()['payload']['status'],'selected')
+        self.retain([{**self.records[0],'id':'price-alias'}])
+        self.assertEqual(plan()['payload']['status'],'ambiguous')
+        with self.db(True) as (_,cur):
+            for i in range(60):save_original(cur,{**self.records[0],'id':f'price-{i}'})
+        with self.assertRaisesRegex(ValueError,'planning bound'):plan()

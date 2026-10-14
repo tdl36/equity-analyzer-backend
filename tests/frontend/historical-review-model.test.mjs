@@ -65,3 +65,19 @@ test('candidate preview binds exact receipts, date, baseline and unresolved qual
  assert.equal(historicalCandidate(partial,selection).price,'Not established');
  assert.equal(historicalCandidate(partial,selection).gaps.length,1);
 });
+
+test('automatic retained planning preserves exact date and blocks ambiguous selection',async()=>{
+ const {historicalPlan}=await import('../../src/historical-review-model.mjs');
+ const baseline={assignmentId:'a',parentEditionId:'e',fundamentalsDigest:'a'.repeat(64),sourcePackFingerprint:'b'.repeat(64),parentEditionDigest:'c'.repeat(64)};
+ const observation={date:'2025-03-03',priceSource:{id:'p',sha256:'d'.repeat(64)},earningsSource:{id:'s',sha256:'e'.repeat(64)}};
+ const candidate={candidateDigest:'f'.repeat(64),payload:{version:1,baseline,valuationReady:false,investorReviewRequired:true,selections:[observation],observations:[{date:observation.date,status:'inputs_extracted',gaps:[],price:{value:'100'},earnings:{value:'5'}}],unresolvedChecks:['security_currency_mapping','corporate_actions','filing_inventory_completeness','source_provenance','investor_review']}};
+ const fixture=()=>({planDigest:'1'.repeat(64),payload:{version:1,baseline,date:observation.date,valuationReady:false,investorReviewRequired:true,status:'selected',candidate:structuredClone(candidate),gaps:[],inventory:[observation.priceSource,observation.earningsSource],checks:[{input:'price',eligible:true,source:observation.priceSource},{input:'earnings',eligible:true,source:observation.earningsSource}]}});
+ assert.equal(historicalPlan(fixture(),baseline,observation.date).value.price,'100');
+ for(const mutate of [p=>p.date='2025-03-04',p=>p.valuationReady=true,p=>p.inventory=[],p=>p.checks.push(p.checks[0])]){
+  const v=fixture();mutate(v.payload);assert.throws(()=>historicalPlan(v,baseline,observation.date));
+ }
+ for(const [status,code] of [['ambiguous','ambiguous_receipts'],['needs_evidence','missing_coverage']]){
+  const v=fixture();v.payload.status=status;delete v.payload.candidate;v.payload.gaps=[{input:'price',code}];
+  assert.equal(historicalPlan(v,baseline,observation.date).coverage.length,1);
+ }
+});

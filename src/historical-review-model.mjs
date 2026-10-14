@@ -64,3 +64,25 @@ export function historicalCandidate(value, selection) {
     periodEnd:text(row.earnings?.periodEnd),publishedDate:text(row.earnings?.publishedDate),
     gaps:row.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.message?text(g.message):'The selected original is missing or has the wrong type.'}`)};
 }
+
+export function historicalPlan(value, baseline, date) {
+ const p=value?.payload;
+ if(!/^[a-f0-9]{64}$/.test(value?.planDigest||'') || p?.version!==1 || p?.date!==date ||
+    !matchingBaselines([baseline,p?.baseline],baseline.assignmentId,baseline.parentEditionId) ||
+    p?.valuationReady!==false || p?.investorReviewRequired!==true ||
+    !['selected','ambiguous','needs_evidence'].includes(p?.status) || !Array.isArray(p?.gaps) || p.gaps.length>2 ||
+    !Array.isArray(p?.checks) || p.checks.length>60 || !Array.isArray(p?.inventory) || p.inventory.length>60 ||
+    p.checks.some(c=>!c || !['price','earnings'].includes(c.input) || typeof c.eligible!=='boolean' || typeof c.source?.id!=='string') ||
+    p.inventory.some(r=>!r || typeof r.id!=='string' || !/^[a-f0-9]{64}$/.test(r.sha256||'')))
+   throw Error('Historical coverage does not match this frozen edition. Reload evidence.');
+ if(p.status==='selected') {
+  const observation=p.candidate?.payload?.selections?.[0];
+  if(p.gaps.length || observation?.date!==date || !['price','earnings'].every(part=>{
+   const receipt=observation[part+'Source'];
+   return p.checks.filter(c=>c.input===part && c.eligible===true).length===1 && p.checks.some(c=>c.input===part && c.eligible===true && c.source?.id===receipt?.id && c.source?.sha256===receipt?.sha256) && p.inventory.some(r=>r.id===receipt?.id && r.sha256===receipt?.sha256);
+  })) throw Error('Selected originals do not match the retained coverage. Reload evidence.');
+  return {value:historicalCandidate(p.candidate,{baseline,observation})};
+ }
+ if(p.candidate || !p.gaps.length || p.gaps.some(g=>!g || !['price','earnings'].includes(g.input) || !['missing_coverage','ambiguous_receipts'].includes(g.code))) throw Error('Historical coverage is incomplete or inconsistent. Reload evidence.');
+ return {coverage:p.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.code==='missing_coverage'?'No retained original covers this exact date.':'Multiple retained originals qualify. Choose the originals explicitly below.'}`)};
+}

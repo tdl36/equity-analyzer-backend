@@ -51,3 +51,31 @@ class CandidateApiTests(unittest.TestCase):
                       {'selection':'{"baseline":NaN,"observation":{}}'}, {'selection':'[]'}):
             self.assertEqual(self.client(True,db).get(self.preview_url,query_string=query).status_code,409)
         db.assert_not_called()
+
+    def test_automatic_plan_reports_missing_unique_and_ambiguous_coverage(self):
+        url=self.preview_url.replace('historical-candidate','historical-plan')
+        query={'selection':json.dumps({'baseline':self.baseline,'date':'2025-03-03'})}
+        client=self.client()
+        missing=client.get(url,query_string=query)
+        self.assertEqual(missing.status_code,200,missing.json)
+        self.assertEqual(missing.json['payload']['status'],'needs_evidence')
+        self.assertEqual(missing.headers['Cache-Control'],'private, no-store')
+        self.retain()
+        selected=client.get(url,query_string=query)
+        self.assertEqual(selected.json['payload']['status'],'selected')
+        self.assertFalse(selected.json['payload']['candidate']['payload']['valuationReady'])
+        self.retain([{**self.records[0],'id':'alias'}])
+        ambiguous=client.get(url,query_string=query)
+        self.assertEqual(ambiguous.json['payload']['status'],'ambiguous')
+        self.assertNotIn('candidate',ambiguous.json['payload'])
+        self.assertEqual(client.post(url,json={}).status_code,405)
+        self.baseline['parentEditionDigest']='f'*64
+        self.assertEqual(client.get(url,query_string={'selection':json.dumps({'baseline':self.baseline,'date':'2025-03-03'})}).status_code,409)
+
+    def test_automatic_plan_auth_and_envelope_fail_before_database(self):
+        url=self.preview_url.replace('historical-candidate','historical-plan')
+        db=Mock(side_effect=AssertionError('Unexpected database access'))
+        self.assertEqual(self.client(False,db).get(url).status_code,403)
+        for selection in ('[]','x'*4097,'{"date":"2025-03-03","date":"2025-03-04","baseline":{}}',json.dumps({'baseline':self.baseline,'date':'bad'})):
+            self.assertEqual(self.client(True,db).get(url,query_string={'selection':selection}).status_code,409)
+        db.assert_not_called()
