@@ -1,4 +1,4 @@
-"""Durable Lab iCloud import transactions. Not registered with HTTP or the agent yet.
+"""Durable Lab iCloud import transactions shared by user and Mac-agent routes.
 
 Call each mutation inside get_db(commit=True); allow ValueError to escape the
 transaction so partial originals and settings roll back together. No research runs.

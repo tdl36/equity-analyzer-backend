@@ -56,3 +56,18 @@ class AgentImport(unittest.TestCase):
             if path.endswith('complete'):result['receipts'][0]['sha256']='0'*64
             return result
         with self.assertRaisesRegex(ValueError,'completion receipt'):self.run_import(wrong)
+    def test_poll_reports_bounded_issue_for_missing_original(self):
+        from unittest.mock import patch,Mock
+        from pipeline_lab_icloud_agent import poll
+        self.path.unlink()
+        def response(data):
+            r=Mock();r.json.return_value=data;return r
+        with patch('requests.get',side_effect=[response({'imports':[self.job]}),response(self.job)]),patch('requests.post',return_value=response({'status':'attention'})) as post:
+            self.assertEqual(poll('https://test.invalid',{},self.stocks,self.catalysts),'unavailable')
+            self.assertEqual(post.call_args.kwargs['json'],{'code':'source_unavailable'})
+    def test_poll_does_not_expose_transport_errors(self):
+        from unittest.mock import patch
+        from pipeline_lab_icloud_agent import poll
+        with patch('requests.get',side_effect=RuntimeError('synthetic private transport detail')),patch('requests.post') as post:
+            self.assertEqual(poll('https://test.invalid',{},self.stocks,self.catalysts),'unavailable')
+            post.assert_not_called()

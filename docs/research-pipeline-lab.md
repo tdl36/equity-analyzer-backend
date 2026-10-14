@@ -32,6 +32,10 @@ search, and a successful collection is not exhaustive coverage.
   exact-byte receipts, atomic conflict handling and replay after lost responses.
   Originals remain in place; only that task’s selection changes. Import starts no
   research and does not establish source freshness or licensing permission.
+- Explicit iCloud imports use exact folder identities, server-frozen hashes and
+  atomic byte receipts. Missing/download-needed originals and conflicts require
+  attention; retry/cancel and reload reconciliation preserve the request identity.
+  The Mac agent must be online and files downloaded. Import starts no research.
 - Generate from saved selection creates an existing coordinated research
   assignment. Its immutable manifest binds saved task/revision, original IDs,
   filenames, sizes and SHA-256 hashes. The originals remain in existing storage;
@@ -51,8 +55,8 @@ search, and a successful collection is not exhaustive coverage.
 
 ## Outstanding acceptance and implementation
 
-1. Add a deliberate exact-byte import path for iCloud-only selections; these still
-   block selected-source generation. Research-storage imports are implemented.
+1. Validate the implemented iCloud and Research-storage import paths on a real
+   user-authorized selection. Synthetic checks do not establish live acceptance.
    Preserve original paths and same-name conflicts; never resolve by filename alone.
 2. Expand browser-collected metadata (type, publisher, author, publication date,
    observed URLs and collection window) and connect receipts to the catalog.

@@ -2,6 +2,32 @@
 
 Updated: October 14, 2026
 
+## T267 — Lab iCloud import integration
+
+Wired the three prior local checkpoints into authenticated API routes, the existing
+Mac agent's minute poll, and separate Lab controls. The user saves a task selection
+and explicitly requests an import. Exact STOCKS/CATALYSTS folder identities are
+frozen with hashes before upload; missing/download-needed files, symlinks, changed
+bytes, filename conflicts and stale settings fail without substituting originals.
+All selected copies and the chosen task's configuration update commit atomically.
+Imports start no research. Originals and legacy Pipeline behavior stay intact.
+
+Durable queue, freeze, completion receipt, attention, retry and cancellation survive
+page reload and agent restart. An ambiguous network response is reconciled with the
+same request identity. Agent failures report bounded codes rather than source or
+transport details; attention jobs wait for explicit retry. UI polling shows queued,
+frozen and attention states and reloads inventory/config after verified completion.
+Mac awake/online, running agent and downloaded files remain explicit dependencies.
+
+Release verification pending. Synthetic PostgreSQL, filesystem and HTTP/agent tests
+cover exact paths, cancellation, concurrent requests, immutable manifests, atomic
+rollback and lost responses. Mocked mobile/desktop UI checks cover a lost queue
+response, reload, same identity reconciliation and receipt-driven selection reload.
+No real user import or paid research is launched for QA. This is implementation
+coverage, not end-to-end investor acceptance. Next: richer observed metadata and
+source task relevance, full draft-note versions, opt-in orchestration and real-run
+acceptance. Historical valuation remains at its earlier documented checkpoint.
+
 ## Pending Lab iCloud import — HTTP/agent adapters checkpoint (not released)
 
 Added pipeline_lab_icloud_api.py with bounded JSON user queue/list/status/cancel

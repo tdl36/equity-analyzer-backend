@@ -1,7 +1,7 @@
 """One bounded Lab import per poll. No models, collection, hydration or file writes.
 
 Injected transport uses existing Mac credentials. A server-frozen manifest survives
-lost responses/restarts; retries reread only matching hashes. Not wired to agent yet.
+lost responses/restarts; retries reread only matching hashes. Used by the existing agent poll.
 """
 from pipeline_lab_local import read_original
 
@@ -37,3 +37,23 @@ def process_one(get,post,stocks,catalysts):
             or {r['reference']:(r['filename'],r['sha256'],r['bytes']) for r in receipts}!=expected):
         raise ValueError('Exact Lab import completion receipt unavailable. Reconcile on the next poll.')
     return 'complete'
+
+
+def poll(api,headers,stocks,catalysts):
+    """Use existing credentials; failures report only bounded, non-sensitive codes."""
+    import requests
+    selected=[]
+    def get(path):
+        response=requests.get(api+path,headers=headers,timeout=30);response.raise_for_status();data=response.json()
+        if path.startswith('/api/pipeline-lab/icloud-import/') and isinstance(data,dict):selected[:]=[data.get('requestId')]
+        return data
+    def post(path,body):
+        response=requests.post(api+path,headers=headers,json=body,timeout=120);response.raise_for_status();return response.json()
+    try:return process_one(get,post,stocks,catalysts)
+    except Exception as exc:
+        if selected and selected[0]:
+            code='source_unavailable' if isinstance(exc,ValueError) else 'import_unavailable'
+            if isinstance(exc,requests.HTTPError) and exc.response is not None and exc.response.status_code==409:code='settings_conflict'
+            try:post('/api/agent/pipeline-lab-import/'+selected[0]+'/issue',{'code':code})
+            except Exception:pass  # The durable request survives a network outage.
+        return 'unavailable'

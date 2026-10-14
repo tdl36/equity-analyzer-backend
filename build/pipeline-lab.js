@@ -1,3 +1,4 @@
+import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
@@ -416,10 +417,22 @@ function LabStock({
     style: {
       marginTop: 16
     }
-  }, /*#__PURE__*/React.createElement("p", null, "Import selected Research-storage originals into Charlie using exact byte checks. Existing originals stay in place. Different same-named files block the whole import. iCloud-only files still require a separate import path."), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("p", null, "Import selected Research-storage originals into Charlie using exact byte checks. Existing originals stay in place. Different same-named files block the whole import. Use the iCloud import controls below for files listed only on the Mac."), /*#__PURE__*/React.createElement("button", {
     disabled: busy || checking || dirty,
     onClick: importResearch
-  }, pendingImport ? 'Retry same Research import' : 'Import selected Research originals')), /*#__PURE__*/React.createElement("button", {
+  }, pendingImport ? 'Retry same Research import' : 'Import selected Research originals')), /*#__PURE__*/React.createElement(LabICloudImport, {
+    api: api,
+    ticker: ticker,
+    task: task,
+    revision: saved.revision,
+    selected: selection[task],
+    disabled: busy || checking || dirty,
+    read: read,
+    onImported: () => {
+      setCheckResult(null);
+      setGeneration(n => n + 1);
+    }
+  }), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     style: {
       marginTop: 16

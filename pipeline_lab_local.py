@@ -1,6 +1,6 @@
-"""Bounded exact-path reader for future Lab imports; no scanning, uploads or dispatch.
+"""Bounded exact-path reader for Lab imports; no scanning, uploads or dispatch.
 
-Not connected to the live agent yet. Caller must persist the returned identity before
+Caller must persist the returned identity before
 upload and use the same expected hash on retries. Folder names match the agent catalog.
 """
 import base64

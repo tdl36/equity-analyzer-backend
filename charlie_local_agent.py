@@ -4160,6 +4160,8 @@ def main() -> None:
                     except Exception as exc: log.warning("Original import queue unavailable: %s",type(exc).__name__)
                     try: sync_collection_control()
                     except Exception as exc: log.warning("Collection control sync failed (%s); queued commands have not been acknowledged and will retry",type(exc).__name__)
+                    from pipeline_lab_icloud_agent import poll as poll_lab_import
+                    poll_lab_import(CHARLIE_API, _agent_headers(), STOCKS_DIR, CATALYSTS_DIR)
                     push_file_manifest()
                     process_pending_syncs()
                     check_for_new_files()

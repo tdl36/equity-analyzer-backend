@@ -1,4 +1,4 @@
-"""HTTP adapter for Lab import transactions; awaiting live registration/agent wiring.
+"""HTTP adapter for Lab import transactions and the authenticated Mac agent.
 
 Normal user routes require the application's existing authentication middleware.
 Agent mutation routes additionally require the injected Mac-agent credential check.

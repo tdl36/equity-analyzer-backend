@@ -29498,6 +29498,9 @@ app.register_blueprint(_research_automation.blueprint)
 
 import pipeline_lab
 app.register_blueprint(pipeline_lab.create_blueprint(get_db))
+import pipeline_lab_icloud_api
+app.register_blueprint(pipeline_lab_icloud_api.create_blueprint(get_db,
+    lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
 app.register_blueprint(provider_credentials.create_blueprint(get_db, lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
