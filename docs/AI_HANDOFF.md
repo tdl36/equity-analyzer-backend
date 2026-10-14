@@ -73,6 +73,21 @@ replaying after an investor edit cannot overwrite it. Uncertain replies cannot
 create drafts; parsing failure preserves the completed raw reply for recovery.
 Six synthetic/parser and disposable PostgreSQL tests cover these paths. All 1486
 safe backend tests, compilation and model-policy validation passed. No paid calls.
+Source-preparation checkpoint: pipeline_lab_note_sources.py rechecks selected
+original IDs, eligibility, exact bytes and filenames before planning. Every selected
+source must appear exactly once; omitted/unreadable or substituted originals block
+generation. PDFs retain original document blocks; a planner's PDF-to-text fallback
+requires explicit permission. Extracted representations carry a visual-fidelity
+warning and the ordered actual attachment content has its own SHA-256 identity.
+The helper defaults to the existing notegen planner but makes no provider calls.
+Five focused tests cover changed/missing bytes, skipped/duplicate/substituted
+sources, original PDF attachment, text-conversion warnings/hash changes and the
+existing planner with a synthetic text file. The 1490-test safe suite passed before
+the fifth test was added; all five focused tests then passed. Compilation and
+model-policy checks passed. No paid calls, live writes or production release.
+No production integration yet. Next: persist the complete frozen context and plan,
+including these representation warnings, then wire prompt and journal dispatch.
+
 Next concrete implementation: connect frozen source/context preparation and the
 full-note prompt to the call journal, with final-batch identity frozen in the
 coordinator (store_draft is internal and trusts that coordinator for ticker/title).
