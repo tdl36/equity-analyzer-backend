@@ -27,7 +27,10 @@ refresh runs merely by opening settings. Do not claim full automation complete.
 Synthetic 390/1280px full-app checks verified separate task selections, reopening
 saved settings, duplicate names, filters and no generation requests. Mobile render
 inspected. No paid QA, thesis changes, approvals or live config writes. Release
-verification pending.
+verified: backend 9af79e198a477797e0d24cbb7d5dcd9143fb6e59;
+Cloudflare a8c5de21-f6a8-47f7-a4f1-dd01d7d3423f; HTML T260 and versioned JS/SW
+bytes match local assets. Authenticated Lab config GET returns 200/private/no-store;
+unauthenticated GET returns 401. Agent healthy (7.7-second staleness), unchanged.
 
 Next user-facing priority: wire Lab selections to a bounded immutable source pack
 and explicit generation modes, retaining original Pipeline unchanged. Add verified
