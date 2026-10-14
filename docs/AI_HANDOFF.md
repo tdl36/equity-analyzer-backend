@@ -2,6 +2,29 @@
 
 Updated: October 14, 2026
 
+## T255 — source consistency warnings in historical input previews
+
+The retained-input preview now explains acquisition checks separately for the
+selected price and earnings originals. Missing checks/metadata stay explicit;
+provider, issuer/endpoint, collector-version and retrieval-date mismatches receive
+plain-language warnings. Consistent claims explicitly remain unverified. Validation
+rejects checks for another source, false verification, unknown codes and contradictory
+statuses before displaying the preview. Older responses without the new checks
+show an unavailable warning, never an implicit pass.
+
+173 frontend tests, production build and model-policy gate passed. Full-app synthetic
+390/1280px checks verified price consistency and earnings issuer/date mismatch
+warnings, existing review/coverage navigation, no overflow and GET-only traffic.
+Mobile preview inspected. No backend/agent changes; backend suite not repeated
+(last 1401 at T254). No live retrieval, research changes or approvals. Logs
+/tmp/charlie-T255-{front,build}.log and /tmp/charlie-consistency-view-ui.log.
+Release verification pending.
+
+Next: bounded security/currency/share-basis checks from retained source fields,
+with explicit gaps when the original cannot establish compatibility. Maintain
+filing completeness, corporate-action and real-source review gaps. Production
+historical ingestion stays disabled; all eight priorities retain open acceptance.
+
 ## T254 — historical candidate versions bind acquisition evidence
 
 ### T254 verified release receipt

@@ -154,5 +154,9 @@ export function HistoricalCandidate({
     role: "alert"
   }, state.error), state.value && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h5", null, "Unapproved input preview \xB7 ", state.value.date), /*#__PURE__*/React.createElement("p", null, "Raw closing price: ", state.value.price), /*#__PURE__*/React.createElement("p", null, "Annual diluted EPS: ", state.value.earnings), /*#__PURE__*/React.createElement("p", null, "Annual period ending ", state.value.periodEnd, " \xB7 filed ", state.value.publishedDate), state.value.gaps.map((g, i) => /*#__PURE__*/React.createElement("p", {
     key: i
-  }, g)), /*#__PURE__*/React.createElement("p", null, "These amounts do not establish a valuation. Currency and share-class mapping, corporate actions, filing completeness and source provenance still require review. Nothing has been saved or approved.")));
+  }, g)), /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Source acquisition checks"
+  }, /*#__PURE__*/React.createElement("h5", null, "Source acquisition checks"), state.value.acquisitionWarnings.map((message, i) => /*#__PURE__*/React.createElement("p", {
+    key: i
+  }, message))), /*#__PURE__*/React.createElement("p", null, "These amounts do not establish a valuation. Currency and share-class mapping, corporate actions, filing completeness and source provenance still require review. Nothing has been saved or approved.")));
 }

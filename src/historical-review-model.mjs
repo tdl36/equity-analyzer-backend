@@ -1,3 +1,4 @@
+import {acquisitionWarnings} from './historical-acquisition.mjs';
 const baselineFields = ['assignmentId','parentEditionId','fundamentalsDigest','sourcePackFingerprint','parentEditionDigest'];
 function matchingBaselines(values, assignmentId, editionId) {
   const first = values[0];
@@ -60,7 +61,7 @@ export function historicalCandidate(value, selection) {
      row.gaps.length>2 || row.gaps.some(g=>!g || !['price','earnings'].includes(g.input) || !['missing_original','wrong_original_kind','unverified_original'].includes(g.code))) throw Error('Historical input selection changed. Reload saved evidence.');
   if(row.status==='inputs_extracted' && (row.gaps.length || typeof row.price?.value!=='string' || typeof row.earnings?.value!=='string')) throw Error('Historical inputs are incomplete. Reload saved evidence.');
   const text=v=>typeof v==='string'&&v.length<=500?v:'Not established';
-  return {date:row.date,price:text(row.price?.value),earnings:text(row.earnings?.value),
+  return {acquisitionWarnings:acquisitionWarnings(p.acquisitionChecks,expected),date:row.date,price:text(row.price?.value),earnings:text(row.earnings?.value),
     periodEnd:text(row.earnings?.periodEnd),publishedDate:text(row.earnings?.publishedDate),
     gaps:row.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.message?text(g.message):'The selected original is missing or has the wrong type.'}`)};
 }
