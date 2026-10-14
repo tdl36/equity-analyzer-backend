@@ -58,6 +58,17 @@ def assemble_candidates(selections, records, baseline, *, cik, symbol):
                 row[part] = result[part]
         if not row['gaps']:
             row['status'] = 'inputs_extracted'
+        # The supported DAILY price original does not establish denomination or
+        # share class. Never infer USD from the symbol, exchange, or EPS currency.
+        row['compatibility'] = {
+            'status': 'unverified', 'valuationReady': False,
+            'priceCurrency': None,
+            'earningsCurrency': row.get('earnings', {}).get('currency'),
+            'priceBasis': row.get('price', {}).get('basis'),
+            'earningsBasis': row.get('earnings', {}).get('basis'),
+            'gaps': ['price_currency_not_established', 'share_class_mapping_not_established',
+                     'split_basis_compatibility_not_established']}
+
         observations.append(row)
     payload = {'version': 1, 'baseline': frozen, 'cik': cik, 'symbol': symbol,
                'selections': selections, 'observations': observations,

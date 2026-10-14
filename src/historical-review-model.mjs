@@ -60,8 +60,13 @@ export function historicalCandidate(value, selection) {
      !['incomplete','inputs_extracted'].includes(row?.status) || !Array.isArray(row?.gaps) ||
      row.gaps.length>2 || row.gaps.some(g=>!g || !['price','earnings'].includes(g.input) || !['missing_original','wrong_original_kind','unverified_original'].includes(g.code))) throw Error('Historical input selection changed. Reload saved evidence.');
   if(row.status==='inputs_extracted' && (row.gaps.length || typeof row.price?.value!=='string' || typeof row.earnings?.value!=='string')) throw Error('Historical inputs are incomplete. Reload saved evidence.');
+  const compatibility=row.compatibility;
+  if(compatibility!==undefined&&(compatibility?.status!=='unverified'||compatibility.valuationReady!==false||compatibility.priceCurrency!==null||
+    ![null,'USD'].includes(compatibility.earningsCurrency)||![null,'unadjusted_close'].includes(compatibility.priceBasis)||![null,'GAAP diluted EPS'].includes(compatibility.earningsBasis)||
+    !Array.isArray(compatibility.gaps)||compatibility.gaps.length!==3||!['price_currency_not_established','share_class_mapping_not_established','split_basis_compatibility_not_established'].every(g=>compatibility.gaps.includes(g))))throw Error('Currency and share-basis checks are inconsistent. Reload saved evidence.');
+  const compatibilityNote=compatibility?`Price currency: not established. Earnings currency: ${compatibility.earningsCurrency||'not established'}. The retained inputs do not establish matching share classes or compatible split bases. Do not divide these values into a valuation multiple.`:'Currency and share-basis details are unavailable. Do not treat these inputs as a verified valuation.';
   const text=v=>typeof v==='string'&&v.length<=500?v:'Not established';
-  return {acquisitionWarnings:acquisitionWarnings(p.acquisitionChecks,expected),date:row.date,price:text(row.price?.value),earnings:text(row.earnings?.value),
+  return {compatibilityNote,acquisitionWarnings:acquisitionWarnings(p.acquisitionChecks,expected),date:row.date,price:text(row.price?.value),earnings:text(row.earnings?.value),
     periodEnd:text(row.earnings?.periodEnd),publishedDate:text(row.earnings?.publishedDate),
     gaps:row.gaps.map(g=>`${g.input==='price'?'Price':'Earnings'}: ${g.message?text(g.message):'The selected original is missing or has the wrong type.'}`)};
 }

@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T256 — explicit currency and share-basis compatibility gaps
+
+Historical candidates now freeze per-observation compatibility diagnostics. SEC
+EPS denomination is carried only from the extracted USD/shares fact; price currency
+remains unknown because the supported raw DAILY original does not establish it.
+Neither the symbol nor earnings denomination can fill that gap. Missing financial
+inputs retain null bases/denominations. Share-class and split-basis compatibility
+remain explicitly unestablished, with valuationReady=false.
+
+The input preview displays these limitations beside the numbers and warns against
+deriving a valuation multiple from them. It rejects falsely asserted price currency
+or compatibility status. Old previews lacking diagnostics show an unavailable
+warning. Candidate digests now bind this added diagnostic; old previews must be
+reassembled, without rewriting originals or approving research.
+
+1402 safe backend tests, 173 frontend tests, focused candidate checks, compilation,
+model-policy gate and build passed. Full-app synthetic 390/1280px checks passed for
+the USD-earnings/unknown-price distinction, retained review workflows and GET-only
+traffic; desktop rendering inspected. No live provider calls or paid QA. Logs
+/tmp/charlie-compat-{focused,suite,ui}.log and /tmp/charlie-T256-{front,build}.log.
+Release pending. Historical ingestion remains disabled.
+
+Next: a dedicated, source-bound security/currency mapping receipt is needed; the
+current two original types cannot prove it. Define that evidence contract and
+replay binding before allowing mappings to affect valuation. Keep corporate-action,
+filing completeness, provenance and investor-review requirements independent.
+All eight priorities still have outstanding real-source/unattended acceptance.
+
 ## T255 — source consistency warnings in historical input previews
 
 ### T255 verified release receipt

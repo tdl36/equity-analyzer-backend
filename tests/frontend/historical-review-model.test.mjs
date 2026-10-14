@@ -58,6 +58,10 @@ test('candidate preview binds exact receipts, date, baseline and unresolved qual
  const selection={baseline,observation};
  const fixture=()=>({candidateDigest:'f'.repeat(64),payload:{version:1,baseline:{...baseline},valuationReady:false,investorReviewRequired:true,selections:[structuredClone(observation)],observations:[{date:observation.date,status:'inputs_extracted',gaps:[],price:{value:'100'},earnings:{value:'5',periodEnd:'2024-12-31',publishedDate:'2025-02-15'}}],unresolvedChecks:['security_currency_mapping','corporate_actions','filing_inventory_completeness','source_provenance','investor_review']}});
  assert.equal(historicalCandidate(fixture(),selection).price,'100');
+ const compatible=fixture();compatible.payload.observations[0].compatibility={status:'unverified',valuationReady:false,priceCurrency:null,earningsCurrency:'USD',priceBasis:'unadjusted_close',earningsBasis:'GAAP diluted EPS',gaps:['price_currency_not_established','share_class_mapping_not_established','split_basis_compatibility_not_established']};
+ assert.match(historicalCandidate(compatible,selection).compatibilityNote,/Price currency: not established. Earnings currency: USD/);
+ compatible.payload.observations[0].compatibility.priceCurrency='USD';
+ assert.throws(()=>historicalCandidate(compatible,selection),/Currency and share-basis/);
  for(const mutate of [v=>v.payload.valuationReady=true,v=>v.payload.baseline.parentEditionDigest='0'.repeat(64),v=>v.payload.selections[0].date='2025-03-04',v=>v.payload.selections[0].priceSource.sha256='0'.repeat(64),v=>v.payload.unresolvedChecks=[],v=>delete v.payload.observations[0].price]){
   const value=fixture();mutate(value);assert.throws(()=>historicalCandidate(value,selection));
  }

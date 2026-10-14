@@ -120,3 +120,19 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(check['status'],'mismatch')
         self.assertEqual(check['gaps'],['endpoint_or_issuer_mismatch','retrieval_date_mismatch'])
         self.assertFalse(check['verified'])
+
+    def test_currency_and_share_basis_are_not_inferred_from_symbol_or_eps(self):
+        row=self.assemble()['payload']['observations'][0]
+        compatibility=row['compatibility']
+        self.assertIsNone(compatibility['priceCurrency'])
+        self.assertEqual(compatibility['earningsCurrency'],'USD')
+        self.assertEqual(compatibility['priceBasis'],'unadjusted_close')
+        self.assertEqual(compatibility['earningsBasis'],'GAAP diluted EPS')
+        self.assertFalse(compatibility['valuationReady'])
+        self.assertEqual(len(compatibility['gaps']),3)
+        self.records=[]
+        empty=self.assemble()['payload']['observations'][0]['compatibility']
+        self.assertIsNone(empty['earningsCurrency'])
+        self.assertIsNone(empty['priceBasis'])
+        self.assertIsNone(empty['earningsBasis'])
+        self.assertEqual(empty['gaps'],compatibility['gaps'])
