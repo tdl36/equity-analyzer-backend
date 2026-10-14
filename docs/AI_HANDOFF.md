@@ -13,7 +13,15 @@ research starts during import. Research storage is labeled separately in the cat
 
 Validation: isolated PostgreSQL tests cover atomic rollback, unchanged originals,
 separate task settings, replay, byte conflicts, invalid bytes and excluded targets.
-Release verification pending. iCloud-only import remains unsupported; do not confuse
+Release verified: backend 7512560252f26efac276b1035b35b0fd18ec2e86,
+Cloudflare c71af9b3-4a4a-462c-a30d-4405d678bfad, hosted T265 HTML and
+exact JS/SW bytes; unchanged agent healthy at 4.1 seconds. All 1429 backend and
+178 frontend tests, compilation, model policy and build passed. Synthetic 390/1280px
+browser checks exercised a lost import response, page reload, same-request replay,
+and reconciled selection without horizontal overflow. Live validation only read
+configuration and rejected an unsaved request with 400; no real originals were
+copied for QA and no paid research ran. Initial Cloudflare upload-session error
+10013 recovered on one deployment retry. iCloud-only import remains unsupported; do not confuse
 this bounded Research-storage copy with the full browser-to-draft acceptance path.
 Next: iCloud exact-identity import, richer metadata/relevance, full draft-note
 versioning and opt-in orchestration. Legacy Pipeline behavior remains unchanged.
