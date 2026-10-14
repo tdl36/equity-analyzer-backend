@@ -42,14 +42,20 @@ Original Research Pipeline and research_notes remain untouched.
   mismatched or truncated replies stay attention. Unstarted or safely checkpointed
   work can requeue only through this explicit recovery entry point (no route yet).
 
-Latest validation: 1507 safe backend tests passed. After strengthening recovery's
-frozen-plan match checks, all nine focused queue/recovery tests passed, including
-live-owner protection, unknown outcomes, saved replies, malformed output and wrong
-model evidence. Compilation and model policy passed. No paid QA or live writes.
+- pipeline_lab_note_worker.py: one bounded worker iteration now claims durably,
+  renews its lease in a background thread, checks ownership before source loading
+  and each injected provider call, and settles only under its current lease. Lost
+  ownership blocks further dispatch; raw exceptions are not exposed. No scheduler
+  or provider binding yet. Four disposable PostgreSQL tests cover claim/draft
+  settlement, expired-owner fencing, source failure and uncertain-call attention.
+
+Latest validation: all 1512 safe backend tests passed, including the four new
+worker tests. Python compilation and model-policy checks passed. Long provider-call
+renewal and real-source acceptance remain unverified. No paid QA or live writes.
 
 Next concrete action: wire authenticated submission to freeze the existing full-note
-playbook/context and enforce account/model/input budgets. Add the worker integration
-with lease renewal during long calls and ownership checks before each new call;
+playbook/context and enforce account/model/input budgets. Bind the worker adapter
+to the existing backend scheduler and verify long-call lease renewal;
 reconcile interrupted jobs against durable replies/drafts without retrying ambiguous
 paid outcomes. Then connect review UI/export in Calibri/black and explicit acceptance
 history, register schemas/routes, and follow the full release procedure. Do not expose
