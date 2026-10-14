@@ -4,6 +4,16 @@ Updated: October 14, 2026
 
 ## T248 — company-scoped saved assignment archive
 
+### T248 verified release receipt
+
+Verified backend 284894733d094ba0817d1f1e0bd853d62d7ae301 and Cloudflare
+373affff-eb65-4d36-8ea4-a248f55c141b. Hosted app and service-worker bytes match local
+release assets exactly. 165 frontend tests, focused full-app mobile/desktop checks,
+production build and model-policy gate passed. No backend changes; unrelated backend
+suite was not repeated. Agent health ok with 96.5-second staleness, unchanged and
+not restarted. Logs /tmp/charlie-T248-{build,deploy}.log and
+/tmp/charlie-company-archive-{tests,ui}.log. No live research mutation or approval.
+
 Stock Analysis now has a "Find older [ticker] assignments" entry beside the saved
 assignment workspace. It reuses the read-only archive, locked to the current company,
 without asking the investor to re-enter its ticker. The existing Home/Activity
