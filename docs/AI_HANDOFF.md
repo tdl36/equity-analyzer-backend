@@ -4,6 +4,17 @@ Updated: October 14, 2026
 
 ## T246 — direct access to finished assignments on Home
 
+### T246 release receipt
+
+Verified backend revision 8040257deca61cc2cecd814ee373e50ac2be2f12 and Cloudflare
+43f725b1-ca1a-4d69-a58b-20920c69b878. Hosted app/service-worker bytes match local
+assets exactly. Agent health returned ok/13.2-second staleness after a transient
+502 during backend replacement; unchanged agent was not restarted. No backend
+source changed, so validation used the 163 frontend tests and focused full-app
+synthetic navigation checks rather than repeating the unrelated backend suite.
+Build/model-policy checks passed. Logs /tmp/charlie-T246-{tests,ui,build,deploy}.log;
+mobile screenshot /tmp/charlie-T246-home-390.png. No production research mutation.
+
 Home now keeps up to three recent completed coordinating assignments visible in
 "Recently finished assignments", with a direct "Review saved outputs" button for
 the exact company and assignment. Stalled/current work keeps its existing four
