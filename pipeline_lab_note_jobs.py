@@ -67,3 +67,54 @@ def settle(cur, note_id, lease_id, result):
     cur.execute("UPDATE pipeline_lab_note_jobs SET status=%s,reason=%s,revision=%s,lease_id=NULL,lease_until=NULL,updated_at=NOW() WHERE note_id=%s AND lease_id=%s AND status='running' AND lease_until>NOW() RETURNING note_id",(state,reason,revision,_note_identity(note_id),_note_identity(lease_id)))
     if not cur.fetchone():raise ValueError('Worker lease is no longer current.')
     return status(cur,note_id)
+
+
+def recover(cur, note_id):
+    """Explicit reconciliation only: inspect durable evidence, never call a model.
+
+    Safe unstarted/fully checkpointed work can be queued. An uncertain call cannot.
+    Active leases are never stolen. The future user route must be authenticated.
+    """
+    from pipeline_lab_note_plan import load
+    from pipeline_lab_note_response import store_draft
+    from pipeline_lab_notes import read, obj
+    note_id=_note_identity(note_id)
+    cur.execute('SELECT status,lease_until>NOW() AS live FROM pipeline_lab_note_jobs WHERE note_id=%s FOR UPDATE',(note_id,))
+    row=cur.fetchone()
+    if not row:raise ValueError('Note job not found.')
+    if row['status']=='running' and row['live']:
+        raise ValueError('A worker still owns this note job.')
+    plan=load(cur,note_id)
+    draft=read(cur,note_id)
+    state='queued';reason=None;revision=None
+    if draft:
+        if draft['ticker']!=plan['ticker'] or draft['sourcePack']!=plan['sourcePack']:
+            raise ValueError('Saved draft does not match the frozen plan.')
+        state='draft';revision=draft['revision']
+    else:
+        cur.execute('SELECT batch,status,response,request FROM pipeline_lab_note_calls WHERE note_id=%s ORDER BY batch',(note_id,))
+        calls=cur.fetchall()
+        mismatch = any(
+            obj(call['request'])['sourcePack'] != plan['sourcePack']
+            or obj(call['request'])['contextSha256'] != plan['representationSha256']
+            or obj(call['request'])['modelKey'] != plan['modelKey']
+            or obj(call['request'])['maxTokens'] != plan['maxTokens']
+            for call in calls)
+        if mismatch:
+            state='attention';reason='saved_reply_needs_review'
+        elif any(call['status']!='complete' for call in calls):
+            state='attention';reason='provider_outcome_unknown'
+        elif calls and [c['batch'] for c in calls]!=list(range(1,len(calls)+1)):
+            state='attention';reason='saved_reply_needs_review'
+        elif calls and calls[-1]['batch']>plan['batchCount']:
+            state='attention';reason='saved_reply_needs_review'
+        elif any(obj(c['response'])['stopReason'] in ('max_tokens','length','MAX_TOKENS') for c in calls if c['batch']<plan['batchCount']):
+            state='attention';reason='intermediate_reply_truncated'
+        elif calls and calls[-1]['batch']==plan['batchCount']:
+            try:
+                receipt=store_draft(cur,note_id,plan['batchCount'],plan['ticker'],plan['title'],plan['warnings'])
+                state='draft';revision=receipt['revision']
+            except ValueError:
+                state='attention';reason='saved_reply_needs_review'
+    cur.execute('UPDATE pipeline_lab_note_jobs SET status=%s,reason=%s,revision=%s,lease_id=NULL,lease_until=NULL,updated_at=NOW() WHERE note_id=%s',(state,reason,revision,note_id))
+    return status(cur,note_id)

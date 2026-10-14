@@ -37,10 +37,15 @@ Original Research Pipeline and research_notes remain untouched.
   Expired workers become attention, never queued automatically. Lease identities
   fence renewal/settlement; draft status requires an actual saved revision. Replay
   of submission cannot reset running, attention or completed work. Not scheduled.
+  Explicit recover() now reconciles saved drafts/final replies without model calls;
+  active leases cannot be stolen, uncertain outcomes cannot requeue, and malformed,
+  mismatched or truncated replies stay attention. Unstarted or safely checkpointed
+  work can requeue only through this explicit recovery entry point (no route yet).
 
-Latest focused validation: four disposable PostgreSQL queue tests cover replay,
-concurrent claims, expiry, stale owners and actual saved-draft checks. All 1503
-safe backend tests, Python compilation and model-policy checks passed. No paid QA.
+Latest validation: 1507 safe backend tests passed. After strengthening recovery's
+frozen-plan match checks, all nine focused queue/recovery tests passed, including
+live-owner protection, unknown outcomes, saved replies, malformed output and wrong
+model evidence. Compilation and model policy passed. No paid QA or live writes.
 
 Next concrete action: wire authenticated submission to freeze the existing full-note
 playbook/context and enforce account/model/input budgets. Add the worker integration
