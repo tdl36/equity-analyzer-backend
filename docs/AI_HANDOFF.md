@@ -31,6 +31,24 @@ corporate-action evidence before any multiple can be claimed, and integrate safe
 retained-source selection into the coordinator; provider retrieval remains gated.
 All eight acceptance phases and ticker-only unattended proof remain open.
 
+### T242 verified — October 13, 2026, 11:18 p.m. New York
+
+Backend 694e87a4b18aca172c4856ea720780f68e6ad119 is healthy. Cloudflare
+85130574-1c19-4197-b8fc-9acaf316cae5 serves exact tested app/service-worker bytes.
+Authenticated read-only candidate smoke check against ABT with deliberately absent
+receipt IDs returned 200, two missing-evidence gaps, valuationReady=false and
+private/no-store. This is missing-evidence verification, not a live financial result.
+Real extracted inputs were tested only with synthetic originals. Agent healthy at
+21 seconds; unchanged and not restarted. Temporary Render replacement 502 cleared.
+No original, research, approval or provider mutation. No paid QA.
+
+Next concrete engineering step: deterministic selection planning from the retained
+inventory for a coordinator-requested exact date, with ambiguity/missing coverage
+reported rather than silently picking another source/date. Keep mapping, provenance
+and corporate-action acceptance open and multiples withheld; move to independent
+Home/workspace priorities if those require unavailable external evidence. Prior
+local candidate checkpoints are now superseded by this release.
+
 ## T241 — historical evidence inspection integrated
 
 Saved recovered one-pager reviews now include a collapsed Historical valuation
