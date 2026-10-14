@@ -13,7 +13,15 @@ helps inspect the chosen pack; the screen counts selections outside the current
 filters, including missing files, so a narrow view cannot imply they were removed.
 Legacy Pipeline and stored selections remain unchanged by filtering.
 
-Release verification pending. Remaining: richer recorded metadata and observed type,
+Verified release: backend a1acce1e08aa24eb85f3dd9b004d281bba0a4169;
+Cloudflare c8c2dee0-4cb6-4d4a-af39-61d9107ec1f5; hosted T268 HTML and exact
+JS/SW bytes. All 179 frontend tests, model-policy check and production build passed.
+No Python behavior changed; the previous 1461-test backend suite remains applicable.
+Mocked 390/1280px checks exercised task-specific disclosures, selected-only filtering,
+independent task selections and import reconciliation, with no horizontal overflow.
+Live read-only ABT inventory/config and import-list routes returned 200; unchanged
+agent healthy at 20.1 seconds. Proxy briefly transitioned before read checks passed.
+No live imports, research generation or investor approvals. Remaining: richer recorded metadata and observed type,
 author and collection-window details; full note draft/version integration; opt-in
 orchestration and a real investor-authorized acceptance run. These prompts are not
 an automated relevance assessment or a proof of professional research quality.
