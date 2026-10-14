@@ -9,6 +9,7 @@ import re
 from historical_valuation import _date, _source
 from historical_valuation_review import _baseline
 from historical_valuation_originals import load_originals
+from historical_valuation_provenance import acquisition_check
 from historical_valuation_evidence import annual_eps_before, daily_close_from_original
 
 
@@ -65,7 +66,9 @@ def assemble_candidates(selections, records, baseline, *, cik, symbol):
                                     'filing_inventory_completeness', 'source_provenance', 'investor_review'],
                'retainedHashes': {key: hashlib.sha256(value).hexdigest()
                                   for key, value in sorted(originals.items())},
-               'priceRetrievalDates': retrieval_dates}
+               'priceRetrievalDates': retrieval_dates,
+               'acquisitionChecks': {record['id']: acquisition_check(record, cik=cik)
+                                     for record in sorted(records, key=lambda r: r['id'])}}
     # Canonical serialization detaches caller-owned receipts and baseline, so
     # subsequent navigation or mutable inputs cannot alter an assembled version.
     encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()

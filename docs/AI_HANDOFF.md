@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T254 — historical candidate versions bind acquisition evidence
+
+Candidate assembly now includes bounded acquisition consistency diagnostics for
+retained originals: expected provider, fixed adapter endpoint (including saved SEC
+issuer CIK), collector version and UTC retrieval date. Checks never fetch URLs or
+certify origin. Missing metadata remains missing; contradictory claims produce
+explicit gaps. Even consistent metadata stays unverified, and source provenance,
+valuation readiness and all existing approval gates remain unresolved.
+
+The candidate digest now binds a canonical digest of every original's acquisition
+metadata. Changes to acquisition time/provider/endpoint can no longer replay an
+old candidate as unchanged merely because financial bytes match. Existing candidate
+previews must be reassembled when this additional evidence binding differs; no
+saved originals or pending investor decisions are rewritten. Diagnostics are in the
+read-only candidate API payload; the existing UI still shows the overall unresolved
+source-provenance warning, not the new per-original consistency details.
+
+1401 backend tests, 171 frontend tests, 14 focused candidate/provenance tests,
+compilation, model-policy gate and production build passed. Synthetic tests cover
+metadata-only replay invalidation, wrong issuer endpoint/date and continued lack
+of approval. Logs /tmp/charlie-consistency-{focused,suite}.log and
+/tmp/charlie-T254-{front,build}.log. No live acquisition or paid QA. Release pending.
+
+Next: present per-original acquisition consistency gaps in the input preview,
+then address security/currency/share basis and filing completeness with bounded
+source-backed checks. No endpoint/hash alone establishes real provenance. Production
+historical ingestion stays disabled; real-source and unattended acceptance are open.
+
 ## T253 — acquisition evidence visible in historical review
 
 ### T253 verified release receipt

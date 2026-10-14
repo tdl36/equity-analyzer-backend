@@ -46,3 +46,37 @@ def public_provenance(value):
     if metadata is None:
         return {'status': 'missing', 'verified': False}
     return {'status': 'recorded_unverified', 'verified': False, **metadata}
+
+
+def acquisition_check(record, *, cik):
+    """Check recorded claims against adapter policy; never certify their origin.
+
+    Caller has already bound exact original bytes and assignment identity. No URL
+    is opened. The digest binds all metadata, including fields not used by checks.
+    """
+    import hashlib
+    import json
+    from datetime import timezone
+    metadata = provenance(record.get('provenance'))
+    result = {'verified': False, 'status': 'missing', 'metadataDigest': None, 'gaps': []}
+    if metadata is None:
+        result['gaps'] = ['missing_acquisition_metadata']
+        return result
+    result['metadataDigest'] = hashlib.sha256(json.dumps(metadata, sort_keys=True,
+        separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+    expected = {
+        'sec_companyfacts': ('sec', f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json', 'historical-sec-v1'),
+        'daily_prices': ('alphavantage', 'https://www.alphavantage.co/query', 'historical-prices-v1'),
+    }.get(record.get('kind'))
+    if expected is None:
+        result['gaps'].append('unsupported_acquisition_kind')
+    else:
+        for field, value in zip(('provider', 'observedUrl', 'collectorVersion'), expected):
+            if metadata[field] != value:
+                result['gaps'].append({'provider':'provider_mismatch', 'observedUrl':'endpoint_or_issuer_mismatch',
+                                       'collectorVersion':'collector_version_mismatch'}[field])
+    day = datetime.fromisoformat(metadata['retrievedAt'].replace('Z', '+00:00')).astimezone(timezone.utc).date().isoformat()
+    if day != record.get('retrievedDate'):
+        result['gaps'].append('retrieval_date_mismatch')
+    result['status'] = 'mismatch' if result['gaps'] else 'consistent_unverified'
+    return result

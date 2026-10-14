@@ -95,3 +95,28 @@ class CandidateTests(unittest.TestCase):
         snapshot=self.assemble()
         for cik,symbol in [(2,'TEST'),(1,'OTHER')]:
             with self.assertRaises(ValueError):replay_candidates(snapshot,self.records,self.baseline,cik=cik,symbol=symbol)
+
+    def test_acquisition_changes_invalidate_replay_without_approving_provenance(self):
+        missing=self.assemble()
+        self.assertTrue(all(v['status']=='missing' for v in missing['payload']['acquisitionChecks'].values()))
+        self.records[0]['provenance']=dict(provider='alphavantage',observedUrl='https://www.alphavantage.co/query',
+            retrievedAt='2025-03-04T12:00:00Z',collectorVersion='historical-prices-v1')
+        current=self.assemble()
+        check=current['payload']['acquisitionChecks'][self.records[0]['id']]
+        self.assertEqual(check['status'],'consistent_unverified')
+        self.assertFalse(check['verified'])
+        self.assertFalse(current['payload']['valuationReady'])
+        self.assertIn('source_provenance',current['payload']['unresolvedChecks'])
+        with self.assertRaisesRegex(ValueError,'new candidate version'):
+            replay_candidates(missing,self.records,self.baseline,cik=1,symbol='TEST')
+        self.records[0]['provenance']['retrievedAt']='2025-03-04T13:00:00Z'
+        with self.assertRaisesRegex(ValueError,'new candidate version'):
+            replay_candidates(current,self.records,self.baseline,cik=1,symbol='TEST')
+
+    def test_wrong_sec_issuer_endpoint_and_acquisition_date_remain_explicit_gaps(self):
+        self.records[1]['provenance']=dict(provider='sec',observedUrl='https://data.sec.gov/api/xbrl/companyfacts/CIK0000000002.json',
+            retrievedAt='2025-03-05T00:00:00Z',collectorVersion='historical-sec-v1')
+        check=self.assemble()['payload']['acquisitionChecks'][self.records[1]['id']]
+        self.assertEqual(check['status'],'mismatch')
+        self.assertEqual(check['gaps'],['endpoint_or_issuer_mismatch','retrieval_date_mismatch'])
+        self.assertFalse(check['verified'])
