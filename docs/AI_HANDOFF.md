@@ -49,9 +49,17 @@ Original Research Pipeline and research_notes remain untouched.
   or provider binding yet. Four disposable PostgreSQL tests cover claim/draft
   settlement, expired-owner fencing, source failure and uncertain-call attention.
 
-Latest validation: all 1512 safe backend tests passed, including the four new
-worker tests. Python compilation and model-policy checks passed. Long provider-call
-renewal and real-source acceptance remain unverified. No paid QA or live writes.
+- pipeline_lab_note_submit.py: authenticated bounded submission/status/recovery
+  adapter now accepts only stable request ID, saved revision, checked digest and
+  PDF representation choice. A server-only builder owns context/prompt/model and
+  budget validation. Submission receipt and queue/plan commit atomically; replay
+  does not rebuild context or reset work. Client prompts, keys and model overrides
+  are rejected. This adapter remains unregistered; the real builder is still needed.
+
+Latest validation: all 1515 safe backend tests passed, including three submission
+HTTP tests for auth, stable replay, identity conflicts, input bounds and forbidden
+client fields. Compilation/model policy passed. Long-call renewal and real-source
+acceptance remain unverified. No paid QA, live writes or deployment.
 
 Next concrete action: wire authenticated submission to freeze the existing full-note
 playbook/context and enforce account/model/input budgets. Bind the worker adapter
