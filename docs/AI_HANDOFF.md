@@ -15,7 +15,11 @@ and historical valuation readiness remains false. See historical-security-mappin
 1408 safe backend tests, 174 frontend tests, compilation, policy and build passed;
 six mapping tests cover scope, bytes, exact fields, replay and forged readiness.
 No UI behavior changed. Generated CSS cleanup from T257's removed local-key form
-is included (only unused focus rules removed). Release verification pending.
+is included (only unused focus rules removed). Release verified: backend
+12ce0fa0ee304bac04f54de5cc40d56362d804fd; Cloudflare
+fd5934d0-eda9-4c02-959e-a86a24511cdc; hosted HTML T259 and versioned JS/SW
+bytes match local assets. Agent healthy (8.4-second staleness), unchanged.
+This is internal groundwork only, not enabled historical mapping or valuation.
 Next: implement assignment-locked retained security-reference storage with exact
 replay receipts after choosing an actual source schema. Do not infer historical
 currency/share continuity from a current company profile. All eight acceptance
