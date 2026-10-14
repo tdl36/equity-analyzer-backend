@@ -13,6 +13,14 @@ Every stored version is explicitly draft and investorApproved=false. There is no
 publication or approval route. Existing research_notes and original Pipeline are
 untouched. The schema helper is not invoked in production; T268 remains live.
 
+Additional local checkpoint: single-revision reads, bounded cursor-based history
+(metadata only), and prose-only editing are implemented in the ledger. Editing
+loads the specified baseline and retains server-owned source identities and quality
+caveats. Exact retries still resolve after newer edits; stale edits cannot overwrite.
+No endpoints or schema registration have been enabled. Seven focused disposable
+PostgreSQL tests and all 1468 safe backend tests pass; compilation and model policy
+pass. Production remains T268. Next integration step is unchanged.
+
 Next: connect a dedicated Lab note-generation adapter to the existing full note
 quality controls using the frozen selection, not by relabeling the shorter assignment
 summary artifact as a full research note. Add bounded authenticated draft/history/

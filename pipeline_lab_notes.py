@@ -67,3 +67,73 @@ def append(cur,note_id,ticker,event_id,expected_revision,payload):
     cur.execute('INSERT INTO pipeline_lab_note_versions(note_id,revision,event_id,ticker,payload,payload_hash) VALUES(%s,%s,%s,%s,%s::jsonb,%s)',
                 (note_id,revision+1,event_id,ticker,json.dumps(value),digest))
     return {'noteId':note_id,'revision':revision+1,'replayed':False,'status':'draft'}
+
+
+def _note_identity(note_id):
+    try:
+        return str(uuid.UUID(note_id))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('A valid note identity is required.')
+
+
+def read(cur, note_id, revision=None):
+    """Read one immutable draft; never fall back when a revision is missing."""
+    note_id = _note_identity(note_id)
+    if revision is not None and (type(revision) is not int or revision < 1):
+        raise ValueError('A positive draft revision is required.')
+    query = 'SELECT note_id,revision,ticker,payload,created_at FROM pipeline_lab_note_versions WHERE note_id=%s'
+    params = [note_id]
+    if revision is not None:
+        query += ' AND revision=%s'
+        params.append(revision)
+    cur.execute(query + ' ORDER BY revision DESC LIMIT 1', params)
+    row = cur.fetchone()
+    if not row:
+        return None
+    return {'noteId': str(row['note_id']), 'revision': row['revision'],
+            'ticker': row['ticker'], 'createdAt': row['created_at'].isoformat(),
+            **obj(row['payload'])}
+
+
+def history(cur, note_id, before=None, limit=20):
+    """Bounded revision metadata only; bodies and source packs are fetched singly."""
+    note_id = _note_identity(note_id)
+    if type(limit) is not int or not 1 <= limit <= 50:
+        raise ValueError('History page size must be between 1 and 50.')
+    if before is not None and (type(before) is not int or before < 1):
+        raise ValueError('A positive history cursor is required.')
+    query = '''SELECT revision,ticker,created_at,payload->>'title' AS title
+               FROM pipeline_lab_note_versions WHERE note_id=%s'''
+    params = [note_id]
+    if before is not None:
+        query += ' AND revision<%s'
+        params.append(before)
+    params.append(limit + 1)
+    cur.execute(query + ' ORDER BY revision DESC LIMIT %s', params)
+    rows = cur.fetchall()
+    items = [{'revision': r['revision'], 'ticker': r['ticker'], 'title': r['title'],
+              'createdAt': r['created_at'].isoformat(), 'status': 'draft'}
+             for r in rows[:limit]]
+    return {'noteId': note_id, 'versions': items,
+            'nextBefore': items[-1]['revision'] if len(rows) > limit else None}
+
+
+def edit(cur, note_id, event_id, expected_revision, changes):
+    """Edit prose only, retaining server-owned provenance and quality caveats.
+
+    Read the specified base, not latest: a lost-response retry must reproduce its
+    original signature even after subsequent revisions. append serializes writes
+    and rejects a stale base unless this exact edit already committed.
+    """
+    if not isinstance(changes, dict) or set(changes) != {'title', 'markdown'}:
+        raise ValueError('Only the title and draft text can be edited.')
+    if type(expected_revision) is not int or expected_revision < 1:
+        raise ValueError('An existing draft revision is required.')
+    base = read(cur, note_id, expected_revision)
+    if base is None:
+        raise ValueError('The requested draft revision does not exist.')
+    payload = {**changes, 'sourcePack': base['sourcePack'],
+               'qualityIssues': base['qualityIssues']}
+    # Edits retain existing caveats; they never inherit a claim of fresh review.
+    # Approval remains false on every revision regardless of quality issue count.
+    return append(cur, note_id, base['ticker'], event_id, expected_revision, payload)

@@ -45,3 +45,35 @@ class DraftVersions(unittest.TestCase):
     def test_invalid_or_approval_payload_rejected(self):
         for p in [{**self.payload,'investorApproved':True},{**self.payload,'sourcePack':[]},{**self.payload,'markdown':''},{**self.payload,'qualityIssues':None}]:
             with self.assertRaises(ValueError):self.save(payload=p)
+    def test_read_exact_revision_and_bounded_history(self):
+        from pipeline_lab_notes import read,history
+        self.save()
+        self.save(1,str(uuid.uuid4()),{**self.payload,'markdown':'Second'})
+        with self.db() as (_,c):
+            self.assertEqual(read(c,self.note)['revision'],2)
+            self.assertEqual(read(c,self.note,1)['markdown'],self.payload['markdown'])
+            self.assertIsNone(read(c,self.note,3))
+            page=history(c,self.note,limit=1)
+            self.assertEqual(page['nextBefore'],2)
+            self.assertNotIn('markdown',page['versions'][0])
+            last=history(c,self.note,before=page['nextBefore'],limit=1)
+            self.assertEqual(last['versions'][0]['revision'],1)
+            self.assertIsNone(last['nextBefore'])
+            for kwargs in ({'limit':0},{'limit':51},{'before':True},{'limit':True}):
+                with self.assertRaises(ValueError):history(c,self.note,**kwargs)
+    def test_prose_edit_preserves_caveats_and_replays_after_later_edit(self):
+        from pipeline_lab_notes import edit,read
+        self.save();event=str(uuid.uuid4());changes={'title':'Revised','markdown':'New prose'}
+        with self.db(True) as (_,c):
+            self.assertEqual(edit(c,self.note,event,1,changes)['revision'],2)
+            edit(c,self.note,str(uuid.uuid4()),2,{'title':'Third','markdown':'Later'})
+            self.assertTrue(edit(c,self.note,event,1,changes)['replayed'])
+            latest=read(c,self.note)
+            self.assertEqual(latest['qualityIssues'],self.payload['qualityIssues'])
+            self.assertEqual(latest['sourcePack'],self.payload['sourcePack'])
+            self.assertFalse(latest['investorApproved'])
+        with self.assertRaises(ValueError), self.db(True) as (_,c):
+            edit(c,self.note,str(uuid.uuid4()),1,changes)
+        for extra in ('qualityIssues','sourcePack','investorApproved'):
+            with self.assertRaises(ValueError), self.db(True) as (_,c):
+                edit(c,self.note,str(uuid.uuid4()),3,{**changes,extra:[]})
