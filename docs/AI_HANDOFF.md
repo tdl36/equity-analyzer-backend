@@ -1,6 +1,6 @@
 # Charlie AI engineering handoff
 
-Updated: October 12, 2026
+Updated: October 14, 2026
 
 ## T243 — automatic retained-input matching
 
@@ -27,6 +27,24 @@ Deployment verification pending. Next: coordinator integration can consume these
 plans without choosing ambiguous evidence; external currency/share/corporate-action
 validation and live unattended acceptance remain open. Continue independent Home
 and workspace work where those external evidence gaps block valuation progress.
+
+### T243 verified — October 14, 2026, 12:16 AM New York
+
+Backend 2a7a3da5917ff398005a18e6710a52194c5f70b0 is healthy. Cloudflare
+01bce8a7-f6f9-413f-a891-9c2ce61385b5 serves exact tested app/service-worker bytes.
+Authenticated ABT automatic-plan GET returned 200, needs_evidence, zero retained
+historical originals, valuationReady=false and private/no-store. No original was
+fetched or invented to satisfy the check. Extracted/ambiguous paths were validated
+with synthetic fixtures only. Agent reported ok (103.4 seconds); unchanged and
+not restarted. Temporary Render replacement 502 cleared. No paid research or
+investor decisions. This verifies retained-input matching, not ABT valuation or
+full ticker-only unattended operation.
+
+Next: consume deterministic retained-input plans in coordinator readiness metadata,
+without paid dispatch or automatic research changes; freeze any selected receipt
+identities and report missing/ambiguous coverage. Preserve valuation mapping,
+corporate-action and provenance acceptance gaps. If external evidence blocks that
+step, continue the next independent unified Home/company-workspace acceptance item.
 
 ## T242 — retained historical input preview
 
