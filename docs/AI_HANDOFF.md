@@ -2,6 +2,16 @@
 
 Updated: October 14, 2026
 
+## T258 — mobile thesis date sorting
+
+The mobile ticker row was hard-coded alphabetical and ignored thesisSortBy.
+Both it and the sidebar now use sortTheses; the compact row exposes a labeled
+Ticker A–Z / Newest updated selector. Dates sort descending, invalid/missing dates
+last, ticker ties deterministic, without mutating saved research. 174 frontend
+tests, model-policy gate and production build passed. Synthetic 390/1280px browser
+checks cover mobile sort changes and desktop shared state, GET-only traffic and
+no horizontal page overflow. No backend change or paid QA. Release pending.
+
 ## T257 — thesis shared-connection status recovery
 
 Investment thesis no longer offers a device-local API-key entry form. A failed

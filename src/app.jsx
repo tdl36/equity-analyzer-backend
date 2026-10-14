@@ -1,3 +1,4 @@
+import {sortTheses} from './thesis-sort.mjs';
 import {ResearchAlerts} from './research-alerts';
 // Auto-generated entry point — prepends deps to the extracted babel block.
 // The original script relied on React/ReactDOM globals from CDN UMD bundles;
@@ -99,7 +100,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-14T257';
+        const BUILD_VERSION = '2026-10-14T258';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -15365,11 +15366,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                             {savedAnalyses.length === 0 ? (
                                 <div className="text-sm text-slate-500 text-center py-8">No saved analyses</div>
                             ) : (
-                                [...savedAnalyses].sort((a, b) =>
-                                    thesisSortBy === 'updated'
-                                        ? (new Date(b.updated || 0) - new Date(a.updated || 0))
-                                        : safeStr(a.ticker).localeCompare(safeStr(b.ticker))
-                                ).map(s => (
+                                sortTheses(savedAnalyses, thesisSortBy).map(s => (
                                     <div
                                         key={safeStr(s.ticker, `stock-${Math.random()}`)}
                                         onClick={() => {
@@ -15708,8 +15705,15 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                     New
                                 </button>
                                 
-                                {/* Stock Pills - sorted alphabetically */}
-                                {[...savedAnalyses].sort((a, b) => safeStr(a.ticker).localeCompare(safeStr(b.ticker))).map(s => (
+                                <label className="flex-shrink-0 flex items-center gap-2 text-sm">
+                                    Sort
+                                    <select aria-label="Sort investment theses" value={thesisSortBy} onChange={e => setThesisSortBy(e.target.value)} className="min-h-[44px] rounded-lg bg-neutral-800 text-white border border-white/20 px-3">
+                                        <option value="alpha">Ticker A–Z</option>
+                                        <option value="updated">Newest updated</option>
+                                    </select>
+                                </label>
+                                {/* Compact list shares the sidebar ordering. */}
+                                {sortTheses(savedAnalyses, thesisSortBy).map(s => (
                                     <button
                                         key={safeStr(s.ticker, `btn-${Math.random()}`)}
                                         onClick={() => {
