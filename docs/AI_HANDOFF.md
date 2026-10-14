@@ -4,6 +4,16 @@ Updated: October 14, 2026
 
 ## T253 — acquisition evidence visible in historical review
 
+### T253 verified release receipt
+
+Backend health verified 6666e0a7a6d1bc2e9fa8eadf49486d91cca9745c. Cloudflare
+a8f5d1f0-9662-4b91-97ee-b2080d7f3ecb deployed; hosted HTML references T253 and
+versioned app/service-worker bytes match release assets exactly. Agent healthy at
+22.7-second staleness, unchanged/not restarted. 1399 backend and 171 frontend tests,
+18 focused API/storage tests, synthetic mobile/desktop UI checks, compilation,
+policy gate and build passed. No live retrieval, paid QA, research mutation or approval.
+Historical ingestion remains disabled and recorded metadata remains unverified.
+
 The authenticated read-only original inventory now returns validated acquisition
 metadata without source bodies. Legacy schemas remain readable without migration;
 missing metadata is explicit. Invalid stored metadata is withheld rather than
@@ -18,7 +28,7 @@ legacy schema reads without DDL and immutable originals. Full-app synthetic
 390/1280px checks passed for recorded/missing acquisition display, expanded details,
 existing coverage/review navigation and GET-only traffic. Mobile screenshot inspected;
 long endpoints wrap. Logs /tmp/charlie-acquisition-view-{focused,suite,ui}.log and
-/tmp/charlie-T253-{front,build}.log. No live retrieval or paid QA. Release pending.
+/tmp/charlie-T253-{front,build}.log. No live retrieval or paid QA. Release verified above.
 
 Next: define bounded provider/issuer provenance checks against the retained receipt
 and saved company identity; endpoint text alone cannot certify provenance. Keep
