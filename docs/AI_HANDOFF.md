@@ -2,6 +2,25 @@
 
 Updated: October 14, 2026
 
+## T259 — internal pending security-mapping evidence contract
+
+Added a pure source-bound security-mapping adapter and replay checks. It freezes
+candidate/edition identity, assignment-scoped exact JSON bytes, field citations,
+retrieval date and acquisition metadata. Identifier/currency matches remain
+pending claims, never proof of price-currency semantics, historical applicability,
+share class or split compatibility. Tampering, ambiguous fields and changed context
+are rejected. No endpoint/storage ingestion is wired, no live provider was called,
+and historical valuation readiness remains false. See historical-security-mapping.md.
+
+1408 safe backend tests, 174 frontend tests, compilation, policy and build passed;
+six mapping tests cover scope, bytes, exact fields, replay and forged readiness.
+No UI behavior changed. Generated CSS cleanup from T257's removed local-key form
+is included (only unused focus rules removed). Release verification pending.
+Next: implement assignment-locked retained security-reference storage with exact
+replay receipts after choosing an actual source schema. Do not infer historical
+currency/share continuity from a current company profile. All eight acceptance
+priorities remain open; originals and investor decisions are unchanged.
+
 ## T258 — mobile thesis date sorting
 
 The mobile ticker row was hard-coded alphabetical and ignored thesisSortBy.
