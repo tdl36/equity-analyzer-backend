@@ -27,6 +27,22 @@ Production verification pending. Next: configured source provenance/entitlement,
 source-backed historical diagnostics and investor acceptance; all eight priorities
 and ticker-only unattended acceptance are still incomplete. Operations stays separate.
 
+### T241 verified — October 13, 2026, 9:47 p.m. New York
+
+Backend health reports ad41d84412b412c77f83e5ac3b26931f102fb241.
+Cloudflare d78d5463-ee53-429d-b72f-b47f2abdce0a serves exact tested app and
+service-worker bytes. All three authenticated ABT edition inventories returned
+200 with valid baseline metadata and zero historical records, accurately showing
+that evidence has not yet been collected. Mac agent healthy at 17.8 seconds;
+unchanged and not restarted. Temporary Render replacement error cleared.
+No paid research, original changes or investor decisions. This completes read-only
+review integration, not historical valuation generation or unattended acceptance.
+
+Next implementation: add a deterministic proposal builder from already-retained
+verified SEC/price originals, with explicit missing-evidence diagnostics, before
+enabling any retrieval or write endpoint. Keep production read-only until the
+source provenance/provider configuration gate and review flow are verified.
+
 ## T240 — fair collection pickup
 
 Queued requests now receive durable turns under the existing exclusive worker
