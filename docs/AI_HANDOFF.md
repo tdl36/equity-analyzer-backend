@@ -2,6 +2,30 @@
 
 Updated: October 14, 2026
 
+## T253 — acquisition evidence visible in historical review
+
+The authenticated read-only original inventory now returns validated acquisition
+metadata without source bodies. Legacy schemas remain readable without migration;
+missing metadata is explicit. Invalid stored metadata is withheld rather than
+exposing credentials or hiding the original inventory. All acquisition states
+remain unverified. The review view distinguishes missing details from recorded
+claims and expands provider, observed endpoint, time and collector version as
+plain text. It does not follow URLs, fetch sources, approve evidence or valuation.
+
+1399 backend tests, 171 frontend tests, compilation, model policy and build passed.
+18 focused API/storage tests verify safe exposure, damaged metadata suppression,
+legacy schema reads without DDL and immutable originals. Full-app synthetic
+390/1280px checks passed for recorded/missing acquisition display, expanded details,
+existing coverage/review navigation and GET-only traffic. Mobile screenshot inspected;
+long endpoints wrap. Logs /tmp/charlie-acquisition-view-{focused,suite,ui}.log and
+/tmp/charlie-T253-{front,build}.log. No live retrieval or paid QA. Release pending.
+
+Next: define bounded provider/issuer provenance checks against the retained receipt
+and saved company identity; endpoint text alone cannot certify provenance. Keep
+security/currency/share basis, corporate actions, filing completeness and investor
+review unresolved until independently evidenced. Production historical ingestion
+stays disabled; real-source benchmarks and unattended acceptance remain open.
+
 ## T252 — acquisition metadata wired into historical adapters
 
 ### T252 verified release receipt

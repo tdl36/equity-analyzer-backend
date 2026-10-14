@@ -134,3 +134,27 @@ class HistoricalApiTests(unittest.TestCase):
         self.assertEqual(self.client(False).get(url).status_code,403)
         with self.db(True) as (_,cur): cur.execute("UPDATE mp_jobs SET status='stopped'")
         self.assertEqual(c.get(url).status_code,409)
+
+    def test_original_inventory_exposes_only_safe_unverified_acquisition_metadata(self):
+        import hashlib
+        record=dict(assignmentId=AID,id='fixture',sha256=hashlib.sha256(b'{}').hexdigest(),
+                    content=b'{}',kind='daily_prices',retrievedDate='2026-10-12',
+                    provenance=dict(provider='fixture',observedUrl='https://example.test/prices',
+                                    retrievedAt='2026-10-12T12:00:00Z',collectorVersion='v1'))
+        with self.db(True) as (_,cur): save_original(cur,record)
+        url=self.url.rsplit('/historical-reviews/',1)[0]+'/historical-originals'
+        c=self.client(read_only=True)
+        r=c.get(url);self.assertEqual(r.status_code,200,r.json)
+        row=r.json['originals'][0]
+        self.assertEqual(row['acquisition']['status'],'recorded_unverified')
+        self.assertFalse(row['acquisition']['verified']);self.assertNotIn('content',row)
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE historical_valuation_originals SET provenance=%s::jsonb",('{"observedUrl":"https://example.test/?key=secret"}',))
+        row=c.get(url).json['originals'][0]
+        self.assertEqual(row['acquisition'],{'status':'unavailable','verified':False})
+        self.assertNotIn('secret',str(row))
+        with self.db(True) as (_,cur):cur.execute('ALTER TABLE historical_valuation_originals DROP COLUMN provenance')
+        self.assertEqual(c.get(url).json['originals'][0]['acquisition'],{'status':'missing','verified':False})
+        with self.db() as (_,cur):
+            cur.execute("SELECT count(*) AS n FROM pg_attribute WHERE attrelid='historical_valuation_originals'::regclass AND attname='provenance' AND NOT attisdropped")
+            self.assertEqual(cur.fetchone()['n'],0)

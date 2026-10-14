@@ -35,3 +35,14 @@ def provenance(value):
     except ValueError:
         raise ValueError('Historical acquisition time requires a timezone.') from None
     return dict(value)
+
+
+def public_provenance(value):
+    """Expose only validated fields, suppress damaged metadata without hiding bytes."""
+    try:
+        metadata = provenance(value)
+    except ValueError:
+        return {'status': 'unavailable', 'verified': False}
+    if metadata is None:
+        return {'status': 'missing', 'verified': False}
+    return {'status': 'recorded_unverified', 'verified': False, **metadata}

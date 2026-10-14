@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 from historical_valuation import _source, _date
 from historical_valuation_context import load_context
-from historical_valuation_source_store import read_originals
+from historical_valuation_source_store import read_originals, provenance_column
+from historical_valuation_provenance import public_provenance
 from historical_valuation_store import _identity, save_pending, read_pending
 from historical_valuation_retrieval import retrieve_once, inspect_retrievals
 
@@ -155,12 +156,14 @@ def create_blueprint(get_db, authenticated=lambda: False, *, ingestion_config=No
                     cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
                     rows = []
                     if cur.fetchone()['name']:
-                        cur.execute('''SELECT source_id,sha256,kind,retrieved_date,
-                            octet_length(content) AS size FROM historical_valuation_originals
+                        metadata_column = provenance_column(cur)
+                        cur.execute(f'''SELECT source_id,sha256,kind,retrieved_date,
+                            {metadata_column} AS provenance, octet_length(content) AS size FROM historical_valuation_originals
                             WHERE assignment_id=%s ORDER BY retrieved_date DESC,source_id LIMIT 61''', (aid,))
                         rows = cur.fetchall()
                     originals = [dict(id=r['source_id'],sha256=r['sha256'],kind=r['kind'],
-                                      retrievedDate=str(r['retrieved_date']),bytes=r['size']) for r in rows[:60]]
+                                      retrievedDate=str(r['retrieved_date']),bytes=r['size'],
+                                      acquisition=public_provenance(r['provenance'])) for r in rows[:60]]
                 return jsonify(originals=originals,truncated=len(rows)>60,baseline=baseline,
                                valuationReady=False,caveat='Retained source inventory only; contents and valuation require separate verification.')
             config = ingestion_config() if ingestion_config else {}

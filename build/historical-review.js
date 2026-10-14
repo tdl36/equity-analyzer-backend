@@ -1,3 +1,4 @@
+import { acquisitionDetails } from './historical-acquisition.mjs';
 import * as React from 'react';
 import { HistoricalCandidate } from './historical-candidate';
 import { historicalReview, historicalInventory, historicalEditionReadiness } from './historical-review-model.mjs';
@@ -100,9 +101,15 @@ export function HistoricalReview({
     url: url,
     baseline: state.sources.baseline,
     originals: state.sources.originals
-  }), /*#__PURE__*/React.createElement("h5", null, "Retained originals"), !state.sources.originals.length && /*#__PURE__*/React.createElement("p", null, "No historical originals retained for this assignment."), state.sources.originals.map(source => /*#__PURE__*/React.createElement("p", {
-    key: source.id
-  }, source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts', " \xB7 retrieved ", source.retrievedDate)), /*#__PURE__*/React.createElement("h5", null, "Retrieval progress"), !state.retrievals.retrievals.length && /*#__PURE__*/React.createElement("p", null, "No retrieval attempts recorded."), state.retrievals.retrievals.map(row => /*#__PURE__*/React.createElement("article", {
+  }), /*#__PURE__*/React.createElement("h5", null, "Retained originals"), !state.sources.originals.length && /*#__PURE__*/React.createElement("p", null, "No historical originals retained for this assignment."), state.sources.originals.map(source => {
+    var acquisition = acquisitionDetails(source.acquisition);
+    return /*#__PURE__*/React.createElement("article", {
+      key: source.id,
+      style: {
+        overflowWrap: 'anywhere'
+      }
+    }, /*#__PURE__*/React.createElement("p", null, source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts', " \xB7 retrieved ", source.retrievedDate), /*#__PURE__*/React.createElement("p", null, acquisition.message), acquisition.provider && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Acquisition details"), /*#__PURE__*/React.createElement("p", null, "Provider: ", acquisition.provider), /*#__PURE__*/React.createElement("p", null, "Observed endpoint: ", acquisition.url), /*#__PURE__*/React.createElement("p", null, "Acquired: ", acquisition.time), /*#__PURE__*/React.createElement("p", null, "Collector version: ", acquisition.version)));
+  }), /*#__PURE__*/React.createElement("h5", null, "Retrieval progress"), !state.retrievals.retrievals.length && /*#__PURE__*/React.createElement("p", null, "No retrieval attempts recorded."), state.retrievals.retrievals.map(row => /*#__PURE__*/React.createElement("article", {
     key: row.id
   }, /*#__PURE__*/React.createElement("strong", null, row.status === 'evidence_retained' ? 'Evidence retained' : 'Retrieval needs investigation'), row.baselineChanged && /*#__PURE__*/React.createElement("p", null, "This attempt belongs to an earlier edition or source baseline."), /*#__PURE__*/React.createElement("p", null, row.nextAction))), /*#__PURE__*/React.createElement("h5", null, "Saved pending reviews"), !state.reviews.reviews.length && /*#__PURE__*/React.createElement("p", null, "No historical reviews saved for this edition."), state.reviews.reviews.map(row => /*#__PURE__*/React.createElement("article", {
     key: row.id

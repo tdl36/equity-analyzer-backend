@@ -1,3 +1,4 @@
+import {acquisitionDetails} from './historical-acquisition.mjs';
 import * as React from 'react';
 import {HistoricalCandidate} from './historical-candidate';
 import {historicalReview,historicalInventory,historicalEditionReadiness} from './historical-review-model.mjs';
@@ -57,7 +58,7 @@ export function HistoricalReview({api, assignmentId, editionId}) {
       <HistoricalCandidate url={url} baseline={state.sources.baseline} originals={state.sources.originals}/>
       <h5>Retained originals</h5>
       {!state.sources.originals.length && <p>No historical originals retained for this assignment.</p>}
-      {state.sources.originals.map(source=><p key={source.id}>{source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts'} · retrieved {source.retrievedDate}</p>)}
+      {state.sources.originals.map(source=>{const acquisition=acquisitionDetails(source.acquisition);return <article key={source.id} style={{overflowWrap:'anywhere'}}><p>{source.kind === 'daily_prices' ? 'Daily prices' : 'SEC company facts'} · retrieved {source.retrievedDate}</p><p>{acquisition.message}</p>{acquisition.provider&&<details><summary>Acquisition details</summary><p>Provider: {acquisition.provider}</p><p>Observed endpoint: {acquisition.url}</p><p>Acquired: {acquisition.time}</p><p>Collector version: {acquisition.version}</p></details>}</article>;})}
       <h5>Retrieval progress</h5>
       {!state.retrievals.retrievals.length && <p>No retrieval attempts recorded.</p>}
       {state.retrievals.retrievals.map(row=><article key={row.id}>

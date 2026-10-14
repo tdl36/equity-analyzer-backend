@@ -41,6 +41,14 @@ def save_original(cur, record):
     return {'id': record['id'], 'sha256': record['sha256'], 'reused': not inserted}
 
 
+def provenance_column(cur):
+    """Return a fixed SQL expression; legacy read paths never migrate schema."""
+    cur.execute("""SELECT EXISTS(SELECT 1 FROM pg_attribute
+        WHERE attrelid='historical_valuation_originals'::regclass
+        AND attname='provenance' AND NOT attisdropped) AS present""")
+    return 'provenance' if cur.fetchone()['present'] else 'NULL::jsonb'
+
+
 def read_records(cur, references, *, assignment_id):
     """Lock only requested rows; missing evidence remains missing, with no DDL.
 
@@ -52,10 +60,7 @@ def read_records(cur, references, *, assignment_id):
     cur.execute("SELECT to_regclass('historical_valuation_originals') AS name")
     if not cur.fetchone()['name']:
         return []
-    cur.execute("""SELECT EXISTS(SELECT 1 FROM pg_attribute
-        WHERE attrelid='historical_valuation_originals'::regclass
-        AND attname='provenance' AND NOT attisdropped) AS present""")
-    metadata_column = 'provenance' if cur.fetchone()['present'] else 'NULL::jsonb'
+    metadata_column = provenance_column(cur)
     identifiers = sorted({r['id'] for r in references})
     cur.execute('''SELECT source_id,octet_length(content) AS size
         FROM historical_valuation_originals
