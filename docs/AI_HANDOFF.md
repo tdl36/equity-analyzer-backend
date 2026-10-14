@@ -4,6 +4,22 @@ Updated: October 14, 2026
 
 ## T245 — saved-date evidence coverage in one-pager review
 
+### T245 verified release receipt
+
+Backend 62aa367733eaf9de615e07a9e3414dc378cfb8c8 verified live. Cloudflare version
+4a287565-4fe7-46a1-8fa4-883a07282c29; hosted app/service-worker hashes match local
+assets exactly. 1389 safe backend tests and 162 frontend tests passed; compilation,
+model gate and production build passed. Full-app synthetic 390/1280px checks passed
+and mobile coverage screenshot was inspected. Logs /tmp/charlie-T245-{backend,build,
+deploy,ui}.log and /tmp/charlie-edition-frontend.log. Generated bundle diff includes
+pre-existing literal Markdown trailing spaces; source changes passed inspection.
+
+Authenticated live ABT edition-readiness GET returned 200/private-no-store, five
+saved fiscal-end dates and needs_evidence_review, with valuationReady=false and
+dispatchAllowed=false. No source retrieval or research mutation. Agent health ok,
+11.5-second staleness; unchanged agent was not restarted. Real matching-source
+results remain synthetic; ABT historical originals remain absent.
+
 The saved-evidence panel now automatically checks historical coverage at the saved
 annual fiscal-period ends, without the investor entering dates. Calendar anchors
 are explicitly not verified trading sessions: exact-date gaps remain visible and
