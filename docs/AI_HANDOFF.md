@@ -51,9 +51,22 @@ not a source-verification certificate. Legacy checkpoint drafts remain readable.
 The new pipeline_lab_note_evidence.py is not wired to generation or production.
 Validation: 14 focused tests and all 1475 safe backend tests passed; Python
 compilation and model policy passed. No model calls or live writes.
-Next concrete implementation: persist generation call intent/result with immutable
-source/context identity before adding dispatch, then parse the full-note response
-into this evidence contract. Never invoke the legacy side-effectful generator.
+Call-journal checkpoint: pipeline_lab_note_calls.py commits a bounded frozen call
+identity before invoking an injected provider function. One reservation wins under
+concurrency. Saved replies replay without calling the provider; an interrupted
+intent, provider failure or response-save failure returns attention and cannot
+redispatch automatically. Source-pack/prompt/context hashes, pinned model and token
+cap bind each note/batch identity. Replies are bounded and immutable. Exceptions
+are not logged or returned because they may contain private request material.
+Five disposable PostgreSQL tests verify commit-before-call, replay, concurrency,
+immutable receipts and response-save failure, using synthetic provider callbacks.
+Validation: 1479-test safe suite passed; the fifth focused failure-injection test
+was added afterward and all five journal tests passed. Compilation/model policy
+passed. No real provider adapter, schema registration or production dispatch was enabled.
+Next concrete implementation: parse the full-note response into the evidence
+contract and connect the frozen source/context adapter to this call journal. Then
+add review UI/export and register only after complete integration. Never invoke
+the legacy side-effectful generator. T268 remains live; checkpoints are unpushed.
 
 Next: connect a dedicated Lab note-generation adapter to the existing full note
 quality controls using the frozen selection, not by relabeling the shorter assignment
