@@ -1,3 +1,4 @@
+import {assignmentRows} from './assignment-list.mjs';
 import {AssignmentReview} from './assignment-review';
 import {assignmentOutputs,checkedAssignmentDefaults,fallbackAssignmentDefaults,outputNames} from './assignment-defaults.mjs';
 import {submissionKey,readSubmission,reserveSubmission,clearSubmission,matchingReceipt} from './assignment-submission.mjs';
@@ -24,8 +25,8 @@ export function ResearchAssignment({api,ticker,onReport,disabled,focusId='',onCl
    .finally(()=>{if(live)setDefaultsReady(true);});
   return()=>{live=false;};
  },[api,!!origin]);
- React.useEffect(()=>{let live=true,inflight=false;generation.current++;setJobs([]);setLoaded(false);setAck(false);setPreview(null);const load=async()=>{if(inflight)return;inflight=true;try{const d=await request(listPath);if(live){setJobs(d.assignments);setLoaded(true);}const saved=readSubmission(sessionStorage,submissionStorageKey,ticker);if(live){setSavedSubmission(saved);setError('');}}catch(e){if(live)setError(e.message);}finally{inflight=false;}};load();const timer=setInterval(load,6000);return()=>{live=false;generation.current++;clearInterval(timer);};},[api,ticker,focusId]);
- const mutate=async fn=>{if(locked.current)return;const g=generation.current;locked.current=true;setBusy(true);setMessage('');try{const msg=await fn();if(g===generation.current){const d=await request(listPath);if(g===generation.current){setJobs(d.assignments);setMessage(msg);}}}catch(e){if(g===generation.current)setMessage(e.message);}finally{locked.current=false;setBusy(false);}};
+ React.useEffect(()=>{let live=true,inflight=false;generation.current++;setJobs([]);setLoaded(false);setAck(false);setPreview(null);const load=async()=>{if(inflight)return;inflight=true;try{const d=await request(listPath);const rows=assignmentRows(d,ticker);if(live){setJobs(rows);setLoaded(true);}const saved=readSubmission(sessionStorage,submissionStorageKey,ticker);if(live){setSavedSubmission(saved);setError('');}}catch(e){if(live)setError(e.message);}finally{inflight=false;}};load();const timer=setInterval(load,6000);return()=>{live=false;generation.current++;clearInterval(timer);};},[api,ticker,focusId]);
+ const mutate=async fn=>{if(locked.current)return;const g=generation.current;locked.current=true;setBusy(true);setMessage('');try{const msg=await fn();if(g===generation.current){const d=await request(listPath);if(g===generation.current){let rows;try{rows=assignmentRows(d,ticker);}catch(e){setError(e.message);throw e;}setJobs(rows);setMessage(msg);}}}catch(e){if(g===generation.current)setMessage(e.message);}finally{locked.current=false;setBusy(false);}};
  async function sendSaved(body,fresh=false){
   let result;try{result=await request('assignments',body);}catch(e){
    // Only the initial, definitive pre-dispatch rejection can release this intent.
@@ -47,8 +48,7 @@ export function ResearchAssignment({api,ticker,onReport,disabled,focusId='',onCl
  const reconcile=()=>mutate(async()=>{
   const body=readSubmission(sessionStorage,submissionStorageKey,ticker);if(!body)throw Error('No saved submission remains. Reload assignments.');
   const d=await request('assignments?requestId='+encodeURIComponent(body.requestId));
-  if(!Array.isArray(d.assignments))throw Error('Assignment lookup unavailable. Saved request retained.');
-  const found=d.assignments.find(j=>j.id===body.requestId&&j.ticker===ticker);
+  const found=assignmentRows(d,ticker).find(j=>j.id===body.requestId&&j.ticker===ticker);
   if(!found)throw Error('No saved assignment found yet. Retry the exact saved request below; its dates, origin and outputs remain frozen.');
   clearSubmission(sessionStorage,submissionStorageKey,body);setSavedSubmission(null);
   return 'Saved assignment found ('+found.status+'). Submission reconciled without starting research again.';

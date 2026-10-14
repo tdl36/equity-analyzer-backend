@@ -2,6 +2,26 @@
 
 Updated: October 14, 2026
 
+## T250 — preserve assignment review during invalid status responses
+
+The saved-assignment list now validates response structure, company identity,
+unique job IDs, supported status and basic input/artifact shape before replacing
+visible jobs. Invalid polling retains the last good list, displays an actionable
+status warning and pauses new submission until a valid refresh arrives. Saved
+submission reconciliation uses the same validation before clearing its identity.
+No retries, approvals, provider changes or backend mutations were introduced.
+
+169 frontend tests, model-policy gate and production build passed. Full-app
+synthetic 390/1280px checks verified good → malformed → good polling: saved output
+links remain visible, new submission blocks during uncertainty and recovers with
+valid status. All fixture calls were GET. Logs /tmp/charlie-list-ui.log and
+/tmp/charlie-T250-{tests,build}.log. Release verification pending.
+
+Next: historical valuation source provenance remains the earliest independent
+engineering gap. Continue from the existing receipt/date/readiness modules;
+real-source quality, legacy ambiguous outcomes and unattended acceptance remain
+open. Do not substitute more status polling for implementation or paid acceptance.
+
 ## T249 — reliable saved choices at assignment start
 
 ### T249 verified release receipt

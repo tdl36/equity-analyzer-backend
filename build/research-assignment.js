@@ -1,3 +1,4 @@
+import { assignmentRows } from './assignment-list.mjs';
 import { AssignmentReview } from './assignment-review';
 import { assignmentOutputs, checkedAssignmentDefaults, fallbackAssignmentDefaults, outputNames } from './assignment-defaults.mjs';
 import { submissionKey, readSubmission, reserveSubmission, clearSubmission, matchingReceipt } from './assignment-submission.mjs';
@@ -107,8 +108,9 @@ export function ResearchAssignment({
       inflight = true;
       try {
         var d = await request(listPath);
+        var rows = assignmentRows(d, ticker);
         if (live) {
-          setJobs(d.assignments);
+          setJobs(rows);
           setLoaded(true);
         }
         var saved = readSubmission(sessionStorage, submissionStorageKey, ticker);
@@ -141,7 +143,14 @@ export function ResearchAssignment({
       if (g === generation.current) {
         var d = await request(listPath);
         if (g === generation.current) {
-          setJobs(d.assignments);
+          var rows;
+          try {
+            rows = assignmentRows(d, ticker);
+          } catch (e) {
+            setError(e.message);
+            throw e;
+          }
+          setJobs(rows);
           setMessage(msg);
         }
       }
@@ -205,8 +214,7 @@ export function ResearchAssignment({
     var body = readSubmission(sessionStorage, submissionStorageKey, ticker);
     if (!body) throw Error('No saved submission remains. Reload assignments.');
     var d = await request('assignments?requestId=' + encodeURIComponent(body.requestId));
-    if (!Array.isArray(d.assignments)) throw Error('Assignment lookup unavailable. Saved request retained.');
-    var found = d.assignments.find(j => j.id === body.requestId && j.ticker === ticker);
+    var found = assignmentRows(d, ticker).find(j => j.id === body.requestId && j.ticker === ticker);
     if (!found) throw Error('No saved assignment found yet. Retry the exact saved request below; its dates, origin and outputs remain frozen.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
