@@ -2,6 +2,31 @@
 
 Updated: October 14, 2026
 
+## T251 — immutable historical acquisition metadata foundation
+
+Historical original storage can now retain bounded provider identity, observed
+HTTPS endpoint, timezone-qualified acquisition time and collector version. Metadata
+is compared on replay alongside exact bytes/date/kind; existing receipts cannot be
+relabelled or silently enriched. Credentials, query strings, fragments and caller
+verification flags are rejected. Legacy rows read without schema mutation and retain
+missing metadata. Every read explicitly reports provenanceVerified=false: recording
+acquisition claims is not certifying provider provenance or valuation readiness.
+
+1396 safe backend tests, 169 frontend tests, Python compilation, model-policy gate
+and production build passed. Ten focused synthetic tests cover immutable replay,
+legacy schemas, scope/hash checks and metadata rejection. After the broader suite,
+the read query was optimized to inspect column existence without JSON-encoding
+original bodies; focused tests passed again. No live ingestion or paid QA occurred.
+Production remains read-only for historical ingestion; no investor approval changed.
+Logs /tmp/charlie-provenance-{focused,suite}.log and /tmp/charlie-T251-{front,build}.log.
+
+Next: wire acquisition metadata into the trusted SEC/price adapters with explicit
+retrieval identity semantics. Their current content-hash-plus-day IDs cannot accept
+changing per-call timestamps on same-day replays; resolve that before wiring. Then
+expose safe provenance metadata in the read-only evidence view. Metadata alone must
+not clear source-provenance/security/corporate-action/filing-completeness gaps.
+Release verification pending; all eight priorities remain open to acceptance.
+
 ## T250 — preserve assignment review during invalid status responses
 
 ### T250 verified release receipt

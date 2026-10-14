@@ -2,7 +2,7 @@
 import hashlib
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from historical_valuation_source_store import save_original, read_originals
+from historical_valuation_source_store import save_original, read_originals, read_records
 from tests.unit import test_stock_analysis_postgres as pg
 
 
@@ -71,3 +71,32 @@ class HistoricalOriginalStoreTests(unittest.TestCase):
                 save_original(c, self.record)
                 raise RuntimeError('Synthetic interruption')
         self.assertEqual(self.read(), ({}, {}))
+
+    def test_provenance_is_preserved_unverified_and_immutable(self):
+        metadata = dict(provider='synthetic', observedUrl='https://example.test/prices',
+                        retrievedAt='2026-10-12T12:00:00Z', collectorVersion='fixture-1')
+        record = {**self.record, 'provenance': metadata}
+        self.save(record)
+        self.assertTrue(self.save(record)['reused'])
+        with self.db() as (_, c):
+            row = read_records(c, self.refs, assignment_id=self.aid)[0]
+        self.assertEqual(row['provenance'], metadata)
+        self.assertFalse(row['provenanceVerified'])
+        for key, value in [('provider', 'other'), ('observedUrl', 'https://example.test/other'),
+                           ('retrievedAt', '2026-10-12T13:00:00Z'), ('collectorVersion', 'fixture-2')]:
+            with self.assertRaises(ValueError):
+                self.save({**record, 'provenance': {**metadata, key: value}})
+        with self.assertRaises(ValueError): self.save(self.record)
+
+    def test_legacy_rows_cannot_be_relabelled(self):
+        self.save()
+        with self.db(True) as (_, c):
+            c.execute('ALTER TABLE historical_valuation_originals DROP COLUMN provenance')
+        with self.db() as (_, c):
+            row = read_records(c, self.refs, assignment_id=self.aid)[0]
+            self.assertIsNone(row['provenance'])
+            self.assertFalse(row['provenanceVerified'])
+        with self.assertRaises(ValueError):
+            self.save({**self.record, 'provenance': dict(provider='synthetic',
+                observedUrl='https://example.test/prices', retrievedAt='2026-10-12T12:00:00Z',
+                collectorVersion='fixture-1')})
