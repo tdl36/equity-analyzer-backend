@@ -4,6 +4,18 @@ Updated: October 14, 2026
 
 ## T252 — acquisition metadata wired into historical adapters
 
+### T252 verified release receipt
+
+Backend health verified afcb110f15be0b4921cfee4df0342626c01cd552. Cloudflare
+120497ad-6b97-4b4d-9156-78c1437f885b deployed. Hosted HTML references T252 and its
+versioned app.js bytes plus service-worker bytes match release assets exactly.
+The unversioned app URL returned an older CDN cache entry; the actual HTML script
+URL was separately checked and matches. Agent healthy at 22.5-second staleness;
+unchanged/not restarted. 1398 backend and 169 frontend tests passed, with 23 focused
+synthetic adapter/recovery checks, compilation, policy gate and build. No live
+source retrieval, paid QA, research modification or approval. Historical ingestion
+remains disabled; this release does not establish real-source provenance quality.
+
 SEC and compact price adapters now retain provider, fixed observed endpoint,
 UTC acquisition timestamp and collector version with exact originals and receipts.
 Price query strings/credentials never enter metadata. New original identity uses
@@ -19,7 +31,7 @@ metadata commit together and survive response loss; direct replay is blocked.
 23 focused adapter/retrieval tests passed. Logs /tmp/charlie-acquisition-{focused,suite}.log
 and /tmp/charlie-T252-{front,build}.log. No live source retrieval or paid QA.
 Production historical ingestion remains disabled; provenanceVerified=false and
-valuation/source/corporate-action gaps remain unchanged. Release verification pending.
+valuation/source/corporate-action gaps remain unchanged. Release verified above.
 
 Next: expose retained acquisition metadata safely in the read-only historical
 original inventory and evidence view, including explicit missing legacy metadata.
