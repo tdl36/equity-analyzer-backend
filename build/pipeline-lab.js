@@ -4,7 +4,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection, labSourceDate, labTicker } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection, labSourceDate, labTicker, missingLabSourceLabel } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -539,9 +539,26 @@ function LabStock({
       ...s,
       [task]: [...s[task === 'thesis' ? 'note' : 'thesis']]
     }))
-  }, "Copy ", task === 'thesis' ? 'note' : 'thesis', " selection")), missing.length > 0 && /*#__PURE__*/React.createElement("p", {
+  }, "Copy ", task === 'thesis' ? 'note' : 'thesis', " selection")), missing.length > 0 && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Unavailable selected sources",
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, missing.length, " saved selection(s) are absent from the current inventory. They remain saved; review before running research."), /*#__PURE__*/React.createElement("div", {
+  }, missing.length, " selected source(s) are absent from the current inventory."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Reload inventory first if files may still be syncing. Uncheck an item to remove it from this task\u2019s selection, then Save Lab settings. This does not delete any original or change the other task\u2019s selection.")), missing.map(k => /*#__PURE__*/React.createElement("div", {
+    key: k,
+    style: {
+      marginBottom: 12,
+      overflowWrap: 'anywhere'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: true,
+    disabled: busy,
+    onChange: () => toggle(k),
+    "aria-label": `Keep unavailable source ${missingLabSourceLabel(k)}`
+  }), " ", missingLabSourceLabel(k)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Source identity"), /*#__PURE__*/React.createElement("small", null, k))))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
     }

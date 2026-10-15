@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T291 — Resolve unavailable Lab selections individually
+
+Lab now lists missing selected originals individually, with readable iCloud
+folder/filename or stored-source identity and a per-item deselection checkbox.
+Previously only a missing count was visible, so users could not remove one absent
+source without clearing the task selection. Changes stay local until Save Lab
+settings; the other task and original files remain untouched. Reload can restore
+unsaved removals. Source identities remain inspectable; no filename is guessed for
+missing Charlie originals. Original Pipeline is unchanged.
+
+198 frontend tests, model-policy gate and production build passed. Synthetic
+390px/desktop browser checks deselected one missing original, preserved visible
+sources and the other task selection, then restored it through reload with zero
+API writes. Production verification pending. Backend and agent unchanged.
+Next: real source-to-output acceptance and investor review remain open; historical
+valuation remains at the documented provider-schema checkpoint.
+
 ## T290 — Validate Research-storage import receipts
 
 Research-storage import success now requires matching request/company/task/base

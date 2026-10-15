@@ -107,3 +107,12 @@ export function labTicker(value) {
  if(!/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(ticker))throw Error('Enter one ticker using letters, numbers, dots or hyphens (up to 20 characters).');
  return ticker;
 }
+
+export function missingLabSourceLabel(reference) {
+    if(reference.startsWith('icloud:')){
+        try{const parts=JSON.parse(reference.slice(7));if(Array.isArray(parts)&&parts.length===2&&parts.every(p=>typeof p==='string'&&p))return `${parts[1]} · iCloud / ${parts[0]}`;}catch{}
+    }
+    if(reference.startsWith('charlie:research_'))return 'Research-storage original · '+reference.slice(17);
+    if(reference.startsWith('charlie:thesis_'))return 'Charlie original · '+reference.slice(15);
+    return 'Unavailable original';
+}
