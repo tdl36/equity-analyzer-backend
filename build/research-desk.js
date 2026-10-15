@@ -1,3 +1,4 @@
+import { ReadyProcessing } from './ready-processing';
 import { ResearchDueQueue } from './research-workbench';
 import { MyWork } from './my-work';
 import { CommandCharlie } from './command-charlie';
@@ -263,7 +264,7 @@ export function ResearchDesk({
     className: "desk-toolbar"
   }, /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Research desk sections"
-  }, [['work', 'My work'], ['overview', 'Overview'], ['command', 'Command Charlie'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Investment cases & portfolio'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+  }, [['work', 'My work'], ['ready', 'Ready to process'], ['overview', 'Overview'], ['command', 'Command Charlie'], ['collection', 'Collection'], ['history', 'Research history'], ['priorities', 'Investment cases & portfolio'], ['earnings', 'Earnings & evidence'], ['evidence', 'Evidence & changes'], ['inbox', 'Review inbox'], ['queue', 'Coverage queue'], ['launch', 'Batch planner'], ['runs', 'Runs'], ['playbooks', 'Playbooks']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
@@ -311,6 +312,8 @@ export function ResearchDesk({
     onNavigate: onNavigate,
     onSection: setSection,
     renderHtml: renderRecapHtml || renderHtml
+  }), section === 'ready' && /*#__PURE__*/React.createElement(ReadyProcessing, {
+    api: api
   }), section === 'command' && /*#__PURE__*/React.createElement(CommandCharlie, {
     api: api,
     onNavigate: onNavigate,

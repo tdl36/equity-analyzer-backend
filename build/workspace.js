@@ -118,7 +118,10 @@ export function WorkspaceShell({
     onClick: () => setMenu(true)
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "search"
-  }), /*#__PURE__*/React.createElement("span", null, "Find a workspace"), /*#__PURE__*/React.createElement("kbd", null, "\u2318 K")), /*#__PURE__*/React.createElement("nav", {
+  }), /*#__PURE__*/React.createElement("span", null, "Find a workspace"), /*#__PURE__*/React.createElement("kbd", null, "\u2318 K")), /*#__PURE__*/React.createElement("a", {
+    className: "workspace-nav-item",
+    href: "#view=desk&section=ready"
+  }, "\u2713 Ready to process"), /*#__PURE__*/React.createElement("nav", {
     "aria-label": "Main navigation"
   }, GROUPS.map(g => /*#__PURE__*/React.createElement("div", {
     key: g.id,
@@ -221,7 +224,11 @@ export function WorkspaceShell({
     onChange: e => setSearch(e.target.value)
   })), /*#__PURE__*/React.createElement("div", {
     className: "workspace-command-results"
-  }, GROUPS.map(g => {
+  }, /*#__PURE__*/React.createElement("a", {
+    className: "workspace-link-row",
+    href: "#view=desk&section=ready",
+    onClick: () => setMenu(false)
+  }, "\u2713 Ready to process \u2014 synthesis checklist"), GROUPS.map(g => {
     var items = [[g.id, g.label], ...g.items].filter(i => i[1].toLowerCase().includes(search.toLowerCase()));
     return items.length ? /*#__PURE__*/React.createElement("div", {
       key: g.id

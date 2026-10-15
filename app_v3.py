@@ -18872,21 +18872,30 @@ def catalyst_proposals_approve():
     """Flip selected proposed jobs to 'queued' so the local agent picks them up."""
     data = request.get_json() or {}
     job_ids = data.get('jobIds') or []
+    if not isinstance(job_ids, list) or len(job_ids) > 100:
+        return jsonify({'error': 'Select at most 100 ready synthesis jobs.'}), 400
+    try:
+        job_ids = list(dict.fromkeys(str(uuid.UUID(value)) for value in job_ids))
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({'error': 'Invalid synthesis job selection.'}), 400
     if not job_ids:
-        return jsonify({'approved': 0})
+        return jsonify({'approved': 0, 'jobIds': []})
     with get_db(commit=True) as (_, cur):
-        cur.execute('''
+        cur.execute("""
             UPDATE research_pipeline_jobs SET status='queued', current_step='Waiting for processing'
-             WHERE id = ANY(%s) AND status='proposed'
-        ''', (job_ids,))
-        n = cur.rowcount
-        # Mark matching alerts as actioned so the Alerts badge clears
-        cur.execute('''
-            UPDATE agent_alerts SET status='actioned'
-             WHERE alert_type='catalyst_proposal' AND status='new'
-               AND (detail->>'jobId') = ANY(%s)
-        ''', (job_ids,))
-    return jsonify({'approved': n})
+             WHERE id = ANY(%s) AND status='proposed' AND job_type='synthesis'
+             RETURNING id
+        """, (job_ids,))
+        approved_ids = [str(row['id']) for row in cur.fetchall()]
+        # Only acknowledge alerts for jobs actually transitioned by this request.
+        if approved_ids:
+            cur.execute("""
+                UPDATE agent_alerts SET status='actioned'
+                 WHERE alert_type='catalyst_proposal' AND status='new'
+                   AND (detail->>'jobId') = ANY(%s)
+            """, (approved_ids,))
+    return jsonify({'approved': len(approved_ids), 'jobIds': approved_ids})
+
 
 
 @app.route('/api/catalysts/proposals/dismiss', methods=['POST'])

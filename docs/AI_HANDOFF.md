@@ -2,6 +2,27 @@
 
 Updated: October 14, 2026
 
+## T302 — Ready to process synthesis checklist
+
+Added a prominent Ready to process link in the desktop sidebar, mobile workspace
+menu, Research desk and Collection view. The checklist lists detected CATALYSTS
+folder proposals, supports ticker/event filtering and explicit multi-selection,
+and queues only selected jobs. It leaves all automatic synthesis switches unchanged
+and never approves finished research. STOCKS libraries and analyst tasks link to
+their existing output/review controls; this is not a claim that every imported file
+is a ready generation job. Latest 100 proposals are disclosed.
+
+Collection and the checklist now show the three independent automatic synthesis
+settings with direct links, including honest unavailable/expired states. Backfill
+synthesis remains paused. Proposal approval validates up to 100 UUIDs and atomically
+transitions only still-proposed synthesis jobs; repeat clicks cannot create jobs,
+and alerts are acknowledged only for actual transitions.
+
+Validation: 205 frontend tests; focused approval guard tests and Python compile;
+390/1280px synthetic browser checks verify selected-only dispatch, hidden-selection
+counts, no automatic mutations and readable panel width. Full backend suite and
+production release verification recorded below when complete. No paid QA run.
+
 ## T301 — Backfill automatic synthesis paused
 
 Investor requested no automatic synthesis for newly downloaded backfill originals.

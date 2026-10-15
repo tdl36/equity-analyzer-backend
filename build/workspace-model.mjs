@@ -11,7 +11,7 @@ export const VIEWS = [...GROUPS.flatMap(g => [g.id, ...g.items.map(i => i[0])]),
 export const viewLabel = id => GROUPS.find(g => g.id === id)?.label || GROUPS.flatMap(g => g.items).find(i => i[0] === id)?.[1] || 'Settings';
 export const viewGroup = id => GROUPS.find(g => g.id === id || g.items.some(i => i[0] === id));
 export const SECTIONS = {
-  desk: ['work','overview','command','collection','history','priorities','earnings','evidence','inbox','queue','launch','runs','playbooks'],
+  desk: ['work','ready','overview','command','collection','history','priorities','earnings','evidence','inbox','queue','launch','runs','playbooks'],
   stockanalysis: ['snapshot','stock-analysis','research','committee','case','model','changes','evidence','reviews','signals','evolution'],
 };
 export const validSection = (view, section) => SECTIONS[view]?.includes(section) ? section : '';

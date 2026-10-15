@@ -1,3 +1,4 @@
+import { CollectionSynthesisStatus } from './collection-synthesis';
 import { CollectionRequests } from './collection-requests';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { CatalystWatch } from './catalyst-watch';
@@ -137,7 +138,7 @@ export function CollectionCloud({
     className: "workspace-eyebrow"
   }, "CLOUD CONTROLS / MAC COLLECTION"), /*#__PURE__*/React.createElement("h2", null, "Collection & coverage."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Commands are stored in Charlie and picked up by your Mac agent. AlphaSense downloads still require this Mac awake, Codex running and Chrome signed in. The browser worker checks managed requests every 15 minutes."), /*#__PURE__*/React.createElement("p", {
+  }, "Commands are stored in Charlie and picked up by your Mac agent. AlphaSense downloads still require this Mac awake, Codex running and Chrome signed in. The scheduled browser worker picks up managed requests."), /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, updated ? `Mac last reported ${updated.toLocaleString()}.` : 'No Mac collection report yet.', " ", stale ? 'No recent report; commands will wait for the Mac agent.' : 'Mac collection bridge is reporting.'), /*#__PURE__*/React.createElement("div", {
     className: "workspace-panel"
@@ -150,7 +151,16 @@ export function CollectionCloud({
     className: "workspace-error"
   }, error || loadError), message && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, message), /*#__PURE__*/React.createElement(CollectionRequests, {
+  }, message), /*#__PURE__*/React.createElement("a", {
+    className: "workspace-primary",
+    href: "#view=desk&section=ready",
+    style: {
+      display: 'inline-block',
+      marginBottom: 16
+    }
+  }, "Ready to process \u2014 choose synthesis jobs \u2192"), /*#__PURE__*/React.createElement(CollectionSynthesisStatus, {
+    api: api
+  }), /*#__PURE__*/React.createElement(CollectionRequests, {
     focusId: workId(routeWork, 'collection'),
     onClearFocus: () => onWorkChange?.(''),
     requests: snapshot?.requests || [],
