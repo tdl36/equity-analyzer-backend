@@ -48,7 +48,7 @@ def enqueue(cur,ticker,task,revision,request_id):
     from pipeline_lab import config
     selected=config(cfg['selection'])[task]
     refs=[r for r in selected if r.startswith('icloud:')]
-    if not refs or len(selected)>8:raise ValueError('Save up to eight selected sources, including an iCloud original.')
+    if not refs or len(selected)>1000:raise ValueError('Save up to 1000 selected sources, including an iCloud original.')
     for ref in refs:identity(ref)
     # Prevent a second request ID from creating competing imports for this ticker.
     cur.execute('SELECT value FROM app_settings WHERE key LIKE %s',(PREFIX+'%',))

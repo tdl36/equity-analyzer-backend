@@ -43,6 +43,15 @@ class OriginalChecks(unittest.TestCase):
             self.assertNotEqual(a['digest'],check_originals(ticker,task,rev,[ref],docs)['digest'])
         docs[ref]['file_data']=base64.b64encode(b'changed').decode()
         self.assertNotEqual(a['digest'],check_originals('ABT','thesis',1,[ref],docs)['digest'])
+    def test_more_than_eight_small_originals_are_verified(self):
+        import base64
+        from pipeline_lab import check_originals
+        docs={f'charlie:thesis_{n}':{'filename':f'{n}.txt','file_data':base64.b64encode(str(n).encode()).decode()} for n in range(1,26)}
+        result=check_originals('ABT','note',1,list(docs),docs)
+        self.assertEqual(result['blockers'],[])
+        self.assertEqual(len(result['verified']),25)
+        self.assertIsNotNone(result['digest'])
+
     def test_fail_closed_empty_missing_local_invalid_and_duplicate_names(self):
         from pipeline_lab import check_originals
         for refs,docs in [([],{}),(['charlie:thesis_1'],{}),(['icloud:["main","x"]'],{}),(['charlie:research_1'],{}),([str(n) for n in range(9)],{})]:

@@ -23,6 +23,11 @@ def plan(data):
     supplement=data.get('visualFundamentals',False)
     if not isinstance(supplement,bool):raise ValueError('Invalid public fundamentals choice.')
     result=dict(ticker=ticker,since=since.isoformat(),until=until.isoformat(),outputs=sorted(outputs),horizon=horizon.strip(),instruction=instruction.strip())
+    if 'collectionLimit' in data:
+        limit=data['collectionLimit']
+        if type(limit) is not int or not 1<=limit<=1000:raise ValueError('Choose a collection scope from 1 to 1000 originals.')
+        if 'labSelection' in data:raise ValueError('Saved selections do not request collection.')
+        result['collectionLimit']=limit
     if 'meeting_prep' in outputs:
         meeting=data.get('meeting')
         if not isinstance(meeting,dict) or set(meeting)!={'date','type'}:

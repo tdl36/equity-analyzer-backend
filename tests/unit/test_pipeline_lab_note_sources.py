@@ -31,6 +31,20 @@ class Sources(unittest.TestCase):
         self.assertEqual(len(result['warnings']),1)
         other=prepare('ABT',self.pack,self.docs,lambda docs:[[dict(docs[0],send_as='text',extracted_text='Changed')]],allow_pdf_text=True)
         self.assertNotEqual(result['representationSha256'],other['representationSha256'])
+    def test_larger_pack_is_processed_in_complete_batches(self):
+        pack=[];docs={}
+        for i in range(1,26):
+            ref=f'charlie:thesis_{i}'
+            pack.append({**self.pack[0],'reference':ref,'filename':f'{i}.pdf'})
+            docs[ref]={**self.docs['charlie:thesis_1'],'filename':f'{i}.pdf'}
+        def planner(rows):
+            return [[dict(d,send_as='pages') for d in rows[i:i+5]] for i in range(0,len(rows),5)]
+        result=prepare('ABT',pack,docs,planner)
+        self.assertEqual(len(result['sourcePack']),25)
+        self.assertEqual(len(result['batches']),5)
+        with self.assertRaisesRegex(ValueError,'omitted'):
+            prepare('ABT',pack,docs,lambda rows:planner(rows[:-1]))
+
     def test_original_substitution_by_planner_is_rejected(self):
         with self.assertRaisesRegex(ValueError,'changed a selected original'):
             prepare('ABT',self.pack,self.docs,lambda docs:[[dict(docs[0],send_as='pages',file_data='b3RoZXI=')]])

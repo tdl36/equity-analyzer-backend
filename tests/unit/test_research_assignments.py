@@ -16,6 +16,12 @@ from tests.unit import test_collection_refresh as refresh_tests
 P={'ticker':'SYK','since':'2026-08-01','until':'2026-10-09','outputs':['summary_note','stock_summary','thesis','visual']}
 
 class PlanningTests(unittest.TestCase):
+    def test_configurable_collection_scope_is_frozen(self):
+        self.assertEqual(plan({**P,'collectionLimit':40,'collectionOnly':True,'outputs':[]})['collectionLimit'],40)
+        self.assertNotIn('collectionLimit',plan(P))
+        for limit in (0,1001,True,'40'):
+            with self.assertRaises(ValueError):plan({**P,'collectionLimit':limit})
+
     def test_frozen_window_and_invalid_input(self):
         self.assertEqual(plan(P)['since'],'2026-08-01')
         for change in [{'ticker':None},{'ticker':'../bad'},{'outputs':[{}]},{'outputs':[]},{'outputs':['thesis','thesis']},{'until':'2099-01-01'},{'since':'2024-01-01'},{'instruction':'x'*1801}]:
@@ -416,6 +422,25 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(row['status'],'complete');self.assertFalse(self.submits)
         self.assertNotIn('reportId',row['result']);self.assertEqual(len(row['result']['sources']),1)
         self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+
+    def test_large_source_only_library_verifies_without_research(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],
+              'collectionOnly':True,'collectionLimit':25}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+        with self.db(True) as (_,cur):
+            pack=[]
+            for n in range(25):
+                name=f'library-{n}.txt'
+                cur.execute("INSERT INTO document_files(ticker,filename,file_data,metadata) SELECT ticker,%s,file_data,metadata FROM document_files WHERE ticker=%s AND filename='one.txt'",(name,self.ticker))
+                pack.append({'filename':name,'sha256':self.sha})
+            snapshot={'requests':[{'id':self.ident,'status':'complete','result':{'assignmentSources':pack}}]}
+            cur.execute("UPDATE app_settings SET value=%s WHERE key='collection_control_snapshot'",(json.dumps(snapshot),))
+        row=self.advance()
+        self.assertEqual(row['status'],'complete',row.get('error'))
+        self.assertEqual(len(row['result']['sources']),25)
+        self.assertFalse(self.submits)
+        self.assertNotIn('reportId',row['result'])
 
     def test_stop_propagates_to_deterministic_full_note_child(self):
         stopped=[]

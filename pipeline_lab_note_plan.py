@@ -38,7 +38,7 @@ def validate(value):
                    'sourcePack':out['sourcePack'],'contextSha256':value['representationSha256'],
                    'promptSha256':'0'*64,'modelKey':value['modelKey'],'maxTokens':value['maxTokens']})
     warnings=value['warnings'];refs={s['reference'] for s in out['sourcePack']}
-    if not isinstance(warnings,list) or len(warnings)>8:
+    if not isinstance(warnings,list) or len(warnings)>1000:
         raise ValueError('Bounded representation warnings required.')
     seen=set()
     for warning in warnings:

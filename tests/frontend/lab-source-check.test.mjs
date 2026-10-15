@@ -14,3 +14,9 @@ test('blocked and older-server source checks remain readable without enabling ge
  assert.equal(checkedLabSourceCheck(blocked,'thesis',1,['icloud:pending']),blocked);
  assert.equal(checkedLabSourceCheck({...result,generationAvailable:undefined},'thesis',1,[ref]).generationAvailable,undefined);
 });
+
+test('more than eight originals pass when all identities and bytes are checked',()=>{
+ const rows=Array.from({length:25},(_,i)=>({...row,reference:'charlie:thesis_'+(i+1),filename:i+'.pdf'}));
+ const value={...result,verified:rows};
+ assert.equal(checkedLabSourceCheck(value,'thesis',1,rows.map(r=>r.reference)),value);
+});

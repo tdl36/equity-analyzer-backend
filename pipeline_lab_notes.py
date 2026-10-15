@@ -27,7 +27,7 @@ def normalized(value):
     if not isinstance(markdown,str) or not markdown.strip() or len(markdown.encode('utf-8'))>2_000_000:raise ValueError('A nonempty draft up to 2 MB is required.')
     if not isinstance(issues,list) or len(issues)>100 or any(not isinstance(i,str) or not 1<=len(i)<=2000 for i in issues):
         raise ValueError('Bounded quality issues are required; missing review must remain explicit.')
-    if not isinstance(sources,list) or not 1<=len(sources)<=8:raise ValueError('One to eight frozen original identities are required.')
+    if not isinstance(sources,list) or not 1<=len(sources)<=1000:raise ValueError('One to 1000 frozen original identities are required.')
     result=[]
     for s in sources:
         if not isinstance(s,dict) or set(s)!={'reference','filename','sha256','bytes'}:raise ValueError('Invalid original identity.')

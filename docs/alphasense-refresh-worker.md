@@ -130,8 +130,10 @@ available scheduled worker; approval does not imply immediate downloads.
 A request with `config.assignment` belongs to one coordinating research job.
 Honor its exact since/until dates, ticker, source policy, outputs and instructions.
 Screen all four supported categories: transcript, broker-report, press-release,
-presentation. Select **at most eight distinct eligible originals in total** for
-this bounded research pack. Prioritize material/latest events, substantive analysis
+presentation. Honor `config.assignment.collectionLimit` as the frozen maximum distinct eligible
+originals (1–1000). Requests created before T297 without that field retain their
+original eight-document scope. Never reinterpret an existing frozen request. New
+source-only requests may collect a larger library without authorizing research. Prioritize material/latest events, substantive analysis
 and relevant contrary views. Record actual reviewed counts, exclusions, selection
 rationale and missing coverage. Do not relabel filings as a supported category or
 claim all available documents were ingested. Only source content is evidence.

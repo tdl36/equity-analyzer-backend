@@ -36,7 +36,7 @@ def import_selected(cur,ticker,body):
     if not current or current['revision']!=body['revision']:raise ValueError('Lab settings changed. Reload before importing.')
     selection=config(current['selection']);refs=selection[body['task']]
     ids=[r[len('charlie:research_'):] for r in refs if r.startswith('charlie:research_')]
-    if not ids or len(refs)>8:raise ValueError('Select up to eight sources, including a Research-storage original, and save first.')
+    if not ids or len(refs)>1000:raise ValueError('Select up to 1000 sources, including a Research-storage original, and save first.')
     cur.execute('''SELECT rdf.id::text AS id,rdf.filename,rdf.file_type,
         CASE WHEN octet_length(rdf.file_data)<=20000000 THEN rdf.file_data ELSE NULL END AS file_data,
         rd.published_date FROM research_document_files rdf

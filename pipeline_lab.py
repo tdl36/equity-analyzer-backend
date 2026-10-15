@@ -26,8 +26,8 @@ def check_originals(ticker, task, revision, references, documents):
     verified = []
     if not references:
         blockers.append('Select at least one original for this task.')
-    if len(references) > 8:
-        blockers.append('Select at most eight originals for a bounded research pack.')
+    if len(references) > 1000:
+        blockers.append('Select at most 1000 source references.')
         return {'verified': [], 'blockers': blockers, 'digest': None}
     total = 0
     for ref in references:
@@ -50,7 +50,7 @@ def check_originals(ticker, task, revision, references, documents):
             if not 0 < len(raw) <= 15_000_000:
                 raise ValueError()
         except (ValueError, TypeError):
-            blockers.append('A selected original is empty, invalid or exceeds 15 MB: ' + ref)
+            blockers.append('A selected original is empty, invalid, exceeds 15 MB, or the selected pack exceeds 60 MB: ' + ref)
             continue
         total += len(raw)
         verified.append({'reference': ref, 'filename': row['filename'], 'bytes': len(raw),
@@ -76,8 +76,8 @@ def resolve_selection(cur, ticker, selection):
     refs = config(current['selection'])[selection['task']]
     ids = [r[len('charlie:thesis_'):] for r in refs if r.startswith('charlie:thesis_')]
     documents = {}
-    if ids and len(refs) <= 8:
-        cur.execute("SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s) FOR SHARE", (ticker, ids))
+    if ids and len(refs) <= 1000:
+        cur.execute("WITH selected AS MATERIALIZED (SELECT id,filename,metadata,file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s) FOR SHARE) SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 AND sum(octet_length(file_data)) OVER ()<=80000000 THEN file_data ELSE NULL END AS file_data FROM selected", (ticker, ids))
         documents = {'charlie:thesis_' + str(d['id']): d for d in cur.fetchall()}
     result = check_originals(ticker, selection['task'], selection['revision'], refs, documents)
     if result['blockers']:
@@ -167,10 +167,10 @@ def create_blueprint(get_db):
             refs = config(current['selection'])[body['task']]
             documents = {}
             ids = [r[len('charlie:thesis_'):] for r in refs if r.startswith('charlie:thesis_')]
-            if ids and len(refs) <= 8:
+            if ids and len(refs) <= 1000:
                 # Bound returned base64 before loading it into Python. Oversize rows
                 # remain visible as blockers rather than disappearing from selection.
-                cur.execute("SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s)", (ticker, ids))
+                cur.execute("SELECT id::text AS id, filename, metadata, CASE WHEN octet_length(file_data)<=20000000 AND sum(octet_length(file_data)) OVER ()<=80000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=ANY(%s)", (ticker, ids))
                 documents = {'charlie:thesis_' + str(d['id']): d for d in cur.fetchall()}
             result = check_originals(ticker, body['task'], current['revision'], refs, documents)
         return jsonify(**result, task=body['task'], revision=current['revision'],

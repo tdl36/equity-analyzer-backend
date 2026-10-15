@@ -308,7 +308,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
         try:
             if not isinstance(data,dict):raise ValueError('Invalid request')
             ident=str(uuid.UUID(data.get('requestId','')));names=data.get('filenames')
-            if not isinstance(names,list) or not 1<=len(names)<=8 or any(not isinstance(n,str) or len(n)>255 for n in names) or len(set(names))!=len(names):raise ValueError('Select 1–8 distinct stored originals.')
+            if not isinstance(names,list) or not 1<=len(names)<=1000 or any(not isinstance(n,str) or len(n)>255 for n in names) or len(set(names))!=len(names):raise ValueError('Select 1–1000 distinct stored originals.')
             if data.get('confirmed') is not True:raise ValueError('Confirm the issuer and permitted source use before starting.')
             from lab_source_identity import validate
             expected_originals=validate(data.get('expectedOriginals'),names)

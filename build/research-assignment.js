@@ -22,6 +22,7 @@ export function ResearchAssignment({
   labMode = false,
   onCollectionComplete = null
 }) {
+  var [collectionLimit, setCollectionLimit] = React.useState(40);
   var [collectionOnly, setCollectionOnly] = React.useState(false);
   var [fullNote, setFullNote] = React.useState(false),
     [notePdfText, setNotePdfText] = React.useState(false);
@@ -206,6 +207,9 @@ export function ResearchAssignment({
       ticker,
       since,
       until,
+      ...(!labSelection ? {
+        collectionLimit
+      } : {}),
       ...(labMode && fullNote && !collectionOnly ? {
         labFullNote: {
           allowPdfText: notePdfText
@@ -312,7 +316,7 @@ export function ResearchAssignment({
   }, "Open full Lab note & recovery")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved drafts remain available in Sources, progress & history below, even if another stage needs attention. Saved does not mean investor-approved. Missing receipts are not proof of delivery.")))), /*#__PURE__*/React.createElement("details", {
     className: "assignment-history",
     open: j.status !== 'complete'
-  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), !j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Frozen collection scope: up to ", j.input.collectionLimit ?? 8, " relevant originals. Actual coverage depends on available eligible sources."), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', j.ticker, 'stock-analysis', 'assignment:' + j.input.origin.assignmentId)
   }, "saved one-pager"), " \xB7 ", j.input.origin.parentId ? 'accepted edition ' + j.input.origin.parentId.slice(0, 8) : 'original report ' + j.input.origin.runId.slice(0, 8), ". Outputs are separate drafts for review."), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -450,7 +454,14 @@ export function ResearchAssignment({
     min: since,
     max: date(new Date()),
     onChange: e => setUntil(e.target.value)
-  }))), labMode && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }))), !labSelection && /*#__PURE__*/React.createElement("label", null, "Collection scope \xB7 maximum relevant originals", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Collection scope",
+    type: "number",
+    min: "1",
+    max: "1000",
+    value: collectionLimit,
+    onChange: e => setCollectionLimit(Number(e.target.value))
+  }), /*#__PURE__*/React.createElement("small", null, "Collect a library first to review and select evidence before spending research credits. Scope is a ceiling, not a promise of coverage. Duplicate originals are reconciled; originals remain in iCloud.")), labMode && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -520,7 +531,7 @@ export function ResearchAssignment({
     })
   }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
     className: embedded ? "workspace-primary" : "sa-primary",
-    disabled: !collectionOnly && !chosen.length || !since || !until || !horizon.trim() || !collectionOnly && chosen.includes('meeting_prep') && !meetingDate,
+    disabled: !labSelection && (!Number.isInteger(collectionLimit) || collectionLimit < 1 || collectionLimit > 1000) || !collectionOnly && !chosen.length || !since || !until || !horizon.trim() || !collectionOnly && chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, collectionOnly ? 'Collect latest sources for' : labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, collectionOnly ? 'Source-only refresh collects up to eight eligible originals through the existing browser worker. No model generation is authorized by this request.' : 'One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.')), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
+  }, collectionOnly ? 'Collect latest sources for' : labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, collectionOnly ? 'Source-only refresh collects up to your chosen scope through the existing browser worker. No model generation is authorized by this request.' : 'One shared research run: your selected originals and up to twelve model calls within your configured budget. Research context is bounded; large originals can require scoped selections and disclosed excerpts. Full Lab notes use size-aware batches. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.')), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }

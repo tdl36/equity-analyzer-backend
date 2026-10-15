@@ -107,7 +107,7 @@ class RefreshManager:
                 else:
                     from research_assignment_plan import plan
                     p=plan(raw);p.update(assignmentId=aid,sourcePolicy=raw['sourcePolicy'])
-                    instructions=('Screen all four source categories in the fixed date window. Select at most eight distinct eligible originals in total for the requested research, prioritizing the latest event/earnings transcripts, presentations, material company releases and substantive broker analysis, including relevant contrary views. Record reviewed counts and explain selection and omissions. Do not collect outside this window or invent missing coverage. '+p['instruction'])
+                    instructions=(f"Screen all four source categories in the fixed date window. Select up to {p.get('collectionLimit',8)} distinct eligible originals in total for this collection scope, prioritizing the latest event/earnings transcripts, presentations, material company releases and substantive broker analysis, including relevant contrary views. Record reviewed counts and explain selection and omissions. Do not collect outside this window or invent missing coverage. "+p['instruction'])
                     cfg=dict(ticker=p['ticker'],hours=0,enabled=True,createFolder=True,lookbackDays=7,workflow='thesis',kinds=list(KINDS),instructions=instructions)
                     (self.c.stocks/p['ticker']).mkdir(exist_ok=True)
                     if not self.db.execute('SELECT ticker FROM refresh_policies WHERE ticker=?',(p['ticker'],)).fetchone():self._save(cfg)
@@ -361,7 +361,7 @@ class RefreshManager:
                     self._require_active(request_id, owner)
                     for d in collection['documents']:
                         enqueue(self.c, d['id'])
-            sync(self.c,limit=10 if event_import else 8,only_run=row['run'])
+            sync(self.c,limit=10,only_run=row['run'])
             pack={}
             for d in collection['documents']:
                 if d['usage']!='research' or d['status'] not in ('handed_off','duplicate'):continue
@@ -370,7 +370,7 @@ class RefreshManager:
                 if not q or q['status']!='imported' or receipt.get('sha256')!=d['sha256']:
                     raise ValueError('Original cloud import is pending or needs attention. Keep this collection unfinished; inspect Originals arriving from AlphaSense and retry after exact-byte verification.')
                 pack[receipt['filename']]={'filename':receipt['filename'],'sha256':receipt['sha256'],'sourceUrl':d['source_url']}
-            if cfg.get('assignment') and len(pack)>8:raise ValueError('Assignment source pack exceeds eight originals; inspect selection before dispatch.')
+            if cfg.get('assignment') and len(pack)>cfg['assignment'].get('collectionLimit',8):raise ValueError('Collection exceeds its frozen scope; inspect selection before dispatch.')
             if event_import:
                 result['eventSources']=list(pack.values())
                 result['importedOriginals']=len(pack)

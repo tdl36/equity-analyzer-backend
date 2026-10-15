@@ -5,7 +5,7 @@ import re
 def validate(value, filenames):
     if value is None:
         return None
-    if not isinstance(value,list) or not 1<=len(value)<=8:
+    if not isinstance(value,list) or not 1<=len(value)<=1000:
         raise ValueError('Invalid selected-original identity pack.')
     for item in value:
         if (not isinstance(item,dict) or set(item)!={'id','filename','sha256'}

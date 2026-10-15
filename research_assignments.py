@@ -99,9 +99,22 @@ class Coordinator:
                         state['step']='Collecting and verifying originals';self.store(ident,state,'running');return
                     pack=obj(collection.get('result')).get('assignmentSources',[])
                 if not pack:raise ValueError('No eligible originals were collected in this date range. No research was charged.')
-                if len(pack)>8:raise ValueError('Collection exceeds the eight-original research bound. Narrow the assignment or review the source pack.')
+                if len(pack)>1000:raise ValueError('Source manifest exceeds the supported 1000-original bound.')
                 # Persist exact originals and request payload before dispatch. Every retry uses this payload.
                 report_id=child(ident,'stock-analysis');state['reportId']=report_id
+                if p.get('collectionOnly') and len(pack)>8:
+                    # Verify one original at a time; a library is not one model context.
+                    from company_research import eligible
+                    from command_thesis_bridge import file_hash
+                    for source in pack:
+                        with self.db() as (_,cur):
+                            cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s',(ticker,source['filename']))
+                            document=cur.fetchone()
+                        if not document or not eligible(document.get('metadata') or {}) or file_hash(document)!=source['sha256']:
+                            raise ValueError('Imported source hashes or permissions do not match the collection receipts.')
+                    state.pop('reportId',None);state['sources']=pack
+                    state['step']='Originals collected and verified in Charlie; no research generation requested'
+                    self.store(ident,state,'complete');return
                 with self.db() as (_,cur):
                     cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,[s['filename'] for s in pack]));docs=list(cur.fetchall())
                 from company_research import eligible

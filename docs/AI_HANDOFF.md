@@ -2,6 +2,24 @@
 
 Updated: October 14, 2026
 
+## T297 — Configurable collection library and larger selected packs
+
+Collection controls default to 40 relevant originals and accept 1–1000; the explicit
+scope is frozen and reconciled on submission/replay. Legacy requests lacking the
+field retain eight. Source-only library verification processes one original at a
+time before completing without research. Lab checks, original imports, exact-ID
+handoffs and versioned notes accept more than eight originals (up to the existing
+1000-reference settings bound). Per-original/pack byte limits remain 15/60 MB.
+Full notes retain complete size-aware batching and eight-call budget; Stock Analysis
+retains its disclosed bounded excerpt context, not full-library exhaustive review.
+Original Pipeline behavior is unchanged; no paid research or approvals for QA.
+
+1,538 backend tests plus an additional 25-original collection-only regression and
+202 frontend tests passed. Synthetic mobile/desktop browser checks submitted a
+25-original source-only scope and verified its matching receipt; the mobile layout
+was inspected. A 25-source note preparation test verified five complete batches and
+rejected omission. Model-policy gate/build passed. Deployment verification pending.
+
 ## T296 — Scheduled event originals can reach Charlie
 
 Registered scheduled recap requests now enqueue eligible event-folder PDFs into
@@ -11,9 +29,11 @@ retains eventSources. Topic metadata accompanies new imports; existing bytes and
 metadata are preserved. Eight-original research assignment bounds are unchanged.
 Synthetic tests cover event handoff, preserved destination, exact replay and blocked
 dispatch without a receipt. Full backend/frontend suites and build passed.
-Deployment verification pending. CVS has two untouched scheduled event requests
-blocked by this missing path; resume these after deployment. Its separate older
-stock request remains blocked on AlphaSense date-filter verification.
+Verified Render 01d9b50aa7e8bc450a940a74593a59eaf64c0989 and Cloudflare
+732983fc-c446-469c-85d4-68f6759ea939, exact hosted T296 assets and healthy agent.
+Both CVS event-import requests were requeued without dispatch reservations and the
+cloud snapshot acknowledged. Its separate older stock request remains blocked on
+AlphaSense date-filter verification. No collection/research completion is claimed.
 
 ## T295 — Eight-priority audit and connected Home/company navigation
 

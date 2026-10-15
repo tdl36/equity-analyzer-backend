@@ -1,3 +1,22 @@
+## T297 collection breadth and research selection
+
+New collection controls default to 40 relevant originals and allow a chosen scope
+of 1–1000. This is a collection ceiling, not exhaustive coverage or a quota. The
+scope is frozen in the request and checked on replay and completion. Older frozen
+requests without this field retain their original eight-document scope.
+Source-only collection verifies a larger library without model calls. Existing
+collector identity/hash reconciliation preserves originals and deduplicates exports;
+the Lab retains type/date grouping and separate thesis/note selections.
+
+Lab selected packs and imports no longer have an eight-document ceiling. Up to
+1000 references can be selected, subject to existing 15 MB per-original and 60 MB
+per-generation-pack limits. Full notes use the existing complete, size-aware batch
+planner (up to eight **model calls**, not eight originals), which rejects skipped
+sources and preserves per-call recovery. Stock Analysis keeps its 160,000-character
+shared context with explicitly recorded excerpt omissions; it is not exhaustive
+full-document review of a large library. Collection-only can span multiple worker
+wakes and import batches. No broad historical backfill or paid QA run is triggered.
+
 # Research Pipeline Lab
 
 ## Product contract — October 14, 2026
