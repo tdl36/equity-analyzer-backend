@@ -2,7 +2,7 @@
 
 Updated: October 14, 2026
 
-## T297 — Configurable collection library and larger selected packs
+## T297–T299 — Configurable collection library and larger selected packs
 
 Collection controls default to 40 relevant originals and accept 1–1000; the explicit
 scope is frozen and reconciled on submission/replay. Legacy requests lacking the
@@ -14,11 +14,23 @@ Full notes retain complete size-aware batching and eight-call budget; Stock Anal
 retains its disclosed bounded excerpt context, not full-library exhaustive review.
 Original Pipeline behavior is unchanged; no paid research or approvals for QA.
 
-1,538 backend tests plus an additional 25-original collection-only regression and
-202 frontend tests passed. Synthetic mobile/desktop browser checks submitted a
-25-original source-only scope and verified its matching receipt; the mobile layout
-was inspected. A 25-source note preparation test verified five complete batches and
-rejected omission. Model-policy gate/build passed. Deployment verification pending.
+Final validation: 1,540 backend tests and 203 frontend tests passed. Synthetic
+mobile/desktop checks submitted a 25-original source-only scope and verified its
+matching receipt; the mobile layout was inspected. A 25-source note preparation
+test verified five complete batches and rejected omission. Larger iCloud/Research
+receipt validation includes every identity. Generation rejects oversized packs
+before loading source bodies; collection-only verifies one original at a time.
+Model-policy/build gates passed. Verified Render
+49904729bb9f0a6d7027801937b066ddddbd26ad and Cloudflare
+928df50e-538f-44db-aee1-036f557c33b4 with exact T299 hosted JS/service-worker
+bytes and HTML marker. Agent restarted to reload collection helpers and verified
+healthy (70.1 seconds). A transient 502 on a read-only missing-original check
+returned the expected 404 on retry; unauthenticated access returned 401.
+The Operations automation retains its separate chat and now honors frozen scope.
+One CVS event request completed with one exact-byte imported original and a saved
+activity receipt (autoRan false); the second was collecting. This is collection
+acceptance, not proof of finished recap or a live greater-than-eight research run.
+Continue eight-priority follow-through from the acceptance ledger; no all-done claim.
 
 ## T296 — Scheduled event originals can reach Charlie
 
