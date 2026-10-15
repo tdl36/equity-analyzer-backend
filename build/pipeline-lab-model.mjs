@@ -13,7 +13,7 @@ export function labDocuments(documents, files) {
         seen.add(row.key);
     }
     const names=new Map();for(const r of rows)names.set(r.filename,(names.get(r.filename)||0)+1);
-    return rows.map(r=>({...r,repeated:names.get(r.filename)>1,type:suggestType(r.filename)}));
+    return rows.map(r=>({...r,repeated:names.get(r.filename)>1,type:({'transcript':'Transcripts','broker-report':'Broker research','press-release':'Releases','presentation':'Presentations'}[r.sourceKind]||suggestType(r.filename)),typeRecorded:!!r.sourceKind}));
 }
 export function suggestType(name) {
     const s=name.toLowerCase();
@@ -25,7 +25,7 @@ export function suggestType(name) {
     return 'Other / unclassified';
 }
 export function visibleLabDocuments(rows,query,group,sort) {
-    return rows.filter(r=>(group==='All'||r.type===group)&&`${r.filename} ${r.folder} ${r.publisher||''}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
+    return rows.filter(r=>(group==='All'||r.type===group)&&`${r.filename} ${r.folder} ${r.publisher||''} ${r.author||''}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
         if(sort==='date'){
             const stamp=r=>Number.isFinite(Date.parse(r.date))?Date.parse(r.date):-Infinity;
             if(stamp(a)!==stamp(b))return stamp(a)>stamp(b)?-1:1;

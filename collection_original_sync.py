@@ -55,7 +55,8 @@ def payload(collector, row):
     if digest!=row['sha256']:raise ValueError('Original changed after collection; inspect it before retrying.')
     return dict(ticker=row['ticker'],collectionRun=row['run'],documentId=row['id'],filename=path.name,
         fileData=base64.b64encode(raw).decode('ascii'),sha256=digest,usage='research',
-        sourceUrl=row['source_url'],publisher=row['publisher'],published=row['published'])
+        sourceUrl=row['source_url'],publisher=row['publisher'],published=row['published'],
+        sourceKind=row['kind'],author=row['analyst'] or '',authorEvidence=row['author_evidence'] or '')
 
 
 def sync(collector=None, post=None, limit=3, clock=time.time, only_run=None):
@@ -108,6 +109,11 @@ def validate(data):
     from charlie_collector import source_url
     source_url(data.get('sourceUrl',''))
     if not str(data.get('filename','')).lower().endswith('.pdf'):raise ValueError('Expected an original PDF')
+    if 'sourceKind' in data and data['sourceKind'] not in ('transcript','broker-report','press-release','presentation'):
+        raise ValueError('Invalid recorded source kind')
+    for field,bound in (('author',200),('authorEvidence',2000)):
+        if field in data and (not isinstance(data[field],str) or len(data[field])>bound):raise ValueError('Invalid recorded author')
+    if data.get('author') and not data.get('authorEvidence'):raise ValueError('Observed author evidence required')
     from command_source_import import validate_original
     return validate_original(data)
 
@@ -148,6 +154,7 @@ def create_blueprint(get_db,is_agent):
                 if data.get('restoreEmptyMetadata'):
                     return jsonify(error='Original missing; metadata recovery cannot create a document.'),409
                 meta={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
+                meta.update({k:data[k] for k in ('sourceKind','author','authorEvidence') if k in data})
                 meta.update(source='alphasense_collection',sha256=digest,usage='research')
                 cur.execute('''INSERT INTO document_files(ticker,filename,file_data,file_type,mime_type,file_size,metadata)
                     VALUES(%s,%s,%s,'pdf','application/pdf',%s,%s::jsonb)

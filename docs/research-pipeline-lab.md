@@ -47,38 +47,41 @@ search, and a successful collection is not exhaustive coverage.
 - A stable client request identity, server replay checks and ticker concurrency
   prevent duplicate submission. Saved runs retain their original manifest after
   Lab settings change. Existing uncertain-call recovery remains explicit.
-- Thesis selections default to a reviewable thesis proposal; note selections
-  default to a summary-note draft and cannot request thesis output. Additional
-  supported assignment outputs can share that same selection. These notes are
-  assignment artifacts, not replacements for the original Pipeline's full
-  Generate Note workflow or published research_notes record.
-- Browser collection plus generation remains a separate option in the Lab. It
-  uses the frozen collection policy, not existing Lab checkbox selections. The
-  UI distinguishes these paths. A source-only refresh uses collection controls.
+- Thesis selections prepare reviewable proposals. Note selections now have a full
+  versioned-note path: frozen originals/context/playbook/model, central credentials,
+  durable call journal, token preflight, worker leases and explicit recovery.
+- Full notes have saved job status, draft revision history, prose editing,
+  sources/quality caveats, Word and Markdown exports and exact-revision investor
+  acceptance. Accepting a Lab note never changes the live thesis or legacy notes.
+  Word text is Calibri/black; tables are actual Word tables. Chart data is exposed
+  as reviewable segment tables with source/unit caveats, not certified figures.
+- Lab's coordinated assignment controls offer source-only collection, with no
+  provider key or research generation required, and optional full-note follow-through
+  from the shared collected pack. Opt-in explicitly authorizes up to eight additional
+  note calls at the existing 32K cap within the monthly budget. The assignment waits
+  for the note; downstream failures remain visible alongside already saved outputs.
+- Browser-collected type and evidenced author metadata are carried by future imports.
+  Older originals are preserved; unknown metadata remains unknown. Types based on
+  filename hints are labeled suggested. No source is moved to organize the display.
 
-## Outstanding acceptance and implementation
+## Remaining acceptance and limits
 
-1. Validate the implemented iCloud and Research-storage import paths on a real
-   user-authorized selection. Synthetic checks do not establish live acceptance.
-   Preserve original paths and same-name conflicts; never resolve by filename alone.
-2. Expand browser-collected metadata (type, publisher, author, publication date,
-   observed URLs and collection window) and connect receipts to the catalog.
-   Present uncertainty; do not classify a publisher as a broker without evidence.
-3. Add source relevance explanations and separate task defaults: material changes,
-   contrary evidence and foundational sources for theses; event/question-focused
-   sources for notes. No false consensus or arbitrary preservation percentages.
-4. Make source-only refresh, inventory reload and review of newly imported items
-   seamless within stock settings. Keep recurring collection separate from
-   permission to spend model credits or change accepted research.
-5. Add a full note draft workflow with the original note's quality controls,
-   versioning, review/export and accepted-note history, while retaining existing
-   Pipeline behavior. No silent publication or thesis acceptance.
-6. Offer opt-in per-stock orchestration of collection, frozen-pack assembly and
-   chosen drafts with explicit budgets, failure recovery and saved-output links.
-   Never interpret a browser schedule as approval for unspecified paid research.
-7. Prove the complete path with a user-authorized real run and investor review.
-   Synthetic tests prove mechanics only, not actual AlphaSense freshness,
-   source sufficiency or professional investment quality.
+1. Verify a real user-authorized selection through collection, iCloud preservation,
+   exact-byte import, frozen-pack generation and investor review. Synthetic checks
+   establish mechanics only; they do not prove coverage, freshness or factual quality.
+2. Source-only collection uses the existing Operations browser worker and a frozen
+   date window, without changing the recurring policy. Reload inventory after completion
+   to review new originals. Opening settings alone does not search AlphaSense.
+3. Observed metadata remains incomplete on older sources; no retroactive guesses.
+   Task-specific relevance guidance explains source uses but is not content analysis.
+   Review contrary evidence, foundational sources and event relevance yourself.
+4. Long provider calls renew a lease; interruption surfaces attention. Never replay
+   uncertain paid calls. Source-only work authorizes no paid follow-up. Full-note
+   generation and optional assignment follow-through require explicit submission.
+5. The Mac must be awake/online with the agent, Codex and signed-in Chrome available.
+   Authentication/MFA stays in AlphaSense. No API entitlement or duplicate worker.
+6. Live acceptance and investment quality remain investor responsibilities. Do not
+   describe synthetic fixtures as an accepted unattended real-world research run.
 
 Historical valuation remains at its separate documented checkpoint. Do not
 claim all eight priorities or ticker-only automation complete.

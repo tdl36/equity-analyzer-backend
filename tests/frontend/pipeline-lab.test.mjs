@@ -41,3 +41,8 @@ test('task source guidance separates thesis challenge from event notes without s
  assert.match(taskSourceGuide('unknown','thesis'),/Review the original/);
  assert.notEqual(taskSourceGuide('Filings','note'),taskSourceGuide('Filings','thesis'));
 });
+
+test('recorded collection kind takes precedence over filename hints without inventing an author',()=>{
+ const rows=labDocuments([{id:'thesis_99',filename:'presentation.pdf',sourceKind:'broker-report',author:'Observed analyst'}],[]);
+ assert.equal(rows[0].type,'Broker research');assert.equal(rows[0].typeRecorded,true);
+});

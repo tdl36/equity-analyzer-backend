@@ -27,7 +27,11 @@ def fields(value):
     except ValueError:published=None
     publisher=meta.get('publisher')
     receipt=meta.get('source')=='alphasense_collection' and isinstance(meta.get('sha256'),str) and bool(re.fullmatch('[0-9a-f]{64}',meta['sha256']))
-    return {'sourceUrl':observed_url(meta.get('sourceUrl')) if receipt else '',
+    kind=meta.get('sourceKind') if receipt else ''
+    if kind not in ('transcript','broker-report','press-release','presentation'):kind=''
+    author=meta.get('author') if receipt and meta.get('authorEvidence') else ''
+    return {'sourceKind':kind,'author':author[:200] if isinstance(author,str) else '',
+            'sourceUrl':observed_url(meta.get('sourceUrl')) if receipt else '',
             'collectionRun':meta.get('collectionRun') if receipt and isinstance(meta.get('collectionRun'),str) and re.fullmatch('[0-9a-f]{12}',meta['collectionRun']) else '',
             'recordedSha256':meta.get('sha256') if receipt else '',
             'publishedDate':published,'publisher':publisher[:200] if isinstance(publisher,str) else '',

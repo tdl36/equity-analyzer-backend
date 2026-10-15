@@ -408,6 +408,34 @@ class AssignmentPostgresTests(unittest.TestCase):
         with self.db() as (_,cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(self.ticker,));self.assertEqual(cur.fetchone()['analysis'],old['analysis'])
 
+    def test_source_only_collection_never_dispatches_research(self):
+        self.co.has_key=lambda:False
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected();row=self.advance()
+        self.assertEqual(row['status'],'complete');self.assertFalse(self.submits)
+        self.assertNotIn('reportId',row['result']);self.assertEqual(len(row['result']['sources']),1)
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+
+    def test_opt_in_full_note_waits_and_surfaces_downstream_failure(self):
+        calls=[];note_id=str(uuid.uuid4());state={'status':'queued'}
+        self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Frozen fixture'}
+        def dispatch(ident,p,pack):
+            calls.append((ident,copy.deepcopy(p['labNotePlan']),copy.deepcopy(pack)))
+            return {'noteId':note_id,**state}
+        self.co.lab_note_dispatch=dispatch
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['summary_note'],'labFullNote':{'allowPdfText':False}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected();row=self.advance()
+        self.assertEqual(row['status'],'running');self.assertEqual(row['result']['labNoteId'],note_id)
+        self.assertIn('summary_note',row['result']['artifacts'])
+        state.update(status='attention',reason='provider_outcome_unknown')
+        row=self.advance();self.assertEqual(row['status'],'attention');self.assertIn('provider_outcome_unknown',row['error'])
+        state.update(status='draft',revision=1)
+        self.co.store(self.ident,row['result'],'running');row=self.advance()
+        self.assertEqual(row['status'],'complete');self.assertEqual(calls[0],calls[-1]);self.assertEqual(len(self.submits),1)
+        self.assertNotIn('labNotePlan',self.co.public(row)['input'])
+
     def test_shared_meeting_output_recovers_lost_receipt_without_new_research(self):
         original_report=self.report
         def report():

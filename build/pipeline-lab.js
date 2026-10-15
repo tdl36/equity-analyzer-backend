@@ -1,3 +1,4 @@
+import LabNote from './pipeline-lab-note';
 import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp } from './workspace-model.mjs';
@@ -21,7 +22,8 @@ async function read(api, path, options = {}) {
 }
 export function PipelineLab({
   api,
-  onNavigate
+  onNavigate,
+  renderHtml
 }) {
   var [stocks, setStocks] = React.useState([]),
     [error, setError] = React.useState(''),
@@ -112,6 +114,7 @@ export function PipelineLab({
       overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement(LabStock, {
+    renderHtml: renderHtml,
     key: ticker,
     api: api,
     ticker: ticker,
@@ -123,7 +126,8 @@ function LabStock({
   api,
   ticker,
   onNavigate,
-  onClose
+  onClose,
+  renderHtml
 }) {
   var [rows, setRows] = React.useState([]),
     [saved, setSaved] = React.useState(null),
@@ -355,7 +359,7 @@ function LabStock({
     value: "date"
   }, "Newest available date"), /*#__PURE__*/React.createElement("option", {
     value: "name"
-  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types use recorded collection metadata when available; otherwise they are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: selectedOnly,
     onChange: e => setSelectedOnly(e.target.checked)
@@ -408,7 +412,7 @@ function LabStock({
     }
   }, /*#__PURE__*/React.createElement("label", {
     htmlFor: `lab-source-${r.key}`
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, r.typeRecorded ? ' (recorded)' : ' (suggested)', " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : '', r.author ? ' · ' + r.author : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), /*#__PURE__*/React.createElement("details", {
     style: {
       marginTop: 8
     }
@@ -464,7 +468,7 @@ function LabStock({
     }
   }, b))) : /*#__PURE__*/React.createElement("p", null, "The selected stored bytes passed this check."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "This does not verify external-source freshness, licensing or equality with iCloud originals. No research was started. Originals are rechecked when a run starts. Generated outputs remain drafts for your review."))), checkResult && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && checkResult.generationAvailable !== true && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "The connected server does not yet support generation from Lab selections. Refresh after the backend update finishes."), checkResult?.generationAvailable === true && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement(ResearchAssignment, {
+  }, "The connected server does not yet support generation from Lab selections. Refresh after the backend update finishes."), task === 'thesis' && checkResult?.generationAvailable === true && !dirty && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement(ResearchAssignment, {
     embedded: true,
     key: `${task}:${saved.revision}:${checkResult.digest}`,
     api: api,
@@ -475,7 +479,16 @@ function LabStock({
       digest: checkResult.digest
     },
     onReport: () => onNavigate('stockanalysis', ticker)
-  })), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+  })), /*#__PURE__*/React.createElement(LabNote, {
+    api: api,
+    ticker: ticker,
+    read: read,
+    renderHtml: renderHtml,
+    selection: task === 'note' && !dirty && checkResult?.generationAvailable === true && !checkResult.blockers.length && checkResult.task === task && checkResult.revision === saved?.revision ? {
+      revision: saved.revision,
+      digest: checkResult.digest
+    } : null
+  }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: `#view=desk&ticker=${encodeURIComponent(ticker)}&section=collection`
   }, "Open this stock\u2019s browser collection schedule, history & recovery \u2192")), /*#__PURE__*/React.createElement("hr", {
     style: {
@@ -484,6 +497,7 @@ function LabStock({
   }), /*#__PURE__*/React.createElement("h3", null, "Collect latest sources through AlphaSense in Chrome"), /*#__PURE__*/React.createElement("p", null, "No AlphaSense API or MCP is required. The scheduled Operations worker uses your signed-in Chrome session. This uses Charlie\u2019s existing coordinated assignment workflow and its own source policy, not the saved Lab selections above. It can collect up to eight eligible originals and prepare reviewable outputs. Keep the Mac awake and online, its agent running, and Codex and signed-in Chrome available. Sign-in or MFA is completed directly in AlphaSense. Collection is not guaranteed to be immediate."), /*#__PURE__*/React.createElement("button", {
     onClick: () => setCollect(v => !v)
   }, collect ? 'Hide assignment controls' : 'Open coordinated assignment controls'), collect && /*#__PURE__*/React.createElement(ResearchAssignment, {
+    labMode: true,
     embedded: true,
     api: api,
     ticker: ticker,

@@ -2,77 +2,46 @@
 
 Updated: October 14, 2026
 
-## Pending Lab full notes — local checkpoints, not released
+## Research Pipeline Lab T269 — integration release
 
-Production remains T268. The following modules are local/unpushed and deliberately
-unregistered: no new schema, API, worker, paid call or user-visible behavior is live.
-Original Research Pipeline and research_notes remain untouched.
+Full Lab notes now connect authenticated submission, durable plans/call journal,
+lease-renewing worker, review/edit/history, Word/Markdown export and exact-revision
+investor acceptance. Legacy Research Pipeline and research_notes are unchanged.
+Central credentials and the approved research picker are reused, with 32K output
+cap, token-count preflight and monthly budget check before each fresh dispatch.
+No SDK retries or provider fallback. Unknown calls stay attention; saved replies
+materialize without spending again. Source hashes/representation are rechecked.
 
-- pipeline_lab_notes.py: append-only draft revisions, source identities, optimistic
-  edits, replay and bounded history. Prose edits preserve provenance/quality issues.
-  Every version is draft and investorApproved=false; no publication route.
-- pipeline_lab_notes_api.py: injected authenticated review/history/edit adapter,
-  bounded bodies and no-store responses. No create/accept route, not registered.
-- pipeline_lab_note_evidence.py / pipeline_lab_note_response.py: retained sources
-  appendix, chart specs, stop reason and visible missing/truncation caveats. Strict
-  reply boundaries/JSON; no arbitrary-text fallback or paid repair. Completed raw
-  replies materialize idempotently and cannot overwrite later investor edits.
-- pipeline_lab_note_calls.py: durable intent before injected provider invocation,
-  immutable bounded replies, replay without spending, uncertain outcomes never
-  automatically retried. Call identity binds hashes, model and output cap.
-- pipeline_lab_note_sources.py: exact ID/hash/name/eligibility checks, no omitted or
-  substituted source, original PDF blocks. PDF text fallback requires explicit
-  policy; all extracted representations carry fidelity warnings and content hashes.
-  Uses existing notegen planning and preserves original files.
-- pipeline_lab_note_plan.py: immutable bounded context, prompt, ticker/title, model,
-  cap, source hashes, representation hash, batch count and warnings. No source-byte
-  copy. Conflicting concurrent plans and representation drift are rejected.
-- pipeline_lab_note_run.py: coordinator connects stored plans, source checks, journal
-  and draft materialization. Synthetic multi-batch merging and restart reuse work.
-  Truncated intermediate replies stop; final completed replies can materialize
-  without rereading originals. The injected provider still needs input-budget and
-  model/account-policy enforcement before production use.
-- NEW pipeline_lab_note_jobs.py: durable queued/running/attention/draft states.
-  Transactional plan+enqueue, SKIP LOCKED claims and renewable five-minute leases.
-  Expired workers become attention, never queued automatically. Lease identities
-  fence renewal/settlement; draft status requires an actual saved revision. Replay
-  of submission cannot reset running, attention or completed work. Not scheduled.
-  Explicit recover() now reconciles saved drafts/final replies without model calls;
-  active leases cannot be stolen, uncertain outcomes cannot requeue, and malformed,
-  mismatched or truncated replies stay attention. Unstarted or safely checkpointed
-  work can requeue only through this explicit recovery entry point (no route yet).
+Lab collection controls now offer a source-only assignment (no provider key or
+research dispatch) and an explicit opt-in full Lab note following the existing
+coordinated collection/research path. The latter uses the same verified originals,
+submission-frozen thesis context/playbook/model and deterministic note identity.
+The parent remains running until the full note is saved; downstream attention is
+reported without hiding other saved outputs. No second browser worker is created.
 
-- pipeline_lab_note_worker.py: one bounded worker iteration now claims durably,
-  renews its lease in a background thread, checks ownership before source loading
-  and each injected provider call, and settles only under its current lease. Lost
-  ownership blocks further dispatch; raw exceptions are not exposed. No scheduler
-  or provider binding yet. Four disposable PostgreSQL tests cover claim/draft
-  settlement, expired-owner fencing, source failure and uncertain-call attention.
+Stock settings retain separate thesis/note selections and the existing import
+controls. Future browser original imports carry recorded type and evidenced author
+metadata; old metadata is preserved. Filename classifications remain labeled as
+suggestions. Source-only completion requires inventory reload to review new items.
 
-- pipeline_lab_note_submit.py: authenticated bounded submission/status/recovery
-  adapter now accepts only stable request ID, saved revision, checked digest and
-  PDF representation choice. A server-only builder owns context/prompt/model and
-  budget validation. Submission receipt and queue/plan commit atomically; replay
-  does not rebuild context or reset work. Client prompts, keys and model overrides
-  are rejected. This adapter remains unregistered; the real builder is still needed.
+Word exports contain real tables, source manifest and quality caveats, with Calibri
+and black text throughout. Acceptance is a separate revision receipt, allowed only
+for password-authenticated investors; machine API keys cannot approve research.
+Later edits remain unaccepted and prior accepted revisions remain accessible.
 
-Latest validation: all 1515 safe backend tests passed, including three submission
-HTTP tests for auth, stable replay, identity conflicts, input bounds and forbidden
-client fields. Compilation/model policy passed. Long-call renewal and real-source
-acceptance remain unverified. No paid QA, live writes or deployment.
+Validation: safe backend suite, frontend suite, compilation, model policy and
+production build; synthetic 390px/1280px UI checks cover source-only submission,
+lost-response/reload identity reuse, full-note review and revision editing. No paid
+QA or real research/approval mutation. See release verification below for results.
 
-Next concrete action: wire authenticated submission to freeze the existing full-note
-playbook/context and enforce account/model/input budgets. Bind the worker adapter
-to the existing backend scheduler and verify long-call lease renewal;
-reconcile interrupted jobs against durable replies/drafts without retrying ambiguous
-paid outcomes. Then connect review UI/export in Calibri/black and explicit acceptance
-history, register schemas/routes, and follow the full release procedure. Do not expose
-these helpers as complete end-to-end automation before real authorized acceptance.
-
-Existing full-note integration map: app_v3.py:_generate_research_note owns playbook,
-planner, attachment building, charts and DOCX. Do NOT invoke it directly: it selects
-by filename, reads live thesis, writes legacy research_notes and sends Telegram.
-Reuse bounded pieces without those side effects. No real provider adapter is wired.
+Remaining acceptance: run the real user-authorized collection→exact-byte import→
+full note/proposals→review flow and inspect factual/source quality. Synthetic tests
+cannot prove AlphaSense completeness or professional investment quality. Mac awake,
+agent, Codex, network and signed-in Chrome remain required. No automatic investor
+acceptance, no arbitrary paid retry, and no claim that all eight priorities are done.
+Historical valuation work remains at its separate checkpoint. Next engineering
+follow-through: real-run findings, newly imported source review and richer observed
+metadata coverage; do not repeat the now-integrated full-note scaffolding work.
 
 ## T268 — Task-specific source-selection guidance in Lab
 

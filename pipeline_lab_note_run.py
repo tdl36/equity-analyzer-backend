@@ -50,6 +50,12 @@ def execute(get_db, note_id, load_documents, invoke, planner=None):
                   'contextSha256':prepared['representationSha256'],
                   'promptSha256':hashlib.sha256(prompt.encode()).hexdigest(),
                   'modelKey':plan['modelKey'],'maxTokens':plan['maxTokens']}
+        with get_db() as (_,cur):
+            cur.execute('SELECT status FROM pipeline_lab_note_calls WHERE note_id=%s AND batch=%s',(note_id,index+1))
+            journal=cur.fetchone()
+        if journal is None and hasattr(invoke,'preflight'):
+            try:invoke.preflight(messages=messages,model_key=plan['modelKey'],max_tokens=plan['maxTokens'])
+            except Exception:return {'status':'attention','reason':'preflight_failed'}
         result=run_once(get_db,identity,lambda:invoke(messages=messages,model_key=plan['modelKey'],max_tokens=plan['maxTokens']))
         if result['status']!='complete':return result
         previous=result['response']['text']

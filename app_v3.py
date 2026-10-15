@@ -29502,6 +29502,50 @@ import pipeline_lab_icloud_api
 app.register_blueprint(pipeline_lab_icloud_api.create_blueprint(get_db,
     lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
+# Full Lab notes use the existing approved research model with no retry/fallback.
+import pipeline_lab_note_service as lab_notes_service
+import pipeline_lab_note_submit
+import pipeline_lab_notes_api
+import pipeline_lab_note_review
+with get_db(commit=True) as (_, _lab_cur):
+    lab_notes_service.initialize(_lab_cur)
+
+def _lab_note_spec(key):
+    spec = PICKER_MODEL_BY_KEY.get(key)
+    if not spec or spec['provider'] != 'anthropic':
+        raise ValueError('The frozen Lab note model is unavailable.')
+    model_registry.ensure_active(spec['model'])
+    return spec
+
+def _lab_note_preflight(*, messages, model_key, max_tokens):
+    spec = _lab_note_spec(model_key)
+    key = provider_credentials.get('anthropic')
+    if not key or budget_blocks('note'):
+        raise ValueError('Central credentials or research budget need attention.')
+    client = anthropic.Anthropic(api_key=key, timeout=60, max_retries=0)
+    count = client.messages.count_tokens(model=spec['model'], messages=messages).input_tokens
+    if count + max_tokens > 195000:
+        raise ValueError('The frozen batch exceeds the conservative input budget.')
+
+def _lab_note_invoke(*, messages, model_key, max_tokens):
+    spec = _lab_note_spec(model_key)
+    result = _call_anthropic_stream(messages=messages, system='', model=spec['model'],
+        max_tokens=max_tokens, timeout=1200, api_key=provider_credentials.get('anthropic'), max_retries=0)
+    record_llm_usage('pipeline-lab-full-note', result)
+    return {'text':result['text'],'provider':result['provider'],'model':result['model'],
+            'stopReason':result.get('stop_reason') or 'unknown'}
+_lab_note_invoke.preflight = _lab_note_preflight
+app.register_blueprint(pipeline_lab_note_submit.create_blueprint(get_db, _historical_evidence_authenticated,
+    lab_notes_service.builder(RESEARCH_NOTE_PLAYBOOK, PICKER_DEFAULT_MODEL,
+        lambda: bool(provider_credentials.get('anthropic')), lambda: budget_blocks('note'))))
+app.register_blueprint(pipeline_lab_notes_api.create_blueprint(get_db, _historical_evidence_authenticated))
+app.register_blueprint(pipeline_lab_note_review.create_blueprint(get_db, _historical_evidence_authenticated,
+    _edition_investor_identity, _generate_note_docx))
+_research_assignments.lab_note_defaults = lambda: {
+    'modelKey':PICKER_DEFAULT_MODEL,'promptTemplate':RESEARCH_NOTE_PLAYBOOK+'\n\n'+lab_notes_service.PROMPT}
+_research_assignments.lab_note_dispatch = lambda ident,p,pack: lab_notes_service.assignment_note(get_db,ident,p,pack)
+_lab_note_worker = lab_notes_service.start_worker(get_db, _lab_note_invoke)
+
 app.register_blueprint(provider_credentials.create_blueprint(get_db, lambda: bool(CHARLIE_API_KEY) and hmac.compare_digest(request.headers.get('Authorization',''), 'ApiKey '+CHARLIE_API_KEY)))
 
 if __name__ == '__main__':

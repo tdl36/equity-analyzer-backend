@@ -17,8 +17,12 @@ export function ResearchAssignment({
   onClearFocus,
   origin = null,
   labSelection = null,
-  embedded = false
+  embedded = false,
+  labMode = false
 }) {
+  var [collectionOnly, setCollectionOnly] = React.useState(false);
+  var [fullNote, setFullNote] = React.useState(false),
+    [notePdfText, setNotePdfText] = React.useState(false);
   var [since, setSince] = React.useState(() => {
       var d = new Date();
       d.setDate(d.getDate() - 69);
@@ -179,6 +183,7 @@ export function ResearchAssignment({
     if (!matchingReceipt(result, body)) throw Error('Assignment receipt does not match the saved request. Inspect saved assignments before retrying.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
+    if (body.collectionOnly) return 'Assignment saved. Charlie will collect and verify originals only. Reload the Lab inventory when collection completes; no research generation was requested.';
     return body.labSelection ? 'Assignment saved from your checked Lab selection. No new collection was requested. Drafts will be saved for review.' : 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
   }
   var start = () => mutate(async () => {
@@ -186,17 +191,25 @@ export function ResearchAssignment({
       ticker,
       since,
       until,
+      ...(labMode && fullNote && !collectionOnly ? {
+        labFullNote: {
+          allowPdfText: notePdfText
+        }
+      } : {}),
       ...(labSelection ? {
         labSelection
       } : {}),
-      outputs: [...chosen].sort(),
+      ...(labMode && collectionOnly ? {
+        collectionOnly: true
+      } : {}),
+      outputs: collectionOnly ? [] : [...chosen].sort(),
       horizon,
       instruction,
-      visualFundamentals,
+      visualFundamentals: collectionOnly ? false : visualFundamentals,
       ...(origin ? {
         origin
       } : {}),
-      ...(chosen.includes('meeting_prep') ? {
+      ...(!collectionOnly && chosen.includes('meeting_prep') ? {
         meeting: {
           date: meetingDate,
           type: meetingType
@@ -326,7 +339,9 @@ export function ResearchAssignment({
       downloadText(await r.text(), `${ticker}-${a.kind}-${j.id.slice(0, 8)}.html`);
       return 'Draft exported as printable HTML.';
     })
-  }, "Export ", j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
+  }, "Export ", j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.labNoteId && /*#__PURE__*/React.createElement("a", {
+    href: routeHash('pipelinelab', ticker)
+  }, "Review full Lab note \xB7 ", j.result.labNoteStatus), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
   }, "Open meeting questions from this pack"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
@@ -404,7 +419,24 @@ export function ResearchAssignment({
     min: since,
     max: date(new Date()),
     onChange: e => setUntil(e.target.value)
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), labMode && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: collectionOnly,
+    onChange: e => setCollectionOnly(e.target.checked)
+  }), "Collect sources only \u2014 no paid research generation"), /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    disabled: collectionOnly,
+    checked: fullNote,
+    onChange: e => setFullNote(e.target.checked)
+  }), "Also prepare a full versioned Lab note from this same collected source pack"), fullNote && !collectionOnly && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "This explicitly authorizes up to eight additional note-generation calls, each capped at 32,000 output tokens, using central credentials and the monthly budget. The assignment waits for the saved draft; investor acceptance stays separate."), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: notePdfText,
+    onChange: e => setNotePdfText(e.target.checked)
+  }), "Allow text-only representation for oversized PDFs"))), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, outputs.filter(([id]) => !labSelection || labSelection.task === 'thesis' || id !== 'thesis').map(([id, title]) => /*#__PURE__*/React.createElement("label", {
     className: "sa-check",
@@ -412,7 +444,7 @@ export function ResearchAssignment({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: chosen.includes(id),
-    disabled: !!origin && id === 'visual',
+    disabled: collectionOnly || !!origin && id === 'visual',
     onChange: e => setChosen(p => e.target.checked ? [...p, id] : p.filter(x => x !== id))
   }), title))), chosen.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
@@ -457,7 +489,7 @@ export function ResearchAssignment({
     })
   }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
     className: embedded ? "workspace-primary" : "sa-primary",
-    disabled: !chosen.length || !since || !until || !horizon.trim() || chosen.includes('meeting_prep') && !meetingDate,
+    disabled: !collectionOnly && !chosen.length || !since || !until || !horizon.trim() || !collectionOnly && chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
-  }, labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.")), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
+  }, collectionOnly ? 'Collect latest sources for' : labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, collectionOnly ? 'Source-only refresh collects up to eight eligible originals through the existing browser worker. No model generation is authorized by this request.' : 'One shared research run: up to eight selected originals and twelve model calls within your configured budget. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.')), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }

@@ -27,6 +27,16 @@ class Runs(unittest.TestCase):
                    'batchCount':1,'warnings':prepared['warnings'],'allowPdfText':False}
         with self.db(True) as (_,c):freeze(c,self.plan)
         self.response={**self.response,'text':'===NOTE_START===Synthetic note [1].===NOTE_END==='}
+    def test_preflight_failure_never_reserves_or_calls_generation(self):
+        def invoke(**kwargs):self.fail('No generation allowed')
+        def preflight(**kwargs):raise ValueError('Input budget fixture')
+        invoke.preflight=preflight
+        result=execute(self.db,self.note,lambda plan:self.docs,invoke)
+        self.assertEqual(result['reason'],'preflight_failed')
+        with self.db() as (_,c):
+            c.execute('SELECT 1 FROM pipeline_lab_note_calls WHERE note_id=%s',(self.note,))
+            self.assertIsNone(c.fetchone())
+
     def test_complete_and_resume_without_repaying_or_reloading_originals(self):
         calls=[]
         def invoke(**kwargs):

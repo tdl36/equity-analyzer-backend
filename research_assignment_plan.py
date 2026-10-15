@@ -15,8 +15,10 @@ def plan(data):
     try:since=date.fromisoformat(data['since']);until=date.fromisoformat(data['until'])
     except (ValueError,TypeError,KeyError):raise ValueError('Choose a start and end date.')
     if since>until or (until-since).days>=365 or until>datetime.now(ZoneInfo('America/New_York')).date():raise ValueError('Choose a past/present range of 1–365 days.')
+    collection_only=data.get('collectionOnly',False)
+    if type(collection_only) is not bool:raise ValueError('Invalid source-only choice.')
     outputs=data.get('outputs',list(DEFAULT_OUTPUTS));horizon=data.get('horizon','12–24 months');instruction=data.get('instruction','')
-    if not isinstance(outputs,list) or not outputs or any(not isinstance(x,str) or x not in OUTPUTS for x in outputs) or len(set(outputs))!=len(outputs):raise ValueError('Choose at least one supported output.')
+    if not isinstance(outputs,list) or (not outputs and not collection_only) or any(not isinstance(x,str) or x not in OUTPUTS for x in outputs) or len(set(outputs))!=len(outputs):raise ValueError('Choose at least one supported output.')
     if not isinstance(horizon,str) or not 1<=len(horizon.strip())<=100 or not isinstance(instruction,str) or len(instruction)>1800:raise ValueError('Invalid horizon or research instructions.')
     supplement=data.get('visualFundamentals',False)
     if not isinstance(supplement,bool):raise ValueError('Invalid public fundamentals choice.')
@@ -46,4 +48,12 @@ def plan(data):
         if selection['task']=='note' and 'thesis' in outputs:
             raise ValueError('Use the separate thesis selection to prepare thesis proposals.')
         result['labSelection']=dict(selection)
+    if collection_only:
+        if outputs or 'labFullNote' in data or 'labSelection' in data:raise ValueError('Source-only refresh cannot request research outputs.')
+        result['collectionOnly']=True
+    if 'labFullNote' in data:
+        choice=data['labFullNote']
+        if not isinstance(choice,dict) or set(choice)!={'allowPdfText'} or type(choice['allowPdfText']) is not bool:
+            raise ValueError('Explicit full Lab note representation choice required.')
+        result['labFullNote']=dict(choice)
     return result

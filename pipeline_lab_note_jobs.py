@@ -61,7 +61,7 @@ def settle(cur, note_id, lease_id, result):
         reason=result['reason']
         if reason not in ('provider_outcome_unknown','saved_reply_needs_review',
                           'merge_context_exceeds_bound','intermediate_reply_truncated',
-                          'source_check_failed','worker_interrupted'):
+                          'source_check_failed','worker_interrupted','preflight_failed'):
             raise ValueError('Unknown recovery reason.')
     else:raise ValueError('Unsupported job result.')
     cur.execute("UPDATE pipeline_lab_note_jobs SET status=%s,reason=%s,revision=%s,lease_id=NULL,lease_until=NULL,updated_at=NOW() WHERE note_id=%s AND lease_id=%s AND status='running' AND lease_until>NOW() RETURNING note_id",(state,reason,revision,_note_identity(note_id),_note_identity(lease_id)))

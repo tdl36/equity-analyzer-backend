@@ -32,6 +32,7 @@ class Coordinator:
     def __init__(self,app,get_db,invoke,has_key):
         self.app,self.db,self.invoke,self.has_key=app,get_db,invoke,has_key
         self.lock=threading.Lock();self.bp=Blueprint('research_assignments',__name__)
+        self.lab_note_defaults=None;self.lab_note_dispatch=None
         self.routes()
     def read(self,ident):
         with self.db() as (_,cur):
@@ -107,6 +108,10 @@ class Coordinator:
                 from command_thesis_bridge import file_hash
                 hashes={s['filename']:s['sha256'] for s in pack}
                 if len(docs)!=len(pack) or any(not eligible(d.get('metadata') or {}) or file_hash(d)!=hashes[d['filename']] for d in docs):raise ValueError('Imported source hashes or permissions do not match the collection receipts.')
+                if p.get('collectionOnly'):
+                    state.pop('reportId',None);state['sources']=pack
+                    state['step']='Originals collected and verified in Charlie; no research generation requested'
+                    self.store(ident,state,'complete');return
                 if not state.get('researchInput'):
                     state['sources']=pack
                     q=('Research from explicitly selected stored originals; no new external collection was performed. Requested context window '+p['since']+' through '+p['until']+'. ' if p.get('labSelection') else 'Research evidence collected '+p['since']+' through '+p['until']+'. ')+p['instruction']+' Distinguish source dates, financial periods, forecasts and interpretation. Identify evidence gaps; do not infer current price or consensus.'
@@ -174,6 +179,14 @@ class Coordinator:
                     state['step']='Some outputs need attention; completed drafts are retained'
                     # Keep thesis errors first for the existing bounded repair gate.
                     raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep') if k in output_errors))
+                if p.get('labFullNote'):
+                    if not self.lab_note_dispatch:raise ValueError('Full Lab note worker is unavailable; saved outputs are retained.')
+                    receipt=self.lab_note_dispatch(ident,p,pack)
+                    state['labNoteId']=receipt['noteId'];state['labNoteStatus']=receipt['status']
+                    if receipt['status']=='attention':
+                        raise ValueError('Full Lab note needs attention: '+str(receipt.get('reason'))+'. Reconcile it in Pipeline Lab, then resume this assignment. Other saved outputs remain available.')
+                    if receipt['status']!='draft':
+                        state['step']='Writing full Lab note from the shared originals';self.store(ident,state,'running');return
                 state['step']='Ready for investor review';self.store(ident,state,'complete')
             except ValueError as exc:
                 self.store(ident,state,'attention',str(exc)[:900])
@@ -191,7 +204,7 @@ class Coordinator:
         s.pop('meetingSelection',None);s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
-        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy')},result=s)
+        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy','labNotePlan')},result=s)
     def routes(self):
         bp=self.bp
         @bp.route('/api/research/assignment-defaults',methods=['GET','PUT'])
@@ -228,12 +241,16 @@ class Coordinator:
                 if old:
                     if old['stage']!=STAGE or obj(old['input']).get('fingerprint')!=fingerprint:return jsonify(error='Request identity already used for different settings.'),409
                     self.wake();return jsonify(self.public(old)),200
-                if not self.has_key():return jsonify(error='Configure the research model key in Settings before starting.'),400
+                if not p.get('collectionOnly') and not self.has_key():return jsonify(error='Configure the research model key in Settings before starting.'),400
                 try:
-                    prepared=self.call('thesis_imports.prepare',ticker=p['ticker'])['package']
-                    inv=self.call('stock_analysis.listing',ticker=p['ticker'])
+                    prepared={} if p.get('collectionOnly') else self.call('thesis_imports.prepare',ticker=p['ticker'])['package']
+                    inv={'baseline':{'revision':0}} if p.get('collectionOnly') else self.call('stock_analysis.listing',ticker=p['ticker'])
                 except ValueError as exc:return jsonify(error=str(exc)),409
                 p.update(thesisBaseline=prepared,caseRevision=inv['baseline']['revision'],fingerprint=fingerprint)
+                if p.get('labFullNote'):
+                    if not self.lab_note_defaults:return jsonify(error='Full Lab note integration unavailable.'),409
+                    p['labNotePlan']={**self.lab_note_defaults(),'allowPdfText':p['labFullNote']['allowPdfText']}
+
                 from source_preferences import DEFAULT,KEY as SOURCE_KEY
                 with self.db(True) as (_,cur):
                     cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('assignment-submit:'+ident,))
