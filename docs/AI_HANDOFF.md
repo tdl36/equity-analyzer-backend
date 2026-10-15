@@ -14,8 +14,11 @@ explicit discard and server conflict checks remain in force.
 188 frontend tests, model policy and build passed. Synthetic 390px/1280px checks
 verified exact titles/prose, read-only fields, current/older baseline labels,
 recovery after navigation and explicit discard with zero server writes. Mobile
-comparison inspected visually; no horizontal overflow. Production verification
-pending. Backend/agent unchanged; no paid QA or investor actions.
+comparison inspected visually; no horizontal overflow. Verified Render
+`60cbe4e5ecc0ce2408938065b0682e50f7bacddb`, Cloudflare
+`2a229277-0a8a-48a7-9d8f-dedd979200ee`, T284 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (0.3 seconds old); read-only endpoint auth checks passed.
+Backend/agent unchanged; no paid QA or investor actions.
 Next: real collection/source-quality/investor acceptance remains outstanding;
 review the coordinated Lab run's presentation of partial outputs and actionable
 failures without dispatching test research. Historical provider schema remains
