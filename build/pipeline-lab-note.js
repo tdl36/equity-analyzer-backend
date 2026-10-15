@@ -32,7 +32,8 @@ export default function LabNote({
     [pending, setPending] = React.useState(false),
     [pendingEdit, setPendingEdit] = React.useState(false);
   var [localRecovery, setLocalRecovery] = React.useState(null),
-    [bufferError, setBufferError] = React.useState('');
+    [bufferError, setBufferError] = React.useState(''),
+    [compareEdits, setCompareEdits] = React.useState(false);
   var bufferKey = id => key + ':unsaved:' + id;
   var change = (nextTitle, nextText) => {
     setTitle(nextTitle);
@@ -157,6 +158,7 @@ export default function LabNote({
   React.useEffect(() => {
     setPendingEdit(false);
     setLocalRecovery(null);
+    setCompareEdits(false);
     setBufferError('');
     if (!draft) return;
     try {
@@ -383,13 +385,62 @@ export default function LabNote({
         try {
           sessionStorage.removeItem(bufferKey(draft.noteId));
           setLocalRecovery(null);
+          setCompareEdits(false);
           setBufferError('');
         } catch {
           setBufferError('Local recovery could not be cleared.');
         }
       }
     }
-  }, "Discard local recovery copy")), pendingEdit && /*#__PURE__*/React.createElement("p", {
+  }, "Discard local recovery copy")), (unsaved || localRecovery && !localRecovery.unreadable) && !pendingEdit && /*#__PURE__*/React.createElement("div", {
+    style: {
+      margin: '16px 0'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    "aria-expanded": compareEdits,
+    onClick: () => setCompareEdits(v => !v)
+  }, compareEdits ? 'Hide edit comparison' : 'Compare local edits with saved revision'), compareEdits && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Note edit comparison"
+  }, /*#__PURE__*/React.createElement("h4", null, "Review before changing the saved note"), /*#__PURE__*/React.createElement("p", null, "Showing the saved revision currently open and your local copy. This does not merge, save, accept or change the edit baseline. Other saved revisions may exist."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Saved revision ", draft.revision), /*#__PURE__*/React.createElement("label", null, "Saved title", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Comparison saved title",
+    readOnly: true,
+    value: draft.title,
+    style: {
+      width: '100%'
+    }
+  })), /*#__PURE__*/React.createElement("label", null, "Saved text", /*#__PURE__*/React.createElement("textarea", {
+    "aria-label": "Comparison saved text",
+    readOnly: true,
+    value: draft.markdown,
+    style: {
+      width: '100%',
+      minHeight: 280,
+      fontFamily: 'Calibri, sans-serif'
+    }
+  }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Local edits based on revision ", localRecovery?.revision || draft.revision), /*#__PURE__*/React.createElement("label", null, "Local title", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Comparison local title",
+    readOnly: true,
+    value: localRecovery?.title ?? title,
+    style: {
+      width: '100%'
+    }
+  })), /*#__PURE__*/React.createElement("label", null, "Local text", /*#__PURE__*/React.createElement("textarea", {
+    "aria-label": "Comparison local text",
+    readOnly: true,
+    value: localRecovery?.markdown ?? text,
+    style: {
+      width: '100%',
+      minHeight: 280,
+      fontFamily: 'Calibri, sans-serif'
+    }
+  })))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Copy any text you need before explicitly discarding a recovery copy. Saving an older baseline still requires resolving the server revision conflict; this comparison never overwrites newer work.")))), pendingEdit && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "A previous edit has no confirmed response. The submitted text is preserved below. Reconcile that same edit before changing it; this does not generate research."), pendingEdit && !editing && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
