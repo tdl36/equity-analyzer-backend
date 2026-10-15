@@ -17,7 +17,10 @@ preserves pending identity and existing inventory rather than announcing success
 198 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
 checks retained a wrong-task receipt and reconciled a subsequent matching receipt
 with the same request body. All writes were intercepted fixtures; no real import,
-paid research or investor approval was performed. Production verification pending.
+paid research or investor approval was performed. Verified Render
+`b755a5d18865fa4acf1a070b221ac66658750b60`, Cloudflare
+`83ab3d75-e127-44ea-b019-df8d3d05f35d`, T290 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (3.3 seconds old); endpoint authentication checks passed.
 Backend/agent unchanged. Next: real source-to-output and investor acceptance remain
 open; preserve the historical valuation provider-schema checkpoint.
 
