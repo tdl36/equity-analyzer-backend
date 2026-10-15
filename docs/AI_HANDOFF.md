@@ -14,7 +14,10 @@ unchanged. Lab navigation now uses the existing company-aware routing callback.
 192 frontend tests, model policy and build passed. Synthetic desktop/390px checks
 verified invalid/multiple-symbol rejection, normalized new-stock entry and reload
 without server writes or generation. Mobile form inspected; no horizontal overflow.
-Production verification pending. Backend/agent unchanged; no paid QA or approvals.
+Verified Render `bdf0fbe5d495269fc436f1a93ca858446ec67c2e`, Cloudflare
+`06b0f811-5aaa-4a45-8096-d08323f6d95d`, T286 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (72.2 seconds old); read-only endpoint auth checks passed.
+Backend/agent unchanged; no paid QA or approvals.
 Next: follow an actual authorized request through collection and saved drafts for
 real source-quality/investor acceptance. Historical valuation retains the documented
 provider-schema checkpoint; ticker entry alone is not completed automation.
