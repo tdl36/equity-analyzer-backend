@@ -28,6 +28,24 @@ and recoverable failure presentation using saved-state fixtures; avoid adding mo
 orchestration. Historical valuation/reference-schema and wider eight-priority
 acceptance remain open.
 
+T324 production verified: Render dca701e9a58718711a15f88282cf1898d586ebcb;
+Cloudflare 2c19dcf6-648d-4453-b13c-4cc41d4612b4. Exact hosted JS/service-worker
+bytes and HTML marker match. Read-only authentication/identity guards and Mac agent
+health (87.7 seconds) passed. Logs: /tmp/charlie-T324-{focused,export-final,backend,
+frontend,build,ui,deploy,verify}.log. Focused CVS inspection at 20:26:04 UTC found
+assignment running, nested collection queued, zero receipts and no saved issue.
+The requestId read did not wake the coordinator. No live acceptance was claimed.
+
+Next actionable navigation gap: src/assignment-review-model.mjs omits labNoteId
+from reviewDocuments; the full-note link exists in Sources/progress/history, but
+not the prominent Saved deliverables tabs. Stock-analysis focused assignments do
+not enable Lab-mode delivery controls. Add a saved-note tab only for a confirmed
+draft receipt, with accurate note-specific copy and the existing focused Lab route;
+retain a recovery link/status for incomplete or attention notes and do not imply
+parent completion proves note delivery. Test attention/partial outputs, missing
+receipts, exact ticker/note routing and mobile tab navigation without API generation.
+This is output discoverability, not a missing storage link or completed live proof.
+
 ## T323 — Frozen per-source context reaches generation
 
 New processing proposals now freeze a versioned source-evidence manifest alongside
