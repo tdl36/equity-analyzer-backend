@@ -32,7 +32,7 @@ class Coordinator:
     def __init__(self,app,get_db,invoke,has_key):
         self.app,self.db,self.invoke,self.has_key=app,get_db,invoke,has_key
         self.lock=threading.Lock();self.bp=Blueprint('research_assignments',__name__)
-        self.lab_note_defaults=None;self.lab_note_dispatch=None
+        self.lab_note_defaults=None;self.lab_note_dispatch=None;self.lab_note_stop=None
         self.routes()
     def read(self,ident):
         with self.db() as (_,cur):
@@ -378,8 +378,12 @@ class Coordinator:
                 if not row or row['status']=='complete':return jsonify(error='No unfinished assignment found.'),409
                 state=obj(row['result']);d=request.get_json(silent=True) or {}
                 if action=='stop':
+                    if obj(row['input']).get('labFullNote') and not self.lab_note_stop:
+                        return jsonify(error='Full note stop integration unavailable; no stop was confirmed.'),409
                     if state.get('reportId'):self.invoke('stock_analysis.control','POST',{},dict(ident=state['reportId'],action='stop'))
                     with self.db(True) as (_,cur):
+                        if obj(row['input']).get('labFullNote'):
+                            self.lab_note_stop(cur,child(ident,'full-lab-note'))
                         cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s",(ident,))
                         if not obj(row['input']).get('labSelection'):
                             cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s AND status='queued'",(child(ident,'collection'),))

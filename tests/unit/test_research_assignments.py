@@ -417,6 +417,16 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertNotIn('reportId',row['result']);self.assertEqual(len(row['result']['sources']),1)
         self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
 
+    def test_stop_propagates_to_deterministic_full_note_child(self):
+        stopped=[]
+        self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Fixture'}
+        self.co.lab_note_stop=lambda cur,note_id:stopped.append(note_id)
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['summary_note'],'labFullNote':{'allowPdfText':False}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,200)
+        self.assertEqual(stopped,[child(self.ident,'full-lab-note')])
+        self.assertEqual(self.co.read(self.ident)['status'],'cancelled')
+
     def test_opt_in_full_note_waits_and_surfaces_downstream_failure(self):
         calls=[];note_id=str(uuid.uuid4());state={'status':'queued'}
         self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Frozen fixture'}

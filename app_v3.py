@@ -29541,6 +29541,8 @@ app.register_blueprint(pipeline_lab_note_submit.create_blueprint(get_db, _histor
 app.register_blueprint(pipeline_lab_notes_api.create_blueprint(get_db, _historical_evidence_authenticated))
 app.register_blueprint(pipeline_lab_note_review.create_blueprint(get_db, _historical_evidence_authenticated,
     _edition_investor_identity, _generate_note_docx))
+from pipeline_lab_note_jobs import stop_for_parent
+_research_assignments.lab_note_stop = stop_for_parent
 _research_assignments.lab_note_defaults = lambda: {
     'modelKey':PICKER_DEFAULT_MODEL,'promptTemplate':RESEARCH_NOTE_PLAYBOOK+'\n\n'+lab_notes_service.PROMPT}
 _research_assignments.lab_note_dispatch = lambda ident,p,pack: lab_notes_service.assignment_note(get_db,ident,p,pack)

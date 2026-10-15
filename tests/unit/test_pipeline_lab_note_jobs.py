@@ -52,3 +52,12 @@ class Jobs(unittest.TestCase):
         with self.db(True) as (_,c):
             self.assertEqual(settle(c,self.note,lease['leaseId'],receipt)['status'],'draft')
             self.assertEqual(enqueue(c,self.plan)['status'],'draft')
+
+    def test_parent_stop_fences_worker_and_recovery_preserves_stop(self):
+        from pipeline_lab_note_jobs import stop_for_parent,recover
+        with self.db(True) as (_,c):
+            owned=claim(c);stop_for_parent(c,self.note)
+            self.assertEqual(status(c,self.note)['reason'],'parent_stopped')
+            self.assertIsNone(claim(c))
+        with self.assertRaises(ValueError),self.db(True) as (_,c):renew(c,self.note,owned['leaseId'])
+        with self.assertRaisesRegex(ValueError,'parent assignment was stopped'),self.db(True) as (_,c):recover(c,self.note)

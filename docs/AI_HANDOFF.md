@@ -2,6 +2,20 @@
 
 Updated: October 14, 2026
 
+## T270 — Stop the full-note child with its assignment
+
+Stopping an opted-in assignment now fences the deterministic full-note child in
+that same stop transaction. Queued or running work becomes attention with a
+parent-stopped reason; its lease is revoked, so subsequent batches cannot dispatch.
+An already dispatched provider call may finish and retain its reply. Existing
+saved drafts remain available. Explicit recovery cannot reopen a stopped child.
+The Lab explains this state and removes the misleading recovery button. Legacy
+Pipeline, originals, existing research and approvals are unchanged.
+
+Validation: isolated worker lease/recovery and coordinator stop tests, broader safe
+backend/frontend suites, compile, model policy and build. No paid research or live
+job mutations for testing. Deployment verification recorded after release.
+
 ## Research Pipeline Lab T269 — integration release
 
 Verified release: source commit `0f9963f872bff6f553b8278a07ac18a1c73590d4`;

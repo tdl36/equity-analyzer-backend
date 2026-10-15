@@ -84,6 +84,9 @@ def recover(cur, note_id):
     if not row:raise ValueError('Note job not found.')
     if row['status']=='running' and row['live']:
         raise ValueError('A worker still owns this note job.')
+    cur.execute('SELECT reason FROM pipeline_lab_note_jobs WHERE note_id=%s',(note_id,))
+    if cur.fetchone()['reason']=='parent_stopped':
+        raise ValueError('The parent assignment was stopped. Saved notes and replies remain available; this job cannot resume.')
     plan=load(cur,note_id)
     draft=read(cur,note_id)
     state='queued';reason=None;revision=None
@@ -118,3 +121,10 @@ def recover(cur, note_id):
                 state='attention';reason='saved_reply_needs_review'
     cur.execute('UPDATE pipeline_lab_note_jobs SET status=%s,reason=%s,revision=%s,lease_id=NULL,lease_until=NULL,updated_at=NOW() WHERE note_id=%s',(state,reason,revision,note_id))
     return status(cur,note_id)
+
+
+def stop_for_parent(cur,note_id):
+    """Fence future batches while preserving any in-flight call and saved reply."""
+    cur.execute("""UPDATE pipeline_lab_note_jobs SET status='attention',reason='parent_stopped',
+        lease_id=NULL,lease_until=NULL,updated_at=NOW()
+        WHERE note_id=%s AND status IN ('queued','running','attention')""",(_note_identity(note_id),))

@@ -1,5 +1,6 @@
 import * as React from 'react';
 var reasons = {
+  parent_stopped: "The parent assignment was stopped. No further note batches will start. An already dispatched call may finish; saved replies and drafts are retained.",
   provider_outcome_unknown: 'Provider outcome is uncertain. Do not start a replacement: inspect the saved call before spending again.',
   preflight_failed: 'Credentials, budget, input size or token-count service need attention. No new generation was dispatched by this preflight.',
   worker_interrupted: 'The worker stopped or lost its lease. Reconcile saved progress before continuing.',
@@ -191,7 +192,7 @@ export default function LabNote({
   }, "Review latest revision ", job.revision), job.acceptedRevision && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => action(() => open(job.noteId, job.acceptedRevision))
-  }, "Open accepted revision"), job.status === 'attention' && /*#__PURE__*/React.createElement("button", {
+  }, "Open accepted revision"), job.status === 'attention' && job.reason !== 'parent_stopped' && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => action(async () => {
       await post(`/api/pipeline-lab/note-job/${job.noteId}/recover`, {});
