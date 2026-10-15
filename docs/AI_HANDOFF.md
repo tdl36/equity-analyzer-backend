@@ -11,8 +11,14 @@ refresh automatically. Any prior byte-check result is invalidated in both cases.
 Reload keeps its existing discard confirmation and revision conflicts remain
 server-enforced; this does not silently merge or overwrite imported selections.
 
-Validation and deployment verification pending. Next: source-review reconciliation
-and collection follow-through; real source-quality/investor acceptance remain open.
+Verified Render revision `1f801dbf7ddc5ce2cf9195fa84a50db17b175af9`, Cloudflare
+`2fdc2526-bcaa-498c-870f-ca015d21e071`, T275 HTML and exact hosted JS/service-worker
+bytes. Mac heartbeat healthy (10.5 seconds old). 182 frontend tests, model policy
+and build passed. Synthetic 390px/1280px checks verified background completion
+preserves dirty selections without inventory reload, and declining explicit reload
+keeps edits; zero write requests. Backend unchanged; no paid QA/live approvals.
+Next: source-review reconciliation and collection follow-through; real source
+quality and investor acceptance remain open.
 
 ## T274 — Complete revision browsing
 
