@@ -180,6 +180,7 @@ function LabStock({
     [task, setTask] = React.useState('thesis'),
     [query, setQuery] = React.useState(''),
     [group, setGroup] = React.useState('All'),
+    [storage, setStorage] = React.useState('all'),
     [sort, setSort] = React.useState('date'),
     [recency, setRecency] = React.useState('all'),
     [error, setError] = React.useState(''),
@@ -395,7 +396,7 @@ function LabStock({
       if (alive.current) setBusy(false);
     }
   };
-  var shown = visibleLabDocuments(recentLabDocuments(rows, recency, Date.now(), publishedOnly), query, group, sort).filter(r => !selectedOnly || selection[task].includes(r.key)),
+  var shown = visibleLabDocuments(recentLabDocuments(rows.filter(r => storage === 'all' || (storage === 'icloud' ? r.location === 'iCloud' : r.location === 'Charlie' && (storage === 'research' ? String(r.id).startsWith('research_') : String(r.id).startsWith('thesis_')))), recency, Date.now(), publishedOnly), query, group, sort).filter(r => !selectedOnly || selection[task].includes(r.key)),
     selected = new Set(selection[task]);
   var missing = selection[task].filter(k => !rows.some(r => r.key === k));
   var toggle = key => setSelection(s => ({
@@ -482,6 +483,18 @@ function LabStock({
   }, ['All', 'Transcripts', 'Filings', 'Releases', 'Presentations', 'Broker research', 'Other / unclassified'].map(x => /*#__PURE__*/React.createElement("option", {
     key: x
   }, x))), /*#__PURE__*/React.createElement("select", {
+    "aria-label": "Source storage",
+    value: storage,
+    onChange: e => setStorage(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "All storage locations"), /*#__PURE__*/React.createElement("option", {
+    value: "originals"
+  }, "Charlie originals"), /*#__PURE__*/React.createElement("option", {
+    value: "research"
+  }, "Research storage"), /*#__PURE__*/React.createElement("option", {
+    value: "icloud"
+  }, "iCloud files")), /*#__PURE__*/React.createElement("select", {
     "aria-label": "Source recency",
     value: recency,
     onChange: e => setRecency(e.target.value)
@@ -501,7 +514,16 @@ function LabStock({
     value: "date"
   }, "Newest available date"), /*#__PURE__*/React.createElement("option", {
     value: "name"
-  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types use recorded collection metadata when available; otherwise they are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+  }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setQuery('');
+      setGroup('All');
+      setStorage('all');
+      setRecency('all');
+      setPublishedOnly(false);
+      setSelectedOnly(false);
+    }
+  }, "Clear source filters"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types use recorded collection metadata when available; otherwise they are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: grouped,
     onChange: e => setGrouped(e.target.checked)

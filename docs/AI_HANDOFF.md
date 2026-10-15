@@ -2,6 +2,21 @@
 
 Updated: October 14, 2026
 
+## T292 — Filter Lab sources by storage location
+
+Lab source review can now isolate Charlie originals, Research storage or iCloud
+files while retaining document-type, date and text filters. Clear source filters
+restores the full inventory view without changing selections, sort or grouping.
+This makes import candidates easier to review without moving originals or treating
+storage location as evidence of byte verification. Original Pipeline is unchanged.
+
+198 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks isolated each storage location and reset filters, preserving both selected
+originals and an unselected iCloud file with zero writes. Production verification
+pending. Backend/agent unchanged; no paid research or approval actions.
+Next: real source-to-output and investor acceptance remain open; preserve the
+historical valuation provider-schema checkpoint.
+
 ## T291 — Resolve unavailable Lab selections individually
 
 Lab now lists missing selected originals individually, with readable iCloud
