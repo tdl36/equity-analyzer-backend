@@ -16,8 +16,12 @@ Session storage is limited to this browser tab/session, not cross-device backup.
 
 188 frontend tests, model policy and build passed. Synthetic 390px/1280px checks
 verified reload and app navigation recovery, changed-baseline separation, original
-revision restoration and discard with zero server writes. Production verification
-pending. Backend/agent unchanged. Real collection/source-quality and investor
+revision restoration and discard with zero server writes. Lost-response reconciliation
+also passed on both viewports, including clearing the local copy after confirmed save.
+Verified Render `19cd248e50023c4d8c14dd5d5bd3d44b5447241d`, Cloudflare
+`232cb1a5-f2f2-4dea-9153-e254fcab91c2`, T283 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (11.9 seconds old); read-only endpoint auth checks passed.
+Backend/agent unchanged. Real collection/source-quality and investor
 acceptance remain unverified. Next: make revision-conflict comparison easier without
 automatically rebasing or overwriting investor edits; retain the independent
 historical provider-schema checkpoint from docs/historical-security-mapping.md.
