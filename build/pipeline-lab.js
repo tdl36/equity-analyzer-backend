@@ -146,6 +146,7 @@ export function PipelineLab({
     className: "fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-6"
   }, /*#__PURE__*/React.createElement("section", {
     role: "dialog",
+    tabIndex: -1,
     "aria-modal": "true",
     "aria-label": `${ticker} Lab sources`,
     className: "workspace-panel",
@@ -346,6 +347,47 @@ function LabStock({
   var close = () => {
     if (!dirty && !noteUnsaved || window.confirm('Leave without saving your Lab source selections or note edits?')) onClose();
   };
+  var closeDialog = React.useRef(null);
+  closeDialog.current = () => {
+    if (!busy) close();
+  };
+  React.useEffect(() => {
+    var dialog = sourceHeading.current?.closest('[role="dialog"]');
+    if (!dialog) return;
+    var previous = document.activeElement;
+    var controls = () => Array.from(dialog.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')).filter(el => el.tabIndex >= 0 && !el.disabled && !el.closest('[hidden],[inert]') && el.getClientRects().length > 0);
+    var keydown = e => {
+      if (e.defaultPrevented || e.isComposing) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDialog.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      var items = controls(),
+        first = items[0],
+        last = items[items.length - 1];
+      if (!first) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener('keydown', keydown);
+    (dialog.querySelector('[aria-label="Close Lab settings"]') || dialog).focus();
+    return () => {
+      dialog.removeEventListener('keydown', keydown);
+      if (previous?.isConnected && previous !== document.body) previous.focus();else document.querySelector('[aria-label="Find a Lab stock"]')?.focus();
+    };
+  }, []);
   var save = async () => {
     if (lock.current || !saved) return;
     lock.current = true;

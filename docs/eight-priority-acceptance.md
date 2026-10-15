@@ -101,6 +101,9 @@ Implemented: shared workspace navigation, responsive layouts and many targeted
 Lab/source/note review fixes. This audit inspected the updated company panel at
 390px and tested it at 1280px; this is bounded screen coverage.
 
+T305 adds Lab dialog initial/return focus, Tab containment and guarded Escape.
+Synthetic 390/1280px keyboard checks pass without API writes.
+
 Remaining: apply `ui-release-audit.md` across all affected primary screens using
 long saved content, empty/error states, keyboard navigation, mobile and exports.
 Do not generalize one screen's visual check to the whole product.

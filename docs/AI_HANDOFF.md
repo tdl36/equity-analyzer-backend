@@ -2,6 +2,21 @@
 
 Updated: October 14, 2026
 
+## T305 — Keyboard navigation in Lab source settings
+
+The Lab source dialog now moves focus to Close when opened, keeps Tab and
+Shift+Tab within its visible enabled controls, and supports Escape through the
+existing unsaved-selection/note confirmation. Escape does not close while a parent
+operation is busy. Closing restores the opener, or the stock search for a direct
+link. Original Pipeline and collection/synthesis settings are unchanged.
+
+Validation: 207 frontend tests and production build pass. Isolated full-app
+390/1280px fixtures exercise initial focus, both Tab boundaries, dismissed and
+accepted unsaved Escape prompts, and focus restoration with zero API writes.
+This is bounded keyboard acceptance, not a whole-product accessibility audit.
+Next: continue primary-workspace long-content/error-state and real-object
+navigation acceptance; historical provider and genuine-run evidence gaps remain.
+
 ## T304 — Recover unsaved Lab source selections
 
 Lab retains unsaved thesis/note source choices in the same browser tab across

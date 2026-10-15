@@ -22,7 +22,7 @@ export function PipelineLab({api,onNavigate,renderHtml,initialTicker='',routeWor
  {!loaded&&!error&&<p role="status">Loading stocks…</p>}
  <div className="workspace-create-grid" style={{marginTop:20}}>{stocks.filter(s=>`${s.ticker} ${s.company}`.toLowerCase().includes(query.toLowerCase())).map(s=><article className="workspace-panel" key={s.ticker}><p className="workspace-eyebrow">{s.sector||'Coverage'}</p><h2>{s.ticker}</h2><p>{s.company}</p><p>Thesis updated: {stamp(s.lastAnalysisDate)}</p><p>{s.docCount||0} stored documents</p><p><small>{labCollectionStatus(collection,s.ticker)}</small></p><button className="workspace-primary" onClick={()=>setTicker(s.ticker)}>Sources &amp; settings</button></article>)}</div>
  {loaded&&!stocks.length&&<p>No stocks are in the Pipeline universe yet. Open a ticker directly above to inspect its Lab workspace.</p>}
- {ticker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-6"><section role="dialog" aria-modal="true" aria-label={`${ticker} Lab sources`} className="workspace-panel" style={{width:'100%',maxWidth:1100,maxHeight:'92vh',overflowY:'auto'}}><LabStock focusId={ticker===initialTicker?workId(routeWork,'labnote'):''} renderHtml={renderHtml} key={ticker} api={api} ticker={ticker} onNavigate={onNavigate} onClose={()=>setTicker('')}/></section></div>}
+ {ticker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-6"><section role="dialog" tabIndex={-1} aria-modal="true" aria-label={`${ticker} Lab sources`} className="workspace-panel" style={{width:'100%',maxWidth:1100,maxHeight:'92vh',overflowY:'auto'}}><LabStock focusId={ticker===initialTicker?workId(routeWork,'labnote'):''} renderHtml={renderHtml} key={ticker} api={api} ticker={ticker} onNavigate={onNavigate} onClose={()=>setTicker('')}/></section></div>}
  </div>;
 }
 function LabStock({api,ticker,onNavigate,onClose,renderHtml,focusId}){
@@ -43,6 +43,25 @@ function LabStock({api,ticker,onNavigate,onClose,renderHtml,focusId}){
  const compare=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const d=await read(api,`/api/pipeline-lab/config/${ticker}`);if(!Number.isInteger(d.revision)||!Array.isArray(d.selection?.thesis)||!Array.isArray(d.selection?.note))throw Error('Latest settings unavailable. Your edits remain on this screen.');if(alive.current)setLatest(d);}catch(e){if(alive.current)setError(e.message);}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const adopt=keep=>{if(!latest)return;setSaved(latest);if(!keep)setSelection(latest.selection);setLatest(null);setCheckResult(null);setNotice(keep?'Your selections are retained against the latest saved version. Review them and Save Lab settings to explicitly replace the saved selections. No save or research was started.':'Latest saved selections loaded. No research was started.');};
  const close=()=>{if((!dirty&&!noteUnsaved)||window.confirm('Leave without saving your Lab source selections or note edits?'))onClose();};
+ const closeDialog=React.useRef(null);closeDialog.current=()=>{if(!busy)close();};
+ React.useEffect(()=>{
+  const dialog=sourceHeading.current?.closest('[role="dialog"]');if(!dialog)return;
+  const previous=document.activeElement;
+  const controls=()=>Array.from(dialog.querySelectorAll('a[href],button,input,select,textarea,[tabindex]')).filter(el=>el.tabIndex>=0&&!el.disabled&&!el.closest('[hidden],[inert]')&&el.getClientRects().length>0);
+  const keydown=e=>{
+   if(e.defaultPrevented||e.isComposing)return;
+   if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeDialog.current();return;}
+   if(e.key!=='Tab')return;
+   const items=controls(),first=items[0],last=items[items.length-1];
+   if(!first){e.preventDefault();dialog.focus();return;}
+   if(e.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){e.preventDefault();last.focus();}
+   else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===dialog)){e.preventDefault();first.focus();}
+  };
+  dialog.addEventListener('keydown',keydown);
+  (dialog.querySelector('[aria-label="Close Lab settings"]')||dialog).focus();
+  return()=>{dialog.removeEventListener('keydown',keydown);if(previous?.isConnected&&previous!==document.body)previous.focus();else document.querySelector('[aria-label="Find a Lab stock"]')?.focus();};
+ },[]);
+
  const save=async()=>{if(lock.current||!saved)return;lock.current=true;setBusy(true);setError('');setNotice('');try{const d=await read(api,`/api/pipeline-lab/config/${ticker}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:saved.revision,selection})});if(alive.current){setSaved(d);setSelection(d.selection);setLatest(null);setNotice('Lab settings saved centrally for all devices. No research was started.');discardRecovery();}}catch(e){if(alive.current)setError(e.message+' Your selections remain on this screen.');}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const check=async()=>{if(lock.current||!saved||dirty)return;lock.current=true;setChecking(true);setCheckResult(null);setError('');try{const d=await read(api,`/api/pipeline-lab/check/${ticker}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:saved.revision,task})});checkedLabSourceCheck(d,task,saved.revision,saved.selection[task]);if(alive.current)setCheckResult(d);}catch(e){if(alive.current)setError(e.message);}finally{lock.current=false;if(alive.current)setChecking(false);}};
  const importResearch=async()=>{if(lock.current||!saved||dirty)return;lock.current=true;setBusy(true);setError('');try{const old=sessionStorage.getItem(importKey);const body=old?JSON.parse(old):{requestId:crypto.randomUUID(),revision:saved.revision,task};checkedLabImportRequest(body);if(!old)sessionStorage.setItem(importKey,JSON.stringify(body));if(sessionStorage.getItem(importKey)!==JSON.stringify(body))throw Error('Could not preserve import identity. No import was sent.');setPendingImport(true);const d=await read(api,`/api/pipeline-lab/import-research/${ticker}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});checkedResearchImport(d,ticker,body,saved.revision===body.revision?saved.selection[body.task]:null);sessionStorage.removeItem(importKey);if(alive.current){setPendingImport(false);setCheckResult(null);setNotice(`${d.receipts.length} Research-storage original(s) matched exact bytes in Charlie. This task’s selection was updated; no research was started.`);setGeneration(n=>n+1);}}catch(e){if([400,409].includes(e.status)){sessionStorage.removeItem(importKey);if(alive.current)setPendingImport(false);}if(alive.current)setError(e.message);}finally{lock.current=false;if(alive.current)setBusy(false);}};
