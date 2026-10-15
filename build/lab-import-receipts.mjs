@@ -5,7 +5,7 @@ export function checkedLabImport(job,ticker,request=null){
  if(!object(job)||!uuid(job.requestId)||!object(job.input)||job.input.ticker!==ticker||!['thesis','note'].includes(job.input.task)||!Number.isSafeInteger(job.input.revision)||job.input.revision<1||!['queued','frozen','attention','complete','cancelled'].includes(job.status)||job.researchStarted!==false)fail();
  if(request&&(job.requestId!==request.requestId||job.input.task!==request.task||job.input.revision!==request.revision))fail();
  const refs=job.references;
- if(!Array.isArray(refs)||!refs.length||refs.length>8||new Set(refs).size!==refs.length||refs.some(r=>typeof r!=='string'||!r.startsWith('icloud:')||r.length>1200))fail();
+ if(!Array.isArray(refs)||!refs.length||refs.length>1000||new Set(refs).size!==refs.length||refs.some(r=>typeof r!=='string'||!r.startsWith('icloud:')||r.length>1200))fail();
  if(job.manifest!==undefined||['frozen','complete'].includes(job.status)){
   const rows=job.manifest;
   if(!Array.isArray(rows)||rows.length!==refs.length||new Set(rows.map(r=>r?.reference)).size!==refs.length||rows.some(r=>!object(r)||!refs.includes(r.reference)||typeof r.filename!=='string'||!r.filename||typeof r.sha256!=='string'||!(/^[0-9a-f]{64}$/).test(r.sha256)||!Number.isSafeInteger(r.bytes)||r.bytes<1||r.bytes>15000000)||rows.reduce((n,r)=>n+r.bytes,0)>60000000)fail();
@@ -41,7 +41,7 @@ export function checkedResearchImport(receipt,ticker,request,expectedSources=nul
  const reject=()=>{throw Error('Research import receipt could not be verified. The saved request is retained; reconcile the same request before importing again.');};
  if(!object(receipt)||receipt.requestId!==request.requestId||receipt.input?.ticker!==ticker||receipt.input?.task!==request.task||receipt.input?.revision!==request.revision||receipt.revision!==request.revision+1||receipt.researchStarted!==false)reject();
  const rows=receipt.receipts;
- if(!Array.isArray(rows)||!rows.length||rows.length>8||new Set(rows.map(r=>r?.source)).size!==rows.length||rows.some(r=>!object(r)||typeof r.source!=='string'||!/^charlie:research_[a-zA-Z0-9_-]{1,128}$/.test(r.source)||typeof r.target!=='string'||!/^charlie:thesis_[1-9][0-9]*$/.test(r.target)||typeof r.sha256!=='string'||!/^[a-f0-9]{64}$/.test(r.sha256)||!Number.isSafeInteger(r.bytes)||r.bytes<1||r.bytes>15000000)||rows.reduce((n,r)=>n+r.bytes,0)>60000000)reject();
+ if(!Array.isArray(rows)||!rows.length||rows.length>1000||new Set(rows.map(r=>r?.source)).size!==rows.length||rows.some(r=>!object(r)||typeof r.source!=='string'||!/^charlie:research_[a-zA-Z0-9_-]{1,128}$/.test(r.source)||typeof r.target!=='string'||!/^charlie:thesis_[1-9][0-9]*$/.test(r.target)||typeof r.sha256!=='string'||!/^[a-f0-9]{64}$/.test(r.sha256)||!Number.isSafeInteger(r.bytes)||r.bytes<1||r.bytes>15000000)||rows.reduce((n,r)=>n+r.bytes,0)>60000000)reject();
  if(expectedSources!==null){const expected=expectedSources.filter(r=>r.startsWith('charlie:research_'));if(expected.length!==rows.length||rows.some(r=>!expected.includes(r.source)))reject();}
  return receipt;
 }

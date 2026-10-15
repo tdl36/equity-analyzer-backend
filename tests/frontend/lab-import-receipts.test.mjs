@@ -39,3 +39,14 @@ test('Research import completion binds task, revision, source identities and bou
  assert.throws(()=>checkedResearchImport(receipt,'ABT',request,['charlie:research_other']));
  assert.equal(checkedResearchImport({...receipt,replayed:true},'ABT',request).replayed,true);
 });
+
+test('larger imports retain every exact receipt without an eight-document ceiling',async()=>{
+ const {checkedResearchImport}=await import('../../src/lab-import-receipts.mjs');
+ const manifest=Array.from({length:25},(_,i)=>({...source,reference:'icloud:["main","'+i+'.pdf"]',filename:i+'.pdf'}));
+ const larger={...job,references:manifest.map(r=>r.reference),manifest,receipts:manifest.map((r,i)=>({...r,target:'charlie:thesis_'+(i+1)}))};
+ assert.equal(checkedLabImport(larger,'ABT'),larger);
+ const rows=manifest.map((r,i)=>({source:'charlie:research_'+i,target:'charlie:thesis_'+(i+1),sha256:r.sha256,bytes:r.bytes}));
+ const request={requestId:job.requestId,task:'note',revision:2};
+ const receipt={requestId:job.requestId,input:job.input,revision:3,researchStarted:false,receipts:rows};
+ assert.equal(checkedResearchImport(receipt,'ABT',request,rows.map(r=>r.source)),receipt);
+});
