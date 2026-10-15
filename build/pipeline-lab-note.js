@@ -27,7 +27,8 @@ export default function LabNote({
     [title, setTitle] = React.useState(''),
     [editing, setEditing] = React.useState(false),
     [allowPdfText, setAllowPdfText] = React.useState(false),
-    [pending, setPending] = React.useState(false);
+    [pending, setPending] = React.useState(false),
+    [pendingEdit, setPendingEdit] = React.useState(false);
   var review = React.useRef(null);
   var lock = React.useRef(false),
     key = 'charlie-lab-full-note:' + api + ':' + ticker;
@@ -75,10 +76,10 @@ export default function LabNote({
   var open = async (id, revision) => {
     var d = await read(api, `/api/pipeline-lab/notes/${id}${revision ? '?revision=' + revision : ''}`);
     if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
-    setDraft(d);
     setText(d.markdown);
     setTitle(d.title);
     setEditing(false);
+    setDraft(d);
     if (draft?.noteId !== id || !revision) {
       var h = await read(api, `/api/pipeline-lab/notes/${id}/history?limit=50`);
       setHistory(h.versions);
@@ -96,12 +97,12 @@ export default function LabNote({
         if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
         var h = await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(focusId)}/history?limit=50`);
         if (live) {
-          setDraft(d);
           setText(d.markdown);
           setTitle(d.title);
           setHistory(h.versions);
           setNextBefore(h.nextBefore || null);
           setEditing(false);
+          setDraft(d);
           requestAnimationFrame(() => review.current?.scrollIntoView({
             block: 'start'
           }));
@@ -120,6 +121,23 @@ export default function LabNote({
     setHistory(previous => [...new Map([...previous, ...h.versions].map(v => [v.revision, v])).values()].sort((a, b) => b.revision - a.revision));
     setNextBefore(h.nextBefore || null);
   });
+  React.useEffect(() => {
+    setPendingEdit(false);
+    if (!draft) return;
+    try {
+      var raw = sessionStorage.getItem(key + ':edit:' + draft.noteId);
+      if (!raw) return;
+      var body = JSON.parse(raw);
+      if (!body || typeof body.eventId !== 'string' || !Number.isInteger(body.expectedRevision) || typeof body.title !== 'string' || typeof body.markdown !== 'string') throw Error('Pending edit is unreadable. Preserve this browser session for recovery.');
+      setPendingEdit(true);
+      setTitle(body.title);
+      setText(body.markdown);
+      setEditing(true);
+    } catch (e) {
+      setPendingEdit(true);
+      setError(e.message);
+    }
+  }, [key, draft]);
   var start = () => action(async () => {
     var body = JSON.parse(sessionStorage.getItem(key) || 'null');
     if (!body) {
@@ -159,13 +177,19 @@ export default function LabNote({
       };
       sessionStorage.setItem(editKey, JSON.stringify(body));
     }
+    if (sessionStorage.getItem(editKey) !== JSON.stringify(body)) throw Error('Could not preserve the edit identity. Nothing was sent.');
+    setPendingEdit(true);
     try {
       await post(`/api/pipeline-lab/notes/${draft.noteId}/revisions`, body);
       sessionStorage.removeItem(editKey);
+      setPendingEdit(false);
       await open(draft.noteId);
       await load();
     } catch (e) {
-      if ([400, 409].includes(e.status)) sessionStorage.removeItem(editKey);
+      if ([400, 409].includes(e.status)) {
+        sessionStorage.removeItem(editKey);
+        setPendingEdit(false);
+      }
       throw e;
     }
   });
@@ -251,7 +275,7 @@ export default function LabNote({
   }, /*#__PURE__*/React.createElement("select", {
     "aria-label": "Note revision",
     value: draft.revision,
-    disabled: busy || editing,
+    disabled: busy || editing || pendingEdit,
     onChange: e => action(() => open(draft.noteId, Number(e.target.value)))
   }, !history.some(h => h.revision === draft.revision) && /*#__PURE__*/React.createElement("option", {
     value: draft.revision
@@ -259,7 +283,7 @@ export default function LabNote({
     key: h.revision,
     value: h.revision
   }, "Revision ", h.revision, " \xB7 ", new Date(h.createdAt).toLocaleString()))), nextBefore && /*#__PURE__*/React.createElement("button", {
-    disabled: busy || editing,
+    disabled: busy || editing || pendingEdit,
     onClick: older
   }, "Load older revisions"), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -268,7 +292,7 @@ export default function LabNote({
     disabled: busy,
     onClick: () => download('md')
   }, "Export Markdown"), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: busy || pendingEdit,
     onClick: () => {
       setText(draft.markdown);
       setTitle(draft.title);
@@ -278,13 +302,22 @@ export default function LabNote({
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Quality and source checks"), /*#__PURE__*/React.createElement("ul", null, draft.qualityIssues.map((q, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, q)))), editing ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", null, "Title", /*#__PURE__*/React.createElement("input", {
+  }, q)))), pendingEdit && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "A previous edit has no confirmed response. The submitted text is preserved below. Reconcile that same edit before changing it; this does not generate research."), pendingEdit && !editing && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: save
+  }, "Reconcile same edit"), editing ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", null, "Title", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Note title",
+    readOnly: pendingEdit || busy,
     style: {
       width: '100%'
     },
     value: title,
     onChange: e => setTitle(e.target.value)
   })), /*#__PURE__*/React.createElement("label", null, "Note text (Markdown)", /*#__PURE__*/React.createElement("textarea", {
+    "aria-label": "Note text",
+    readOnly: pendingEdit || busy,
     style: {
       width: '100%',
       minHeight: 400,
@@ -295,7 +328,7 @@ export default function LabNote({
   })), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: save
-  }, "Save new draft revision")) : /*#__PURE__*/React.createElement("div", {
+  }, pendingEdit ? 'Reconcile same edit' : 'Save new draft revision')) : /*#__PURE__*/React.createElement("div", {
     className: "lab-note-prose",
     style: {
       background: '#fff',
@@ -314,7 +347,7 @@ export default function LabNote({
   }, /*#__PURE__*/React.createElement("summary", null, c.period, " \xB7 ", c.kind, " segment figures"), /*#__PURE__*/React.createElement("p", null, "Model-produced values; verify units and source figures before use."), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Segment"), /*#__PURE__*/React.createElement("th", null, "Value"))), /*#__PURE__*/React.createElement("tbody", null, c.data.map(r => /*#__PURE__*/React.createElement("tr", {
     key: r.segment
   }, /*#__PURE__*/React.createElement("td", null, r.segment), /*#__PURE__*/React.createElement("td", null, r.value.toLocaleString()))))))), /*#__PURE__*/React.createElement("p", null, "Acceptance records this exact Lab revision. It does not change the current thesis or original Pipeline notes. Source caveats remain in the history and exports."), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || editing || draft.acceptance?.revision === draft.revision,
+    disabled: busy || editing || pendingEdit || draft.acceptance?.revision === draft.revision,
     onClick: () => {
       if (window.confirm(`Accept revision ${draft.revision} as your reviewed Lab research note?`)) action(async () => {
         await post(`/api/pipeline-lab/notes/${draft.noteId}/accept`, {

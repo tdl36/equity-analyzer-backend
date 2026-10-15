@@ -2,6 +2,20 @@
 
 Updated: October 14, 2026
 
+## T276 — Explicit uncertain-edit recovery
+
+Lab now restores an edit with an unconfirmed save response from the existing
+session journal when its note is reopened, showing the submitted title/text read-only
+and an explicit Reconcile same edit action. It reuses the original event identity,
+baseline and body; a later edit cannot silently replace or be discarded in favor
+of that pending request. Discard and acceptance are disabled until reconciliation.
+Storage verification occurs before submission. Definitive validation/conflict
+responses clear the pending identity; ambiguous failures preserve it. Recovery
+is scoped to the same browser session; this is not cross-device unsaved storage.
+
+Validation and deployment verification pending. Next: source-review reconciliation
+and collection follow-through; real source-quality/investor acceptance remain open.
+
 ## T275 — Preserve edits during background imports
 
 A completed iCloud import no longer automatically reloads Lab settings while the
