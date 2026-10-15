@@ -15,7 +15,10 @@ missing Charlie originals. Original Pipeline is unchanged.
 198 frontend tests, model-policy gate and production build passed. Synthetic
 390px/desktop browser checks deselected one missing original, preserved visible
 sources and the other task selection, then restored it through reload with zero
-API writes. Production verification pending. Backend and agent unchanged.
+API writes. Verified Render `6466f954f100154d9edd45af3f416573e62acbd7`,
+Cloudflare `7d4e6085-e46d-44e5-97a8-ad7cac4281dd`, T291 HTML and exact
+hosted JS/service-worker bytes. Agent healthy (95.6 seconds old); endpoint auth
+checks passed. Backend and agent unchanged.
 Next: real source-to-output acceptance and investor review remain open; historical
 valuation remains at the documented provider-schema checkpoint.
 
