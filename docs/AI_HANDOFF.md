@@ -43,6 +43,33 @@ Operations worker's retained claim/task metadata to determine whether explicit
 request targeting explains CVS's prolonged wait; no external messaging, new worker,
 claims or retries here. Preserve the live authorized processing/investor proof gap.
 
+T335 production verified: Render 5f7ff7c9128de5b31c9684aa4f647effbb80d50e;
+Cloudflare c35290e3-bf42-4356-961d-1d8e79489c09. Exact hosted JS/service-worker
+bytes and HTML marker match; auth/identity guards pass. Agent health ok (1.3s).
+Activity has no unavailable dependencies, unchanged research/audio truncation,
+CVS running and zero full-note rows. Existing agent picked up the dependency via
+its idle source-change reload at 19:08:59 Eastern; only agent file mtime was touched,
+its contents are unchanged. No forced kickstart or browser collector restart.
+
+Fresh hosted snapshot at 23:11:41 UTC confirms queueState reached Charlie: CVS
+remains queued, now default position 6 of 56 eligible requests while IQV holds the
+slot. Prior HUM lease was left intact. Read-only inspection of Charlie Operations
+confirmed real HUM collection work and an ordinary default claim, not evidence of
+explicit targeting. The current wait is explained; earlier unclaimed duration is
+not fully explained. No new CVS source receipt or processing readiness is claimed.
+Queue verification log: /tmp/charlie-T335-queue-verify.log.
+
+Next high-priority engineering: prevent ambiguous audio replay during deployments.
+Observed historical agent warnings reported jobs orphaned after backend restart.
+Current code audit: app_v3._cleanup_orphaned_transcription_jobs marks stale jobs
+failed; the agent waiting/upload paths can clear known-file state and re-upload,
+including after a lost transport response. This does not prove provider outcome.
+Inspect the exact wait/retry branches and existing orphan tests, then implement
+bounded durable recovery/idempotency or an explicit unknown-outcome hold without
+retrying existing live files or making paid QA calls. Preserve originals, current
+jobs and prior receipts. No live outcome has been adjudicated. Keep collection
+with Operations and synthesis paused; do not use another release merely to poll.
+
 ## T334 — Compare unfinished work with newer saved revisions
 
 Existing/restored work drafts now offer a read-only comparison with the latest
