@@ -18,7 +18,12 @@ while preserving ticker and section. The existing visual style is retained.
 201 frontend and 1,533 backend tests passed, plus model-policy/build gates.
 Synthetic 390px/1280px browser checks verified exact meeting/company destinations
 without writes; the mobile company panel was visually inspected. No paid research,
-research decisions, original changes or external messages. Deployment pending.
+research decisions, original changes or external messages. Verified Render
+`613002c220cecef3dc45aa3f1f12204482ab7abb`, Cloudflare
+`a585d667-886e-4a71-ad3f-c0db47c37e21`, exact T295 hosted JS/service-worker
+bytes and HTML marker. Agent healthy (87.9 seconds old); endpoint auth checks passed.
+Follow-through code audit also found the existing answer-hash/assumption-linked
+versioned workbench; extend/verify its proposal connection rather than duplicate it.
 
 Next: continue the historical provider-schema boundary and audit/implement the
 explicit meeting-answer-to-proposal handoff; do not substitute cosmetic Lab work.

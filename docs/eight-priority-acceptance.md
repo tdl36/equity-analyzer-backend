@@ -73,8 +73,11 @@ Ticker entry itself neither identifies the issuer conclusively nor starts work.
 Implemented: report questions can be handed to an exact saved meeting with source
 origins; meeting mode captures answers and retains question versions; recap and
 thesis proposal review remain separate. Existing answer history feeds subsequent
-meeting preparation. These pieces do not by themselves establish a complete
-meeting-answer-to-thesis workflow.
+meeting preparation. `research_workbench.py` already binds a versioned follow-up
+to a recorded answer hash/snapshot and investment-case assumption, rejects changed
+answers and exposes due work. `src/research-workbench.jsx` exposes those records
+under company reviews. These pieces do not by themselves establish a complete
+meeting-answer-to-thesis workflow. Do not build a duplicate workbench.
 
 Remaining engineering audit: trace captured answers and unresolved questions all
 way into versioned evidence/thesis proposals. Identify missing explicit handoffs,
