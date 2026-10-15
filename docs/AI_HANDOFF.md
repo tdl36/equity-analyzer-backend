@@ -2,6 +2,32 @@
 
 Updated: October 14, 2026
 
+## T330 — Refresh wider-library metadata without losing selections
+
+The collection-to-processing handoff now offers a read-only library refresh that
+restarts pagination while preserving selected original identities. Failed refreshes
+retain prior rows but mark metadata unconfirmed and prevent saving selected library
+sources. Retry repeats the failed first or later page exactly. New selections and
+pagination cannot bypass a failed read; explicit deselection remains available,
+including an original that becomes restricted. Changed first pages expose unseen
+selections until more metadata is loaded or the investor explicitly removes them.
+No source is automatically selected, removed or processed.
+
+Validation: 238 frontend tests, 64 focused safe backend proposal/note/coverage tests
+and production build pass. Actual-component synthetic browser checks at 390/1280px
+cover pending/failed refresh, first-page retry, unseen retained selections, later-page
+failure/retry, changed eligibility and explicit removal. Only fixture GETs occurred;
+no proposal save, processing approval or paid generation. Screenshot inspected.
+Full backend last passed 1,672 in T327; this increment changes frontend only.
+
+Next: verify T330 exact production revision/assets. Then audit the existing
+collection-to-proposal handoff for a concrete readiness gap around failed or
+incomplete collected-source inventories, using fixtures first. Do not repeatedly
+rescan unchanged legacy assignments. Genuine collection-only completion, specific
+processing authorization and investor acceptance remain unproven; historical
+reference schema remains unavailable. Original Pipeline and backfill pause remain.
+Logs: /tmp/charlie-T330-{frontend,backend,build,ui,deploy,verify}.log.
+
 ## T329 — Server proposals stay readable when browser recovery fails
 
 Processing-proposal reads no longer depend on browser recovery storage. Verified

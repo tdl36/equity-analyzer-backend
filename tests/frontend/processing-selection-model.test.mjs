@@ -31,3 +31,16 @@ test('absent or malformed hashes never prove distinct or duplicate originals',()
  const input=base();input.collection.rows[0].receiptSha256='bad';input.library.rows[0].recordedSha256='bad';let s=processingSelection(input);assert.equal(s.duplicates.length,0);assert.equal(s.hashUnknown,2);
  input.collection.rows[0].receiptSha256=hash.toUpperCase();input.library.rows[0].recordedSha256=hash;s=processingSelection(input);assert.equal(s.duplicates.length,1);assert.equal(s.hashUnknown,0);
 });
+
+test('refreshed pages retain unseen selection identities until metadata is loaded or explicitly removed',()=>{
+ const input=base(),choices=[...input.supplements];
+ input.library.busy=true;assert.equal(processingSelection(input).metadataPending,true);
+ input.library.busy=false;input.library.error='refresh failed';
+ assert.equal(processingSelection(input).missing,0);assert.equal(processingSelection(input).metadataPending,true);
+ input.library.error='';input.library.rows=[];input.library.cursor='4';
+ let s=processingSelection(input);assert.equal(s.missing,1);assert.equal(s.libraryComplete,false);
+ assert.deepEqual(input.supplements,choices);
+ input.library.rows=[{id:'thesis_2',filename:'old.pdf',eligible:false}];input.library.cursor=null;
+ s=processingSelection(input);assert.equal(s.missing,0);assert.equal(s.unavailable,1);
+ input.supplements=[];s=processingSelection(input);assert.equal(s.unavailable,0);assert.equal(s.metadataPending,false);
+});

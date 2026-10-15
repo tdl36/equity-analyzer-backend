@@ -20,7 +20,8 @@ export function ProcessingSourceLibrary({
     [query, setQuery] = React.useState(''),
     [type, setType] = React.useState('All');
   var lock = React.useRef(false),
-    live = React.useRef(true);
+    live = React.useRef(true),
+    lastRead = React.useRef(null);
   React.useEffect(() => {
     live.current = true;
     return () => {
@@ -30,6 +31,7 @@ export function ProcessingSourceLibrary({
   var load = async (after = null) => {
     if (lock.current) return;
     lock.current = true;
+    lastRead.current = after;
     setBusy(true);
     setError('');
     try {
@@ -71,7 +73,10 @@ export function ProcessingSourceLibrary({
   }, /*#__PURE__*/React.createElement("strong", null, purpose === 'event_note' ? 'Add historical context for this event' : 'Add foundational and historical evidence'), /*#__PURE__*/React.createElement("p", null, "Stored originals for this company outside this collection. Older sources remain eligible. Metadata suggests relevance; review the original before selecting. Files are checked byte-for-byte when the proposal is saved and approved."), !loaded ? /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => load()
-  }, "Browse wider source library") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, selected.length, " supplemental originals selected \xB7 ", documents.length, " library entries loaded", cursor ? ' · more available' : '', ". No library documents are selected automatically."), /*#__PURE__*/React.createElement("div", {
+  }, "Browse wider source library") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => load()
+  }, "Refresh library metadata"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Refresh restarts the library listing and preserves your selected originals. Load more entries to confirm selections outside the refreshed page.")), /*#__PURE__*/React.createElement("p", null, selected.length, " supplemental originals selected \xB7 ", documents.length, " library entries loaded", cursor ? ' · more available' : '', ". No library documents are selected automatically."), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "Find library sources", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Find library sources",
@@ -107,7 +112,7 @@ export function ProcessingSourceLibrary({
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: checked,
-      disabled: !r.eligible || !checked && selected.length >= remaining,
+      disabled: !checked && (!r.eligible || busy || !!error || selected.length >= remaining),
       onChange: e => onChange(e.target.checked ? [...selected, id] : selected.filter(v => v !== id))
     }), /*#__PURE__*/React.createElement("span", null, r.filename, /*#__PURE__*/React.createElement("small", {
       style: {
@@ -119,15 +124,15 @@ export function ProcessingSourceLibrary({
       sha256: r.recordedSha256 || undefined
     }));
   }))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No matching entries in the loaded library.")), cursor && /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: busy || !!error,
     onClick: () => load(cursor)
   }, "Load more library sources")), busy && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading source metadata\u2026"), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error, " ", /*#__PURE__*/React.createElement("button", {
+  }, error, " Previously loaded metadata is unconfirmed; selected library sources cannot be saved until this read succeeds. ", /*#__PURE__*/React.createElement("button", {
     disabled: busy,
-    onClick: () => load(loaded ? cursor : null)
+    onClick: () => load(lastRead.current)
   }, "Retry library read")), missing.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, missing.length, " selected identities are outside the currently loaded entries. Review them before saving. ", /*#__PURE__*/React.createElement("button", {

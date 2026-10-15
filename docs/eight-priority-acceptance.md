@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T330 adds read-only wider-library refresh with retained selections and exact failed-page
+retry. Synthetic selection/eligibility/recovery checks pass at phone and desktop
+widths. This improves processing readiness; no live generation or investor acceptance.
+
 T329 separates server proposal visibility from damaged/unavailable browser recovery
 state, blocks unsafe new submissions and retains frozen uncertain saves. Focused
 backend and synthetic browser failure checks pass; no live processing was approved.
