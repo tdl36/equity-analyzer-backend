@@ -22,7 +22,10 @@ engineering gap, not end-to-end live acceptance or all eight priorities.
 Validation: 1,559 backend / 205 frontend tests pass, Python compile and production
 build pass; isolated 390/1280px component checks cover saved-revision submission,
 active-proposal blocking, review routing and separate question/answer/interpretation.
-No paid research or investor approval was executed. Release verification pending.
+No paid research or investor approval was executed. T303 is verified on Render
+14639b997131c2ee505d254d51187b6a4378d7cf and Cloudflare
+76402880-6dd3-4bb7-ba57-3f6662c0cbb8, including exact hosted JS/service-worker
+bytes and HTML marker. Mac agent healthy at 63.4 seconds on the release check.
 Next: verify this handoff with an investor-requested real meeting/answer when chosen;
 continue Lab/whole-workspace acceptance and historical provider evidence gaps.
 
