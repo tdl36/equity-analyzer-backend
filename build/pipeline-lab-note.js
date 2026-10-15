@@ -20,6 +20,7 @@ export default function LabNote({
   var [jobs, setJobs] = React.useState([]),
     [draft, setDraft] = React.useState(null),
     [history, setHistory] = React.useState([]),
+    [nextBefore, setNextBefore] = React.useState(null),
     [error, setError] = React.useState(''),
     [busy, setBusy] = React.useState(false),
     [text, setText] = React.useState(''),
@@ -78,8 +79,11 @@ export default function LabNote({
     setText(d.markdown);
     setTitle(d.title);
     setEditing(false);
-    var h = await read(api, `/api/pipeline-lab/notes/${id}/history?limit=50`);
-    setHistory(h.versions);
+    if (draft?.noteId !== id || !revision) {
+      var h = await read(api, `/api/pipeline-lab/notes/${id}/history?limit=50`);
+      setHistory(h.versions);
+      setNextBefore(h.nextBefore || null);
+    }
   };
   React.useEffect(() => {
     if (!focusId) return;
@@ -96,6 +100,7 @@ export default function LabNote({
           setText(d.markdown);
           setTitle(d.title);
           setHistory(h.versions);
+          setNextBefore(h.nextBefore || null);
           setEditing(false);
           requestAnimationFrame(() => review.current?.scrollIntoView({
             block: 'start'
@@ -110,6 +115,11 @@ export default function LabNote({
       live = false;
     };
   }, [api, ticker, focusId]);
+  var older = () => action(async () => {
+    var h = await read(api, `/api/pipeline-lab/notes/${draft.noteId}/history?limit=50&before=${nextBefore}`);
+    setHistory(previous => [...new Map([...previous, ...h.versions].map(v => [v.revision, v])).values()].sort((a, b) => b.revision - a.revision));
+    setNextBefore(h.nextBefore || null);
+  });
   var start = () => action(async () => {
     var body = JSON.parse(sessionStorage.getItem(key) || 'null');
     if (!body) {
@@ -243,10 +253,15 @@ export default function LabNote({
     value: draft.revision,
     disabled: busy || editing,
     onChange: e => action(() => open(draft.noteId, Number(e.target.value)))
-  }, history.map(h => /*#__PURE__*/React.createElement("option", {
+  }, !history.some(h => h.revision === draft.revision) && /*#__PURE__*/React.createElement("option", {
+    value: draft.revision
+  }, "Revision ", draft.revision, " \xB7 current view"), history.map(h => /*#__PURE__*/React.createElement("option", {
     key: h.revision,
     value: h.revision
-  }, "Revision ", h.revision, " \xB7 ", new Date(h.createdAt).toLocaleString()))), /*#__PURE__*/React.createElement("button", {
+  }, "Revision ", h.revision, " \xB7 ", new Date(h.createdAt).toLocaleString()))), nextBefore && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || editing,
+    onClick: older
+  }, "Load older revisions"), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => download('docx')
   }, "Export Word"), /*#__PURE__*/React.createElement("button", {
@@ -254,7 +269,11 @@ export default function LabNote({
     onClick: () => download('md')
   }, "Export Markdown"), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
-    onClick: () => setEditing(!editing)
+    onClick: () => {
+      setText(draft.markdown);
+      setTitle(draft.title);
+      setEditing(!editing);
+    }
   }, editing ? 'Discard unsaved edits' : 'Edit draft')), /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Quality and source checks"), /*#__PURE__*/React.createElement("ul", null, draft.qualityIssues.map((q, i) => /*#__PURE__*/React.createElement("li", {

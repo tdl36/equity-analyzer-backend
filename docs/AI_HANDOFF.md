@@ -2,6 +2,18 @@
 
 Updated: October 14, 2026
 
+## T274 — Complete revision browsing
+
+Lab notes now page through older revisions beyond the first 50, preserving loaded
+history when switching revisions. An exact opened revision stays represented in
+the selector even if outside the loaded page. Failed history requests leave the
+cursor available for retry. Discard unsaved edits now restores the saved title and
+text, so reentering the editor cannot resurrect discarded changes. No research,
+acceptance or stored-note mutation occurs from browsing/discarding.
+
+Validation and deployment verification pending. Next: source-review and collection
+follow-through usability; real source-quality and investor acceptance remain open.
+
 ## T273 — Publication-date source review
 
 Lab can now restrict the source view to recorded publication dates, excluding
