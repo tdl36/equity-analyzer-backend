@@ -2,6 +2,36 @@
 
 Updated: October 14, 2026
 
+## T313 — Recover unsaved processing-proposal choices
+
+The proposal form now retains authoring choices in session storage scoped to API
+and collection identity: selected originals/supplements, purpose/event details,
+outputs, focus, full-note/PDF choices and meeting settings. Reload/navigation in
+the same tab restores them with an explicit notice. Successful save or deliberate
+discard clears the local draft. Source and baseline checks still run at save and
+approval; restoring does not authorize processing or accept research.
+
+Local authoring is separate from the existing exact pending-submission record.
+A lost save response reconciles against the saved proposal without submitting a
+second request, then clears authoring. Pending submissions cannot be discarded via
+the authoring reset. Malformed/storage-failed drafts are explicit; no credentials,
+source bodies, request IDs, approvals or hashes are stored in the authoring record.
+This is per-tab recovery, not server autosave or cross-device backup.
+
+Validation: 211 frontend tests and production build pass. Synthetic 390/1280px
+full-app checks cover reload restoration, scope, discard, successful-save cleanup,
+lost-response reconciliation and explicit approval; all APIs are intercepted and
+remote fonts blocked. Backend behavior is unchanged from T312's verified 1,625-test
+suite. Production release verification follows; no paid work or live approvals.
+
+Next critical path: inspect the existing source-only assignment's collection and
+exact-byte receipt boundary read-only to establish why no completed source-only
+parent is yet available. Diagnose a concrete coordinator/import defect if supported
+by saved evidence, without duplicating Operations collection or submitting research.
+Then observe the genuine connected journey when request-specific authorization is
+available. Shared Ready expansion follows that proof. Historical schema and wider
+live/investor acceptance remain open; do not certify all eight priorities complete.
+
 ## T312 — Frozen evidence coverage in processing proposals
 
 Saved processing proposals now expose a read-only summary derived solely from

@@ -26,6 +26,8 @@ with sync_playwright() as p:
       assert body['filenames']==['recent.pdf'];assert body['supplementalIds']==['3'];assert body['plan']['researchPurpose']=={'kind':'event_note','event':{'title':'Guidance update','date':'2026-10-01'}}
       assert body['plan']['labFullNote']=={'allowPdfText':True};assert body['plan']['meeting']=={'date':'2026-10-20','type':'expert'};assert body['plan']['outputs']==['meeting_prep','summary_note']
       d={'id':body['requestId'],'ticker':'ABT','revision':1,'digest':'a'*64,'status':'pending','coverage':{'version':1,'total':2,'metadataRecorded':2,'collectionWindow':{'since':'2026-07-01','until':'2026-10-14'},'roles':{'collection':1,'supplemental':1,'unknown':0},'publication':{'known':2,'unknown':0,'earliest':'2024-03-01','latest':'2026-10-01','beforeWindow':1,'withinWindow':1,'afterWindow':0},'kinds':{'unknown':2},'thesisReferences':{'referenced':1,'noReference':1,'unknown':0}},'fullNote':{'modelKey':'fixture-v1','maxCalls':8,'maxTokens':32000,'allowPdfText':True,'configDigest':'c'*64,'promptSha256':'d'*64,'sourcePreparation':{'sourcePack':[{'reference':'charlie:thesis_1'},{'reference':'charlie:thesis_3'}],'batchCount':2,'representationSha256':'e'*64,'warnings':[{'reference':'charlie:thesis_3','issue':'Extracted text representation; embedded images and layout are not verified.'}]}},'sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','reference':'charlie:thesis_1','filename':'recent.pdf','bytes':10},{'documentId':'3','reference':'charlie:thesis_3','filename':'annual-2024-10-K.pdf','bytes':20}],'plan':{**body['plan'],'since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
+      if width==1280:
+       route.abort();return  # Saved server-side, lost response: reconcile without another submission.
     else:d={'proposals':proposals}
    elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64}]}}]}
    elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
@@ -80,10 +82,31 @@ with sync_playwright() as p:
   page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   assert writes==[]
+  page.reload(wait_until='domcontentloaded')
+  page.locator('div.fixed.inset-0').filter(has=page.locator('img')).first.wait_for(state='hidden')
+  page.get_by_role('button',name='Open coordinated assignment controls').click()
+  page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
+  expect(review.get_by_text('Restored unsaved choices in this browser tab.',exact=False)).to_be_visible()
+  expect(review.get_by_label('Processing purpose')).to_have_value('event_note')
+  expect(review.get_by_label('Processing event title')).to_have_value('Guidance update')
+  expect(review.get_by_label('Processing meeting type')).to_have_value('expert')
+  expect(review.get_by_role('checkbox',name='Full versioned Lab note',exact=False)).to_be_checked()
+  review.get_by_role('button',name='Browse wider source library',exact=True).click()
+  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+  assert writes==[]
   save.click()
-  approve=review.get_by_role('button',name='Approve processing · uses research credits',exact=True)
-  expect(approve).to_be_visible()
-  assert len(writes)==1,writes
+  if width==1280:
+   expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
+   assert len(writes)==1
+  else:
+   approve=review.get_by_role('button',name='Approve processing · uses research credits',exact=True)
+   expect(approve).to_be_visible()
+   assert len(writes)==1,writes
+   expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).not_to_be_checked()
+   review.get_by_role('checkbox',name='recent.pdf',exact=True).check()
+   review.get_by_role('button',name='Discard unsaved choices',exact=True).click()
+   expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).not_to_be_checked()
+   assert len(writes)==1
   page.reload(wait_until='domcontentloaded')
   page.locator('div.fixed.inset-0').filter(has=page.locator('img')).first.wait_for(state='hidden')
   page.get_by_role('button',name='Open coordinated assignment controls').click()
@@ -92,6 +115,7 @@ with sync_playwright() as p:
   approve=review.get_by_role('button',name='Approve processing · uses research credits',exact=True)
   expect(approve).to_be_visible()
   assert len(writes)==1
+  assert not review.get_by_text('Restored unsaved choices in this browser tab.',exact=False).count()
   expect(review.get_by_text('Full versioned note · frozen model fixture-v1',exact=False)).to_be_visible()
   expect(review.get_by_text('Meeting preparation · 2026-10-20 · expert',exact=True)).to_be_visible()
   expect(review.get_by_text('Full-note source check: 2 originals planned across 2 batches.',exact=False)).to_be_visible()
@@ -104,12 +128,12 @@ with sync_playwright() as p:
   expect(coverage.get_by_text('A reference does not prove that evidence was incorporated',exact=False)).to_be_visible()
   expect(coverage.get_by_text('1 exact-byte references found',exact=False)).to_be_visible()
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T312-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T313-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   approve.click()
   link=review.get_by_role('link',name='Open saved processing job and outputs')
   expect(link).to_have_attribute('href', '#view=stockanalysis&ticker=ABT&section=stock-analysis&work=assignment%3A'+NOTE)
   assert len(writes)==2,writes
-  print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, frozen evidence coverage, unknowns/reference limitations, source readiness and explicit approval passed',flush=True)
+  print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, local draft reload/discard, lost-save reconciliation, saved coverage and explicit approval passed',flush=True)
   page.close()
  b.close()

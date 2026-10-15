@@ -1,3 +1,4 @@
+import {emptyDraft,draftKey,readDraft,writeDraft} from './processing-proposal-draft.mjs';
 import {ProcessingCoverage} from './processing-coverage';
 import {ProcessingSourceLibrary} from './processing-source-library';
 import * as React from 'react';
@@ -6,30 +7,39 @@ import {assignmentOutputs} from './assignment-defaults.mjs';
 
 export function ProcessingProposals({api,job}){
  const [open,setOpen]=React.useState(false);
- return <details onToggle={e=>{if(e.currentTarget.open)setOpen(true);}}><summary>Choose sources &amp; prepare processing approval</summary>{open&&<ProposalReview api={api} job={job}/>}</details>;
+ return <details onToggle={e=>{if(e.currentTarget.open)setOpen(true);}}><summary>Choose sources &amp; prepare processing approval</summary>{open&&<ProposalReview key={api+':'+job.id} api={api} job={job}/>}</details>;
 }
 function ProposalReview({api,job}){
- const [fullNote,setFullNote]=React.useState(false),[allowPdfText,setAllowPdfText]=React.useState(false),[meetingDate,setMeetingDate]=React.useState(''),[meetingType,setMeetingType]=React.useState('management');
- const [supplements,setSupplements]=React.useState([]);
- const [selected,setSelected]=React.useState([]),[purpose,setPurpose]=React.useState('thesis_review'),[title,setTitle]=React.useState(''),[eventDate,setEventDate]=React.useState(''),[outputs,setOutputs]=React.useState(['thesis']),[instruction,setInstruction]=React.useState('');
+ const localKey=draftKey(api,job.id),[restored]=React.useState(()=>{try{return readDraft(sessionStorage,localKey);}catch{return {value:null,error:'Local draft storage is unavailable. Saved proposals are unaffected.'};}});
+ const initial=restored.value||emptyDraft();
+ const [draftIssue,setDraftIssue]=React.useState(restored.error),[restoredNotice,setRestoredNotice]=React.useState(!!restored.value);
+ const [fullNote,setFullNote]=React.useState(initial.fullNote),[allowPdfText,setAllowPdfText]=React.useState(initial.allowPdfText),[meetingDate,setMeetingDate]=React.useState(initial.meetingDate),[meetingType,setMeetingType]=React.useState(initial.meetingType);
+ const [supplements,setSupplements]=React.useState(initial.supplements);
+ const [selected,setSelected]=React.useState(initial.selected),[purpose,setPurpose]=React.useState(initial.purpose),[title,setTitle]=React.useState(initial.title),[eventDate,setEventDate]=React.useState(initial.eventDate),[outputs,setOutputs]=React.useState(initial.outputs),[instruction,setInstruction]=React.useState(initial.instruction);
  const [rows,setRows]=React.useState([]),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[loaded,setLoaded]=React.useState(false),[pending,setPending]=React.useState(null);
  const lock=React.useRef(false),live=React.useRef(true);
+ const authoring={version:1,selected,supplements,purpose,title,eventDate,outputs,instruction,fullNote,allowPdfText,meetingDate,meetingType};
+ React.useLayoutEffect(()=>{if(draftIssue||pending)return;try{writeDraft(sessionStorage,localKey,authoring);}catch{setDraftIssue('Unsaved choices cannot be kept on this device. Save a proposal before leaving.');}},[localKey,JSON.stringify(authoring),draftIssue,pending]);
+ const resetForm=()=>{const d=emptyDraft();setSelected(d.selected);setSupplements(d.supplements);setPurpose(d.purpose);setTitle(d.title);setEventDate(d.eventDate);setOutputs(d.outputs);setInstruction(d.instruction);setFullNote(d.fullNote);setAllowPdfText(d.allowPdfText);setMeetingDate(d.meetingDate);setMeetingType(d.meetingType);setRestoredNotice(false);try{sessionStorage.removeItem(localKey);setDraftIssue('');}catch{setDraftIssue('Local choices could not be cleared. Saved proposals are unaffected.');}};
  const key='charlie-processing-proposal:'+api+':'+job.id;
  const path='/api/research/assignments/'+job.id+'/processing-proposals';
  const call=async(url,body)=>{const response=await fetch(api+url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let data;try{data=await response.json();}catch{throw Error('Response unavailable. Refresh saved proposals before retrying.');}if(!response.ok){const e=Error(data.error||'Processing proposals unavailable');e.status=response.status;throw e;}return data;};
- const refresh=async()=>{const data=await call(path);if(!Array.isArray(data.proposals))throw Error('Proposal list unavailable. No processing was requested.');if(live.current){setRows(data.proposals);setLoaded(true);}const raw=sessionStorage.getItem(key);if(raw){const saved=JSON.parse(raw);if(data.proposals.some(p=>p.id===saved.requestId)){sessionStorage.removeItem(key);if(live.current)setPending(null);}}};
+ const refresh=async()=>{const data=await call(path);if(!Array.isArray(data.proposals))throw Error('Proposal list unavailable. No processing was requested.');if(live.current){setRows(data.proposals);setLoaded(true);}const raw=sessionStorage.getItem(key);if(raw){const saved=JSON.parse(raw);if(data.proposals.some(p=>p.id===saved.requestId)){sessionStorage.removeItem(key);if(live.current){setPending(null);resetForm();}}}};
  React.useEffect(()=>{live.current=true;try{const raw=sessionStorage.getItem(key);if(raw)setPending(JSON.parse(raw));}catch{setError('Saved submission could not be read. Inspect saved proposals before creating another.');return;}refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;};},[key]);
  const act=async fn=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();await refresh();}catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
  const save=()=>act(async()=>{
   const body=pending||{requestId:crypto.randomUUID(),filenames:[...selected].sort(),supplementalIds:[...supplements].sort(),plan:{researchPurpose:purpose==='event_note'?{kind:purpose,event:{title:title.trim(),date:eventDate}}:{kind:purpose},outputs:[...outputs].sort(),instruction,horizon:'12–24 months',...(fullNote?{labFullNote:{allowPdfText}}:{}),...(outputs.includes('meeting_prep')?{meeting:{date:meetingDate,type:meetingType}}:{})}};
   sessionStorage.setItem(key,JSON.stringify(body));setPending(body);
-  try{const receipt=await call(path,body);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');sessionStorage.removeItem(key);setPending(null);}
+  try{const receipt=await call(path,body);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');sessionStorage.removeItem(key);setPending(null);resetForm();}
   catch(e){if(e.status===409){sessionStorage.removeItem(key);setPending(null);}throw e;}
  });
  return <section aria-label="Processing approval" style={{padding:'12px 0',overflowWrap:'anywhere'}}>
   <p><strong>Collected library → selected evidence → your processing approval</strong></p>
   <p>Collection searched {job.input.since} through {job.input.until}. This is collection coverage, not proof that the accepted thesis incorporates these documents. Saving a proposal spends no research credits.</p>
   {error&&<p role="alert">{error}</p>}
+  {restoredNotice&&<p role="status">Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested.</p>}
+  {draftIssue&&<p role="alert">{draftIssue}</p>}
+  <p><small>Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record.</small> <button disabled={busy||!!pending} onClick={resetForm}>Discard unsaved choices</button></p>
   <button disabled={busy} onClick={()=>act(async()=>{})}>Refresh saved proposals</button>
   {pending&&<p role="status">A proposal submission is unresolved. Refresh to find its receipt, or retry the same saved submission below. Its choices are frozen.</p>}
   <fieldset disabled={busy||!loaded||!!pending}>

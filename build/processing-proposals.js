@@ -1,3 +1,4 @@
+import { emptyDraft, draftKey, readDraft, writeDraft } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
 import { ProcessingSourceLibrary } from './processing-source-library';
 import * as React from 'react';
@@ -13,6 +14,7 @@ export function ProcessingProposals({
       if (e.currentTarget.open) setOpen(true);
     }
   }, /*#__PURE__*/React.createElement("summary", null, "Choose sources & prepare processing approval"), open && /*#__PURE__*/React.createElement(ProposalReview, {
+    key: api + ':' + job.id,
     api: api,
     job: job
   }));
@@ -21,17 +23,31 @@ function ProposalReview({
   api,
   job
 }) {
-  var [fullNote, setFullNote] = React.useState(false),
-    [allowPdfText, setAllowPdfText] = React.useState(false),
-    [meetingDate, setMeetingDate] = React.useState(''),
-    [meetingType, setMeetingType] = React.useState('management');
-  var [supplements, setSupplements] = React.useState([]);
-  var [selected, setSelected] = React.useState([]),
-    [purpose, setPurpose] = React.useState('thesis_review'),
-    [title, setTitle] = React.useState(''),
-    [eventDate, setEventDate] = React.useState(''),
-    [outputs, setOutputs] = React.useState(['thesis']),
-    [instruction, setInstruction] = React.useState('');
+  var localKey = draftKey(api, job.id),
+    [restored] = React.useState(() => {
+      try {
+        return readDraft(sessionStorage, localKey);
+      } catch {
+        return {
+          value: null,
+          error: 'Local draft storage is unavailable. Saved proposals are unaffected.'
+        };
+      }
+    });
+  var initial = restored.value || emptyDraft();
+  var [draftIssue, setDraftIssue] = React.useState(restored.error),
+    [restoredNotice, setRestoredNotice] = React.useState(!!restored.value);
+  var [fullNote, setFullNote] = React.useState(initial.fullNote),
+    [allowPdfText, setAllowPdfText] = React.useState(initial.allowPdfText),
+    [meetingDate, setMeetingDate] = React.useState(initial.meetingDate),
+    [meetingType, setMeetingType] = React.useState(initial.meetingType);
+  var [supplements, setSupplements] = React.useState(initial.supplements);
+  var [selected, setSelected] = React.useState(initial.selected),
+    [purpose, setPurpose] = React.useState(initial.purpose),
+    [title, setTitle] = React.useState(initial.title),
+    [eventDate, setEventDate] = React.useState(initial.eventDate),
+    [outputs, setOutputs] = React.useState(initial.outputs),
+    [instruction, setInstruction] = React.useState(initial.instruction);
   var [rows, setRows] = React.useState([]),
     [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState(''),
@@ -39,6 +55,49 @@ function ProposalReview({
     [pending, setPending] = React.useState(null);
   var lock = React.useRef(false),
     live = React.useRef(true);
+  var authoring = {
+    version: 1,
+    selected,
+    supplements,
+    purpose,
+    title,
+    eventDate,
+    outputs,
+    instruction,
+    fullNote,
+    allowPdfText,
+    meetingDate,
+    meetingType
+  };
+  React.useLayoutEffect(() => {
+    if (draftIssue || pending) return;
+    try {
+      writeDraft(sessionStorage, localKey, authoring);
+    } catch {
+      setDraftIssue('Unsaved choices cannot be kept on this device. Save a proposal before leaving.');
+    }
+  }, [localKey, JSON.stringify(authoring), draftIssue, pending]);
+  var resetForm = () => {
+    var d = emptyDraft();
+    setSelected(d.selected);
+    setSupplements(d.supplements);
+    setPurpose(d.purpose);
+    setTitle(d.title);
+    setEventDate(d.eventDate);
+    setOutputs(d.outputs);
+    setInstruction(d.instruction);
+    setFullNote(d.fullNote);
+    setAllowPdfText(d.allowPdfText);
+    setMeetingDate(d.meetingDate);
+    setMeetingType(d.meetingType);
+    setRestoredNotice(false);
+    try {
+      sessionStorage.removeItem(localKey);
+      setDraftIssue('');
+    } catch {
+      setDraftIssue('Local choices could not be cleared. Saved proposals are unaffected.');
+    }
+  };
   var key = 'charlie-processing-proposal:' + api + ':' + job.id;
   var path = '/api/research/assignments/' + job.id + '/processing-proposals';
   var call = async (url, body) => {
@@ -77,7 +136,10 @@ function ProposalReview({
       var saved = JSON.parse(raw);
       if (data.proposals.some(p => p.id === saved.requestId)) {
         sessionStorage.removeItem(key);
-        if (live.current) setPending(null);
+        if (live.current) {
+          setPending(null);
+          resetForm();
+        }
       }
     }
   };
@@ -148,6 +210,7 @@ function ProposalReview({
       if (receipt.id !== body.requestId) throw Error('Proposal receipt mismatch. Refresh saved proposals.');
       sessionStorage.removeItem(key);
       setPending(null);
+      resetForm();
     } catch (e) {
       if (e.status === 409) {
         sessionStorage.removeItem(key);
@@ -164,7 +227,14 @@ function ProposalReview({
     }
   }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Collected library \u2192 selected evidence \u2192 your processing approval")), /*#__PURE__*/React.createElement("p", null, "Collection searched ", job.input.since, " through ", job.input.until, ". This is collection coverage, not proof that the accepted thesis incorporates these documents. Saving a proposal spends no research credits."), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), /*#__PURE__*/React.createElement("button", {
+  }, error), restoredNotice && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested."), draftIssue && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, draftIssue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record."), " ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!pending,
+    onClick: resetForm
+  }, "Discard unsaved choices")), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => act(async () => {})
   }, "Refresh saved proposals"), pending && /*#__PURE__*/React.createElement("p", {

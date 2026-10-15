@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T313 adds per-tab recovery of unsaved processing choices and reconciliation of
+lost save receipts without duplicate submissions. Synthetic UI proof does not
+replace the pending genuine authorized collection-to-output acceptance.
+
 T312 adds a read-only frozen evidence-coverage summary: selected dates, unknowns,
 source roles/types and separate thesis-register references. It does not certify
 source incorporation, exhaustive coverage or accepted-thesis freshness.
