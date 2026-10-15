@@ -10,7 +10,8 @@ export function CollectedSourcePicker({
   onChange,
   purpose,
   remaining,
-  onReady
+  onReady,
+  onInventory
 }) {
   var [rows, setRows] = React.useState([]),
     [error, setError] = React.useState(''),
@@ -48,6 +49,14 @@ export function CollectedSourcePicker({
       live.current = false;
     };
   }, [job.id, api]);
+  React.useEffect(() => {
+    onInventory({
+      rows,
+      loaded,
+      busy,
+      error
+    });
+  }, [rows, loaded, busy, error, onInventory]);
   var duplicates = duplicateSelections(rows, selected),
     shown = visibleLabDocuments(rows.filter(r => !onlySelected || selected.includes(r.filename)), query, type, 'date');
   var hidden = selected.filter(name => !shown.some(r => r.filename === name)).length;

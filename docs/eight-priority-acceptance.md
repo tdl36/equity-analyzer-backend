@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T321 adds combined pre-save collection/history review, duplicate-hash hints,
+publication unknowns and explicit selection removal. Unloaded/unavailable selected
+metadata blocks a new save. Synthetic mobile/desktop validation is not genuine
+collection-to-output or investor acceptance; all eight certifications remain open.
+
 T313 adds per-tab recovery of unsaved processing choices and reconciliation of
 lost save receipts without duplicate submissions. Synthetic UI proof does not
 replace the pending genuine authorized collection-to-output acceptance.

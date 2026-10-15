@@ -69,6 +69,10 @@ Organize and deduplicate the larger library; metadata suggestions are not conten
 analysis. Disclose selected/excluded/context-only evidence and size/context limits.
 T312 adds the frozen selection summary (dates/unknowns, source roles/types and
 thesis-register references) without retroactively changing saved proposals.
+T321 adds the combined pre-save selection review: collected/history roles, known
+and unknown publication dates, matching receipt hints, loaded-only exclusions and
+explicit removal. Unloaded/unavailable selected metadata blocks a new save; actual
+bytes and frozen coverage are still verified by the existing server save.
 Any model-assisted screening is explicit and budgeted, not automatic backfill work.
 
 ## Priority 4 — Expand Ready to process as a shared view

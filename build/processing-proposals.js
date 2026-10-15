@@ -1,3 +1,5 @@
+import { processingSelection } from './processing-selection-model.mjs';
+import { ProcessingSelectionReview } from './processing-selection-review';
 import { OriginalDownload } from './original-download';
 import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
@@ -44,6 +46,14 @@ function ProposalReview({
     [allowPdfText, setAllowPdfText] = React.useState(initial.allowPdfText),
     [meetingDate, setMeetingDate] = React.useState(initial.meetingDate),
     [meetingType, setMeetingType] = React.useState(initial.meetingType);
+  var [collectionInventory, setCollectionInventory] = React.useState({
+      rows: [],
+      loaded: false
+    }),
+    [libraryInventory, setLibraryInventory] = React.useState({
+      rows: [],
+      loaded: false
+    });
   var [collectionReady, setCollectionReady] = React.useState(false);
   var [supplements, setSupplements] = React.useState(initial.supplements);
   var [selected, setSelected] = React.useState(initial.selected),
@@ -60,6 +70,14 @@ function ProposalReview({
     [pending, setPending] = React.useState(null);
   var lock = React.useRef(false),
     live = React.useRef(true);
+  var selectionSummary = processingSelection({
+    selected,
+    supplements,
+    collection: collectionInventory,
+    library: libraryInventory,
+    since: job.input.since,
+    until: job.input.until
+  });
   var authoring = {
     version: 1,
     selected,
@@ -285,7 +303,8 @@ function ProposalReview({
     onChange: setSelected,
     purpose: purpose,
     remaining: 1000 - supplements.length,
-    onReady: setCollectionReady
+    onReady: setCollectionReady,
+    onInventory: setCollectionInventory
   }), /*#__PURE__*/React.createElement(ProcessingSourceLibrary, {
     api: api,
     ticker: job.ticker,
@@ -294,7 +313,12 @@ function ProposalReview({
     selected: supplements,
     onChange: setSupplements,
     purpose: purpose,
-    remaining: 1000 - selected.length
+    remaining: 1000 - selected.length,
+    onInventory: setLibraryInventory
+  }), /*#__PURE__*/React.createElement(ProcessingSelectionReview, {
+    summary: selectionSummary,
+    purpose: purpose,
+    onRemove: r => r.role === 'collection' ? setSelected(selected.filter(n => n !== r.selection)) : setSupplements(supplements.filter(id => id !== r.selection))
   }), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, assignmentOutputs.filter(([id]) => purpose !== 'event_note' || id === 'summary_note' || id === 'meeting_prep').map(([id, label]) => /*#__PURE__*/React.createElement("label", {
@@ -336,7 +360,7 @@ function ProposalReview({
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !!readIssue || !pending && (!collectionReady || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !!readIssue || !pending && (!collectionReady || selectionSummary.metadataPending || selectionSummary.missing > 0 || selectionSummary.unavailable > 0 || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
   }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, readIssue ? 'Saved proposals unavailable. Refresh to check their status.' : 'Loading saved proposals…') : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,

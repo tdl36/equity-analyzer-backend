@@ -29,7 +29,7 @@ with sync_playwright() as p:
      {'id':None,'filename':'missing.pdf','receiptSha256':'d'*64,'availability':'missing','publishedDate':None}]}
     if collection_mode=='mismatch':d['ticker']='CVS'
    elif '/processing-library' in u:
-    d={'documents':[{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True},{'id':'thesis_4','filename':'reference-only.pdf','eligible':False}], 'nextCursor':'3'} if 'after=' not in u else {'documents':[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':'2023-07-01','eligible':True}], 'nextCursor':None}
+    d={'documents':[{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True},{'id':'thesis_4','filename':'reference-only.pdf','eligible':False}], 'nextCursor':'3'} if 'after=' not in u else {'documents':[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':None,'recordedSha256':HASH,'eligible':True}], 'nextCursor':None}
    elif '/processing-proposals' in u:
     if route.request.method=='POST':
      body=route.request.post_data_json
@@ -108,7 +108,7 @@ with sync_playwright() as p:
   expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
   collection_mode='ok';collected.get_by_role('button',name='Refresh collected source metadata',exact=True).click()
   expect(save).to_be_enabled()
-  collected.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T320-'+str(width)+'-sources.png')
+  collected.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T321-'+str(width)+'-sources.png')
 
   review.get_by_role('checkbox',name='Meeting questions',exact=True).check()
   expect(save).to_be_disabled()
@@ -123,6 +123,19 @@ with sync_playwright() as p:
   library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).check()
   library.get_by_role('button',name='Load more library sources',exact=True).click()
   expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).to_be_visible()
+  pack=review.get_by_role('region',name='Evidence review before save',exact=True)
+  expect(pack.get_by_text('2 selected originals',exact=False)).to_be_visible()
+  expect(pack.get_by_text('Selected publication dates: 2024-03-01 – 2026-10-01.',exact=False)).to_be_visible()
+  library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False).check()
+  expect(pack.get_by_text('Possible duplicate copies in this selection',exact=True)).to_be_visible()
+  expect(pack.get_by_text('1 dates unknown.',exact=False)).to_be_visible()
+  pack.get_by_text('Selected originals · 3',exact=True).click()
+  pack.get_by_role('button',name='Remove supplemental source historical-transcript.pdf',exact=True).click()
+  expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).not_to_be_checked()
+  expect(pack.get_by_text('Possible duplicate copies in this selection',exact=True)).to_have_count(0)
+  expect(pack.get_by_text('2 selected originals',exact=False)).to_be_visible()
+  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Review overflow'
+  pack.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T321-'+str(width)+'-selection.png')
   library.get_by_label('Find library sources').fill('annual')
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   with page.expect_download() as downloaded:library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).locator('xpath=../..').get_by_role('button',name='Download original',exact=True).click()
@@ -143,9 +156,12 @@ with sync_playwright() as p:
   expect(review.get_by_label('Processing event title')).to_have_value('Guidance update')
   expect(review.get_by_label('Processing meeting type')).to_have_value('expert')
   expect(review.get_by_role('checkbox',name='Full versioned Lab note',exact=False)).to_be_checked()
+  expect(save).to_be_disabled()
+  expect(review.get_by_role('region',name='Evidence review before save',exact=True).get_by_text('1 selected originals have no loaded metadata.',exact=False)).to_be_visible()
   review.get_by_role('button',name='Browse wider source library',exact=True).click()
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   assert writes==[]
+  expect(save).to_be_enabled()
   save.click()
   if width==1280:
    expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
@@ -180,7 +196,7 @@ with sync_playwright() as p:
   expect(coverage.get_by_text('A reference does not prove that evidence was incorporated',exact=False)).to_be_visible()
   expect(coverage.get_by_text('1 exact-byte references found',exact=False)).to_be_visible()
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T320-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T321-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   for read_mode in ['error','company','collection','duplicate']:
    review.get_by_role('button',name='Refresh saved proposals',exact=True).click()

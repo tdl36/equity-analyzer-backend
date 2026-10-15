@@ -2,7 +2,7 @@ import {OriginalDownload} from './original-download';
 import * as React from 'react';
 import {labDocuments,visibleLabDocuments,groupLabDocuments,labSourceDate,taskSourceGuide} from './pipeline-lab-model.mjs';
 
-export function ProcessingSourceLibrary({api,ticker,call,path,selected,onChange,purpose,remaining}){
+export function ProcessingSourceLibrary({api,ticker,call,path,selected,onChange,purpose,remaining,onInventory}){
  const [documents,setDocuments]=React.useState([]),[loaded,setLoaded]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[cursor,setCursor]=React.useState(null),[query,setQuery]=React.useState(''),[type,setType]=React.useState('All');
  const lock=React.useRef(false),live=React.useRef(true);
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
@@ -13,6 +13,7 @@ export function ProcessingSourceLibrary({api,ticker,call,path,selected,onChange,
   labDocuments(merged,[]); // Reject ambiguous identities before showing choices.
   if(live.current){setDocuments(merged);setCursor(data.nextCursor);setLoaded(true);}
  }catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
+ React.useEffect(()=>{onInventory({rows:labDocuments(documents,[]),loaded,busy,error,cursor});},[documents,loaded,busy,error,cursor,onInventory]);
  const rows=labDocuments(documents,[]),shown=visibleLabDocuments(rows,query,type,'date');
  const missing=selected.filter(id=>!documents.some(d=>d.id==='thesis_'+id));
  return <section aria-label="Supplemental source library" style={{margin:'16px 0',padding:12,border:'1px solid var(--border-color,#d8dedd)'}}>

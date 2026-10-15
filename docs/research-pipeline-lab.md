@@ -1,3 +1,38 @@
+## T321 — Combined selected-evidence review before proposal save
+
+The collection-linked processing form now reviews collected and supplemental
+history in one pack before save: source roles, recorded publication range and
+unknown dates, comparison with the discovery window, individual selected sources,
+and counts of unselected collection/loaded library entries. Unknown or invalid
+publication dates never fall back to upload time. Partial library pagination is
+explicit; a date range is not continuous coverage or proof of source relevance.
+Thesis and event guidance retain their distinct analytical scopes.
+
+Matching recorded hashes across both lists flag possible duplicate copies without
+automatic removal. Each selected source can be explicitly removed from this review.
+Missing metadata, unavailable selections and failed/loading metadata reads block a
+new save until resolved; restored selections remain intact. Absent/different hashes
+do not prove uniqueness. Existing server save/approval checks still verify actual
+bytes, permissions, duplicate originals, size limits and frozen baseline references.
+Saved proposal summaries remain frozen and do not use this current metadata preview.
+
+Validation: 231 frontend tests and production build pass; synthetic full-app tests
+at 390/1280px cover cross-list duplicate warnings, unknown publication dates,
+explicit removal, reload with unloaded supplemental selections, and recovery before
+save. Previous download, lost-response and approval guards also pass. Screens were
+visually inspected; no horizontal overflow. All mutation calls were intercepted;
+no real generation, processing approval or investor acceptance. Backend code did
+not change; latest broader safe backend evidence remains T319's 1,635 tests.
+
+Next critical path: verify a genuine completed collection against the inventory,
+then observe request-specific investor-authorized processing and saved output
+links. Latest recorded CVS evidence remains 19:22:56 UTC: queued with zero sources;
+no new live completion is claimed. While awaiting real evidence, audit the frozen
+selected-pack-to-shared-report handoff for visible excerpt/omission provenance and
+purpose separation; fix concrete gaps without dispatching research. Shared Ready
+expansion, historical reference/schema work and eight-priority live/investor
+acceptance remain open. Collection workers and automatic-synthesis pause unchanged.
+
 ## T320 — Authenticated original downloads and receipt-byte verification
 
 Follow-up to T319 in the same build session: review found that ordinary browser

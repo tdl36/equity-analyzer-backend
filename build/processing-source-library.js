@@ -9,7 +9,8 @@ export function ProcessingSourceLibrary({
   selected,
   onChange,
   purpose,
-  remaining
+  remaining,
+  onInventory
 }) {
   var [documents, setDocuments] = React.useState([]),
     [loaded, setLoaded] = React.useState(false),
@@ -48,6 +49,15 @@ export function ProcessingSourceLibrary({
       if (live.current) setBusy(false);
     }
   };
+  React.useEffect(() => {
+    onInventory({
+      rows: labDocuments(documents, []),
+      loaded,
+      busy,
+      error,
+      cursor
+    });
+  }, [documents, loaded, busy, error, cursor, onInventory]);
   var rows = labDocuments(documents, []),
     shown = visibleLabDocuments(rows, query, type, 'date');
   var missing = selected.filter(id => !documents.some(d => d.id === 'thesis_' + id));

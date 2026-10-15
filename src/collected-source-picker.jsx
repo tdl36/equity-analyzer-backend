@@ -2,7 +2,7 @@ import {OriginalDownload} from './original-download';
 import * as React from 'react';
 import {collectedSources,duplicateSelections} from './collected-source-model.mjs';
 import {visibleLabDocuments,groupLabDocuments,labSourceDate,taskSourceGuide} from './pipeline-lab-model.mjs';
-export function CollectedSourcePicker({api,call,job,selected,onChange,purpose,remaining,onReady}){
+export function CollectedSourcePicker({api,call,job,selected,onChange,purpose,remaining,onReady,onInventory}){
  const [rows,setRows]=React.useState([]),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[loaded,setLoaded]=React.useState(false),[query,setQuery]=React.useState(''),[type,setType]=React.useState('All'),[onlySelected,setOnlySelected]=React.useState(false);
  const live=React.useRef(false),lock=React.useRef(false);
  const load=async()=>{if(lock.current)return;lock.current=true;setBusy(true);onReady(false);try{
@@ -10,6 +10,7 @@ export function CollectedSourcePicker({api,call,job,selected,onChange,purpose,re
   if(live.current){setRows(result);setLoaded(true);setError('');onReady(true);}
  }catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
  React.useEffect(()=>{live.current=true;load();return()=>{live.current=false;};},[job.id,api]);
+ React.useEffect(()=>{onInventory({rows,loaded,busy,error});},[rows,loaded,busy,error,onInventory]);
  const duplicates=duplicateSelections(rows,selected),shown=visibleLabDocuments(rows.filter(r=>!onlySelected||selected.includes(r.filename)),query,type,'date');
  const hidden=selected.filter(name=>!shown.some(r=>r.filename===name)).length;
  return <section aria-label="Collected evidence" style={{margin:'16px 0',padding:12,border:'1px solid var(--border-color,#d8dedd)',overflowWrap:'anywhere'}}>
