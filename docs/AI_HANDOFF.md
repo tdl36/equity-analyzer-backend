@@ -14,6 +14,13 @@ Validation: 207 frontend tests and production build pass. Isolated full-app
 390/1280px fixtures exercise initial focus, both Tab boundaries, dismissed and
 accepted unsaved Escape prompts, and focus restoration with zero API writes.
 This is bounded keyboard acceptance, not a whole-product accessibility audit.
+T305 production verified: Render 4485e518dc611d37343b8361eb12142d790ff81e;
+Cloudflare 9894e14e-1881-4045-8554-b12754286add. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac agent healthy at 88.1 seconds. Authentication and
+missing-original refusal pass. Shared UI foundations also pass all 28 theme/viewport
+combinations using the installed Python Playwright driver package (the default Node
+module lookup was unavailable). No paid calls, approvals or API writes were tested.
+
 Next: continue primary-workspace long-content/error-state and real-object
 navigation acceptance; historical provider and genuine-run evidence gaps remain.
 
