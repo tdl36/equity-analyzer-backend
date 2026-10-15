@@ -57,3 +57,11 @@ test('saved work links are typed and bounded to compatible workflow sections',()
   assert.equal(readRoute(routeHash('stockanalysis','UNH','stock-analysis',bad)).work,undefined);
  assert.equal(readRoute('#view=today&work=assignment:'+id).work,undefined);
 });
+
+test('Home meetings retain exact identities and use Eastern calendar dates',async()=>{
+ const {upcomingMeetings}=await import('../../src/workspace-model.mjs');
+ const rows=[{id:2,ticker:'ABT',meeting_date:'2026-10-15'},{id:1,ticker:'MSFT',meeting_date:'2026-10-14'},{id:3,ticker:'ABT',meeting_date:'2026-02-30'},{id:'bad',ticker:'ABT',meeting_date:'2026-10-16'},{id:4,ticker:'ABT',meeting_date:'2026-10-13'}];
+ assert.deepEqual(upcomingMeetings(rows,new Date('2026-10-15T01:00:00Z')).map(m=>m.id),[1,2]);
+ assert.deepEqual(upcomingMeetings(rows,new Date('2026-10-15T12:00:00Z')).map(m=>m.id),[2]);
+ assert.equal(readRoute(routeHash('meetingprep','ABT','',`meeting:2`)).work,'meeting:2');
+});

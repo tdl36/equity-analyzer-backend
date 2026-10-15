@@ -2,6 +2,30 @@
 
 Updated: October 14, 2026
 
+## T295 — Eight-priority audit and connected Home/company navigation
+
+The user renewed completion of all eight priorities. Use
+`docs/eight-priority-acceptance.md` as the explicit evidence/remaining-work ledger;
+Lab micro-releases are not phase acceptance. Read-only live inspection confirmed
+WELL remains attention with no report/completion and unknown provider outcome.
+ABT has a complete assignment, visual/stock-summary artifacts and available pending
+review package; this is saved-output evidence, not quality approval.
+
+Home upcoming meetings now navigate to the exact saved meeting and company, using
+Eastern calendar dates and rejecting invalid dates/identities. Company quick
+access includes research/outputs, Lab sources, meetings and valuation/scenarios
+while preserving ticker and section. The existing visual style is retained.
+201 frontend and 1,533 backend tests passed, plus model-policy/build gates.
+Synthetic 390px/1280px browser checks verified exact meeting/company destinations
+without writes; the mobile company panel was visually inspected. No paid research,
+research decisions, original changes or external messages. Deployment pending.
+
+Next: continue the historical provider-schema boundary and audit/implement the
+explicit meeting-answer-to-proposal handoff; do not substitute cosmetic Lab work.
+A user question is pending for a genuine research ticker/output request because
+paid research solely for acceptance testing remains prohibited. All eight outcomes
+remain subject to the acceptance evidence described in the ledger.
+
 ## T294 — Inspect the checked source pack before generation
 
 The Lab source-check result now expands into the reported original filenames,

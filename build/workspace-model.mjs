@@ -67,3 +67,12 @@ export function selectedProjectSlide(project, currentProjectId, currentSlideNumb
   const slides = project.slides || [];
   return (project.id === currentProjectId && slides.find(s => s.slide_number === currentSlideNumber)) || slides[0] || null;
 }
+
+// Calendar dates are compared in the investor's timezone, not the device timezone.
+export function upcomingMeetings(meetings,now=new Date()) {
+ const today=now.toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+ return (Array.isArray(meetings)?meetings:[]).filter(m=>{
+  const day=m?.meeting_date;
+  return typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(Date.parse(day))&&new Date(day).toISOString().slice(0,10)===day&&day>=today&&validWork('meetingprep','',`meeting:${m.id}`)&&typeof m.ticker==='string'&&m.ticker.trim();
+ }).sort((a,b)=>a.meeting_date.localeCompare(b.meeting_date)||String(a.ticker).localeCompare(String(b.ticker))||Number(a.id)-Number(b.id));
+}

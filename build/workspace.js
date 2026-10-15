@@ -1,7 +1,7 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { ActivityWorkspace } from './activity';
-import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp } from './workspace-model.mjs';
+import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp, upcomingMeetings } from './workspace-model.mjs';
 var {
   useState,
   useEffect,
@@ -275,7 +275,7 @@ export function TodayWorkspace({
   var companies = companyIndex(analyses, overviews);
   var recent = [...summaries].sort((a, b) => (parseTimestamp(b.createdAt)?.getTime() || 0) - (parseTimestamp(a.createdAt)?.getTime() || 0)).slice(0, 5);
   var pending = alerts.filter(a => !['dismissed', 'done', 'archived'].includes(a.status));
-  var upcoming = (meetings || []).filter(m => m.meeting_date && m.meeting_date >= new Date().toLocaleDateString('en-CA')).sort((a, b) => a.meeting_date.localeCompare(b.meeting_date)).slice(0, 3);
+  var upcoming = upcomingMeetings(meetings).slice(0, 3);
   return /*#__PURE__*/React.createElement("div", {
     className: "workspace-page"
   }, /*#__PURE__*/React.createElement(PageHeading, {
@@ -337,7 +337,7 @@ export function TodayWorkspace({
   }, /*#__PURE__*/React.createElement("h2", null, "Upcoming meetings"), upcoming.length ? upcoming.map(m => /*#__PURE__*/React.createElement("button", {
     className: "workspace-link-row",
     key: m.id,
-    onClick: () => onNavigate('meetingprep')
+    onClick: () => onNavigate('meetingprep', m.ticker.trim().toUpperCase(), '', `meeting:${m.id}`)
   }, m.ticker, " ", /*#__PURE__*/React.createElement("time", null, dateLabel(m.meeting_date)))) : /*#__PURE__*/React.createElement(Empty, null, "No upcoming meetings in this workspace. Your saved meeting preparation is available in Create.")))), /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {
@@ -379,9 +379,9 @@ export function CompaniesWorkspace({
     className: "workspace-eyebrow"
   }, "CURRENT COMPANY"), /*#__PURE__*/React.createElement("h2", null, ticker, " ", /*#__PURE__*/React.createElement("span", null, selected?.company !== ticker ? selected?.company : '')), /*#__PURE__*/React.createElement("p", null, selected ? [selected.hasOverview && 'Overview available', selected.hasThesis && 'Thesis available'].filter(Boolean).join(' · ') : 'Start research or add evidence for this company.')), /*#__PURE__*/React.createElement("div", {
     className: "workspace-company-actions"
-  }, [['overview', 'Overview'], ['portfolio', 'Thesis'], ['summary', 'Evidence'], ['review', 'Review'], ['onepager', 'One-pager']].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
-    key: id,
-    onClick: () => onCompany(ticker, id)
+  }, [['overview', 'Overview'], ['portfolio', 'Thesis'], ['stockanalysis', 'Research & outputs', 'stock-analysis'], ['pipelinelab', 'Source library'], ['summary', 'Evidence'], ['meetingprep', 'Meetings'], ['stockanalysis', 'Valuation & scenarios', 'model'], ['review', 'Review'], ['onepager', 'One-pager']].map(([id, label, section = '']) => /*#__PURE__*/React.createElement("button", {
+    key: id + section,
+    onClick: () => onCompany(ticker, id, section)
   }, label, /*#__PURE__*/React.createElement(Icon, {
     name: "arrow"
   }))))), /*#__PURE__*/React.createElement("div", {

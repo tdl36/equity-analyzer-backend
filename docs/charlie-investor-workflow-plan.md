@@ -91,3 +91,11 @@ and unknown worker presence; no new provider-outcome evidence was found. Neither
 condition authorizes another paid attempt. Phase 1 live-interruption/provider-outcome
 acceptance, dated historical valuation and investor-scored output quality remain
 open. No phase is newly accepted and no research decision was made.
+
+## October 15 completion audit
+
+Use [the eight-priority acceptance ledger](eight-priority-acceptance.md) for the
+current evidence, engineering gaps and external acceptance dependencies. The user
+renewed the instruction to finish all eight priorities; small Lab releases must
+not substitute for closing these outcomes. Investor decisions and unknown paid
+provider outcomes remain independent gates.
