@@ -1,50 +1,9 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { MeetingAnswerProposal } from './meeting-answer-proposal';
 import { ResearchChat } from './research-chat';
-var today = () => new Date().toLocaleDateString('en-CA');
-var inputs = {
-  revenueMillions: '',
-  sharesMillions: '',
-  beforeMarginPct: '',
-  afterMarginPct: '',
-  taxPct: '',
-  baselineEPS: '',
-  multiple: '',
-  referencePrice: '',
-  currency: 'USD',
-  period: '',
-  basis: 'Adjusted diluted EPS',
-  asOf: today()
-};
-var blank = () => ({
-  kind: 'model',
-  title: '',
-  owner: 'Me',
-  rationale: '',
-  nextAction: '',
-  dueDate: today(),
-  status: 'open',
-  assumptionId: '',
-  inputs: {
-    ...inputs
-  },
-  sourceId: '',
-  sourceHash: '',
-  passage: '',
-  answerId: '',
-  answerHash: '',
-  resolution: 'unresolved',
-  mandate: '',
-  benchmark: '',
-  asOf: today(),
-  holdingPct: '0',
-  benchmarkPct: '',
-  reason: 'valuation',
-  valuationAssessment: '',
-  outcome: '',
-  reviewConditions: [],
-  reviewDecision: 'pending'
-});
+import { emptyWorkDraft, workDraft, workRecoveryKey, readWorkRecovery, writeWorkRecovery, clearWorkRecovery } from './research-workbench-recovery.mjs';
+var blank = emptyWorkDraft;
 async function json(api, path, options = {}) {
   var r = await fetch(api + path, {
     ...options,
@@ -58,7 +17,12 @@ async function json(api, path, options = {}) {
   }
   return d;
 }
-export function ResearchWorkbench({
+export function ResearchWorkbench(props) {
+  return /*#__PURE__*/React.createElement(Workbench, _extends({
+    key: props.api + '|' + props.ticker
+  }, props));
+}
+function Workbench({
   api,
   ticker,
   caseRevision,
@@ -66,21 +30,37 @@ export function ResearchWorkbench({
   disabled = false,
   initialKind = 'model'
 }) {
+  var key = workRecoveryKey(api, ticker);
+  var [recovered] = React.useState(() => {
+    try {
+      return {
+        value: readWorkRecovery(sessionStorage, key, ticker),
+        error: ''
+      };
+    } catch (e) {
+      return {
+        value: null,
+        error: e.message
+      };
+    }
+  });
+  var [recoveryError, setRecoveryError] = React.useState(recovered.error),
+    [dirty, setDirty] = React.useState(!!recovered.value),
+    [baseline, setBaseline] = React.useState(recovered.value?.caseRevision ?? caseRevision);
+  var initialRecoveryBlocked = React.useRef(!!recovered.error);
+  var [submission, setSubmission] = React.useState(recovered.value?.pending || null);
   var [data, setData] = React.useState({
       records: [],
       sources: [],
       answers: []
     }),
-    [draft, setDraft] = React.useState(() => ({
-      ...blank(),
-      kind: initialKind
-    })),
-    [record, setRecord] = React.useState(null),
+    [draft, setDraft] = React.useState(() => recovered.value?.draft || blank(initialKind)),
+    [record, setRecord] = React.useState(recovered.value?.record || null),
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
     [history, setHistory] = React.useState(null);
   var [debate, setDebate] = React.useState(null);
-  var pending = React.useRef(null),
+  var pending = React.useRef(recovered.value?.pending || null),
     lock = React.useRef(false),
     alive = React.useRef(true),
     sequence = React.useRef(0);
@@ -100,15 +80,62 @@ export function ResearchWorkbench({
       alive.current = false;
     };
   }, []);
+  var envelope = (draftValue = draft, recordValue = record, pendingValue = pending.current) => ({
+    version: 1,
+    ticker,
+    caseRevision: baseline,
+    record: recordValue ? {
+      id: recordValue.id,
+      revision: recordValue.revision
+    } : null,
+    draft: draftValue,
+    pending: pendingValue
+  });
+  React.useLayoutEffect(() => {
+    if (!dirty || recoveryError) return;
+    try {
+      writeWorkRecovery(sessionStorage, key, envelope());
+    } catch (e) {
+      setRecoveryError(e.message + ' Keep this tab open; changes are not safely retained.');
+    }
+  }, [draft, record, baseline, dirty, submission, recoveryError]);
+  React.useEffect(() => {
+    if (!dirty && !submission) return;
+    var warn = e => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty, submission]);
+  React.useEffect(() => {
+    if (!dirty && !submission) setBaseline(caseRevision);
+  }, [caseRevision, dirty, submission]);
   var edit = (key, v) => {
-    pending.current = null;
+    if (pending.current) return;
+    setDirty(true);
     setDraft(d => ({
       ...d,
       [key]: v
     }));
   };
+  var replaceDraft = (nextRecord, nextDraft, changed = false) => {
+    if (pending.current || recoveryError) return;
+    if (dirty && !window.confirm('Discard the current unfinished work draft and open this record?')) return;
+    try {
+      clearWorkRecovery(sessionStorage, key);
+    } catch (e) {
+      setRecoveryError(e.message);
+      return;
+    }
+    setRecord(nextRecord);
+    setDraft(workDraft(nextDraft));
+    setBaseline(caseRevision);
+    setDirty(changed);
+    setMessage('');
+  };
   var save = async () => {
-    if (lock.current) return;
+    if (lock.current || recoveryError || !pending.current && baseline !== caseRevision) return;
     lock.current = true;
     setBusy(true);
     setMessage('Saving reviewed work…');
@@ -118,11 +145,19 @@ export function ResearchWorkbench({
       revision: record?.revision || 0,
       body: {
         ...draft,
-        caseRevision
+        caseRevision: baseline
       }
     };
-    pending.current = p;
     try {
+      try {
+        writeWorkRecovery(sessionStorage, key, envelope(draft, record, p));
+      } catch (e) {
+        setRecoveryError(e.message + ' No new save was sent.');
+        throw e;
+      }
+      pending.current = p;
+      setSubmission(p);
+      setDirty(true);
       var r = await json(api, '/api/research/workbench/' + ticker, {
         method: 'POST',
         headers: {
@@ -130,17 +165,29 @@ export function ResearchWorkbench({
         },
         body: JSON.stringify(p)
       });
+      if (r.id !== p.id || r.revision !== p.revision + 1) throw Error('Saved work receipt does not match this request. Keep the original request for recovery.');
+      clearWorkRecovery(sessionStorage, key);
       if (alive.current) {
         setRecord({
           id: r.id,
           revision: r.revision
         });
         pending.current = null;
+        setSubmission(null);
+        setDirty(false);
         setMessage('Saved a work revision. Investment case and portfolio positions were not changed.');
         await load();
       }
     } catch (e) {
-      if (e.status === 409) pending.current = null;
+      if (e.status === 400 || e.status === 409) {
+        try {
+          writeWorkRecovery(sessionStorage, key, envelope(draft, record, null));
+          pending.current = null;
+          setSubmission(null);
+        } catch (storageError) {
+          setRecoveryError(storageError.message);
+        }
+      }
       if (alive.current) setMessage(e.message);
     } finally {
       lock.current = false;
@@ -157,8 +204,46 @@ export function ResearchWorkbench({
     className: "research-decision-log"
   }, /*#__PURE__*/React.createElement("summary", null, "Research workbench \xB7 ", data.records.length, " records"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Connect an assumption to a calculation, meeting follow-up or underweight review. Reviewed records preserve your reasoning; they do not execute trades or update a spreadsheet."), (!caseRevision || !assumptions.length) && /*#__PURE__*/React.createElement("p", null, "Save an investment case with at least one assumption to start connected work."), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: busy || disabled || !caseRevision || !assumptions.length
+  }, "Connect an assumption to a calculation, meeting follow-up or underweight review. Reviewed records preserve your reasoning; they do not execute trades or update a spreadsheet."), dirty && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Unfinished work is kept in this browser tab when storage is available. It is not saved in Charlie until you save a work revision."), recoveryError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, recoveryError, " Saved work below remains available. ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => {
+      try {
+        var saved = readWorkRecovery(sessionStorage, key, ticker);
+        if (initialRecoveryBlocked.current) {
+          if (saved) {
+            setDraft(saved.draft);
+            setRecord(saved.record);
+            setBaseline(saved.caseRevision);
+            pending.current = saved.pending;
+            setSubmission(saved.pending);
+            setDirty(true);
+          }
+        } else {
+          if (saved?.pending && JSON.stringify(saved.pending) !== JSON.stringify(pending.current)) throw Error('Another unresolved save is retained. Reload before continuing.');
+          if (dirty) writeWorkRecovery(sessionStorage, key, envelope());
+        }
+        initialRecoveryBlocked.current = false;
+        setRecoveryError('');
+      } catch (e) {
+        setRecoveryError(e.message);
+      }
+    }
+  }, "Retry browser recovery")), submission && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "A work save is unresolved. Its original request and revision are frozen; retrying saves that same work only. No research generation is involved. ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!recoveryError,
+    onClick: save
+  }, "Retry original work save")), dirty && baseline !== caseRevision && !submission && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "This draft was based on case revision ", baseline, "; the current case is revision ", caseRevision, ". Review the current assumptions, sources and answers before rebasing. ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!recoveryError,
+    onClick: () => setBaseline(caseRevision)
+  }, "I reviewed the current case \xB7 rebase draft")), (!caseRevision || !assumptions.length) && /*#__PURE__*/React.createElement("p", null, "Save an investment case with at least one assumption to start connected work."), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: busy || disabled || !!submission || !!recoveryError || !caseRevision || !assumptions.length
   }, /*#__PURE__*/React.createElement("label", null, "Work type", /*#__PURE__*/React.createElement("select", {
     "aria-label": "Work type",
     disabled: !!record,
@@ -333,18 +418,12 @@ export function ResearchWorkbench({
   }, "Closed \xB7 outcome recorded"))), draft.status !== 'open' && /*#__PURE__*/React.createElement("label", null, "Review outcome", /*#__PURE__*/React.createElement("textarea", {
     value: draft.outcome,
     onChange: e => edit('outcome', e.target.value)
-  })), record && /*#__PURE__*/React.createElement("p", null, "Editing work revision ", record.revision, ". Saving binds it to current case revision ", caseRevision, "; recheck changed assumptions."), /*#__PURE__*/React.createElement("button", {
+  })), record && /*#__PURE__*/React.createElement("p", null, "Editing work revision ", record.revision, ". Draft case revision ", baseline, "; current case revision ", caseRevision, ". Recheck changed assumptions."), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
+    disabled: baseline !== caseRevision,
     onClick: save
   }, busy ? 'Saving…' : draft.kind === 'model' ? 'Save work and calculate' : 'Save review revision'), /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setRecord(null);
-      setDraft({
-        ...blank(),
-        kind: initialKind
-      });
-      pending.current = null;
-    }
+    onClick: () => replaceDraft(null, blank(initialKind))
   }, "New work record"), /*#__PURE__*/React.createElement("button", {
     onClick: load
   }, "Reload source and answer choices")), /*#__PURE__*/React.createElement("p", {
@@ -367,15 +446,8 @@ export function ResearchWorkbench({
   }, "Challenge my underweight rationale"), /*#__PURE__*/React.createElement("p", null, "Review decision: ", (r.body.reviewDecision || 'pending').replaceAll('_', ' ')), r.body.reviewConditions?.map(c => /*#__PURE__*/React.createElement("p", {
     key: c.id
   }, /*#__PURE__*/React.createElement("strong", null, c.category, " \xB7 ", c.state.replaceAll('_', ' ')), ": ", c.trigger, /*#__PURE__*/React.createElement("br", null), c.evidence, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, c.sourceReference)))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => {
-      setRecord(r);
-      setDraft({
-        ...blank(),
-        ...r.body
-      });
-      pending.current = null;
-    }
+    disabled: busy || !!submission || !!recoveryError,
+    onClick: () => replaceDraft(r, r.body)
   }, "Review / update"), /*#__PURE__*/React.createElement("button", {
     onClick: async () => {
       try {
@@ -397,17 +469,11 @@ export function ResearchWorkbench({
   }, /*#__PURE__*/React.createElement("summary", null, "Immutable work history"), history.versions.map(v => /*#__PURE__*/React.createElement("details", {
     key: v.revision
   }, /*#__PURE__*/React.createElement("summary", null, "Revision ", v.revision, " \xB7 ", v.body.status), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => {
-      setRecord(data.records.find(r => r.id === history.id));
-      setDraft({
-        ...blank(),
-        ...v.body,
-        status: 'open'
-      });
-      pending.current = null;
-      setMessage('Historical version loaded as an unsaved draft. Review the current case, source and answer before saving a new revision.');
-    }
+    disabled: busy || !!submission || !!recoveryError || !data.records.some(r => r.id === history.id),
+    onClick: () => replaceDraft(data.records.find(r => r.id === history.id), {
+      ...v.body,
+      status: 'open'
+    }, true)
   }, "Use this version as a new draft"), /*#__PURE__*/React.createElement("pre", {
     style: {
       whiteSpace: 'pre-wrap',

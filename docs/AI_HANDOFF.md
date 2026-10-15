@@ -2,6 +2,41 @@
 
 Updated: October 14, 2026
 
+## T333 — Recoverable unfinished research-workbench edits
+
+The existing workbench now retains a bounded company/API-scoped browser-session
+copy of unfinished analyst work, its selected work revision and case baseline.
+New work, Review/update and historical-version replacement ask before discarding
+unfinished edits. Reload/company remount restores them; leaving the page warns
+while work is unsaved. Historical versions load as unsaved drafts. Server-owned
+calculations, source/answer snapshots and acceptance fields are excluded from the
+editable recovery projection; explicit source/answer identities and hashes remain.
+
+A save writes and verifies its original request before POST. An uncertain response
+freezes editing/replacement and persists the same request/work/case revision across
+reload. Only an explicit retry reuses it through existing backend idempotency; no
+automatic submission. Exact receipt identity/revision is checked before cleanup.
+Definitive 400/409 rejections retain the draft for correction. Storage failure and
+malformed recovery remain visible; quota recovery preserves current edits. Changed
+case baselines block fresh saves until explicitly reviewed/rebased. No backend,
+model dispatch, investor approval or original Pipeline behavior changed.
+
+Validation: 244 frontend tests, 16 focused safe backend lifecycle/meeting-answer
+checks and production build pass. Actual-component fixtures at 390/1280px cover
+replacement cancellation, reload, company isolation, case rebase, lost-save reload
+with no dispatch, identical explicit retry, historical drafts and quota recovery.
+Two mocked non-generating work-save POSTs per width; no real saves or approvals.
+Existing full-app follow-up navigation/recovery suite also passes at both widths
+with intercepted APIs. Phone screenshot inspected. Full backend last passed 1,672
+in T327; this is a frontend increment. Private/live research was not copied to fixtures.
+
+Next: verify exact deployment, then examine stale saved-work revision recovery:
+preserve local edits while comparing the newer saved version before explicit
+replacement/rebase. Do not automatically merge or advance a work revision. Keep
+live collection-only processing/investor proof and historical-reference schema gaps
+open. Synthesis remains paused; no duplicate collector or orchestrator.
+Logs: /tmp/charlie-T333-{frontend,backend,build,ui,navigation,deploy,verify}.log.
+
 ## T332 — Saved meeting-follow-up links survive local recovery failure
 
 The follow-up-to-thesis handoff previously read browser submission recovery before

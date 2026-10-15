@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T333 adds scoped unfinished-work recovery, replacement warnings, case-baseline
+review and frozen uncertain-save retries in the existing workbench. Synthetic
+reload/company-switch/lost-response checks pass; no live work or thesis was saved.
+
 T332 keeps saved follow-up proposal links accessible through browser recovery
 failures while blocking unsafe submissions. Synthetic navigation/recovery checks
 pass; the live due-work queue is empty and supplies no acceptance evidence.
