@@ -18,10 +18,14 @@ synthesis remains paused. Proposal approval validates up to 100 UUIDs and atomic
 transitions only still-proposed synthesis jobs; repeat clicks cannot create jobs,
 and alerts are acknowledged only for actual transitions.
 
-Validation: 205 frontend tests; focused approval guard tests and Python compile;
+Verified T302: 1,547 backend and 205 frontend tests pass; Python compile/build pass.
 390/1280px synthetic browser checks verify selected-only dispatch, hidden-selection
-counts, no automatic mutations and readable panel width. Full backend suite and
-production release verification recorded below when complete. No paid QA run.
+counts, no automatic mutations and readable panel width. Render revision
+5a77e9de34c962ae196b6dd7d3c6b61f0b55d652 and Cloudflare version
+c9ec2023-138f-487d-a5bd-1b43460ddcad verified with exact hosted JS/SW bytes and
+HTML marker. Mac agent healthy (93 seconds); production read showed four pending
+proposals, both global synthesis switches off and zero analyst switches on.
+No production synthesis or paid QA run was launched.
 
 ## T301 — Backfill automatic synthesis paused
 
