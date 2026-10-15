@@ -55,6 +55,13 @@ with sync_playwright() as p:
   page.screenshot(path=f'/tmp/charlie-T314-{width}-proposal.png')
   assert page.evaluate('document.documentElement.scrollWidth-innerWidth')<=1
   assert not writes and not errors,(writes,errors)
-  print(json.dumps({'width':width,'exactLink':True,'backForward':True,'unavailableRefused':True,'writes':len(writes),'pageErrors':errors}),flush=True)
+  page.evaluate("location.hash='view=desk&ticker=ETN&section=evidence&work=amendment%3A"+NEW+"'")
+  expect(page.get_by_text('Proposal ready for your review',exact=True)).to_be_visible()
+  page.get_by_role('button',name='Dismiss proposal',exact=True).click()
+  expect(page.get_by_role('alert').filter(has_text='No writes permitted')).to_be_visible()
+  with page.expect_response(lambda r:'/api/research/amendments/ETN?' in r.url,timeout=10000):pass
+  expect(page.get_by_role('alert').filter(has_text='No writes permitted')).to_be_visible()
+  assert len(writes)==1 and not errors
+  print(json.dumps({'width':width,'exactLink':True,'backForward':True,'unavailableRefused':True,'writesBeforeMockRejection':0,'mockRejectedDecision':len(writes),'pageErrors':errors}),flush=True)
   page.close()
  browser.close()

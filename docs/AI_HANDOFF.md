@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T315 — Preserve rejected review-action messages
+
+Follow-up to the T314 exact evidence-proposal navigation fix: focused read errors
+and review-action errors now have separate state. A successful status poll cannot
+clear a rejected decision message. Missing/error reads still withhold focused
+proposal actions; retrying the read never substitutes another saved proposal.
+
+T314 was deployed to the frontend but its final verification was superseded by this
+release. T315 includes that complete navigation fix. Validation: 213 frontend tests,
+production build, and full-app 390/1280px synthetic checks, including a deliberately
+rejected mock decision followed by a successful status poll. Navigation performed
+zero writes; only the isolated mock rejection was exercised. No production decision
+or generation was sent. Backend is unchanged from T314's 26 focused tests and
+1,628-test broader suite, plus final compact-ID regression. Exact production
+verification follows. Next action remains the T314 saved-object acceptance audit;
+genuine collection-to-approved-output and investor acceptance are still open.
+
 ## T314 — Exact saved evidence-proposal navigation
 
 Read-only Activity inspection found eleven evidence-amendment rows, including

@@ -17,6 +17,7 @@ export function ThesisAmendments({
   var [jobs, setJobs] = useState([]),
     [selected, setSelected] = useState([]),
     [accepted, setAccepted] = useState([]);
+  var [readError, setReadError] = useState('');
   var [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [loaded, setLoaded] = useState(false);
@@ -61,11 +62,11 @@ export function ThesisAmendments({
       if (alive.current && id === sequence.current) {
         setJobs(d.jobs || []);
         setLoaded(true);
-        if (focusId) setError('');
+        if (focusId) setReadError('');
       }
     } catch (e) {
       if (alive.current && id === sequence.current) {
-        setError(e.name === 'AbortError' ? 'The request timed out. Refresh to check status.' : e.message);
+        (focusId ? setReadError : setError)(e.name === 'AbortError' ? 'The request timed out. Refresh to check status.' : e.message);
         setLoaded(true);
       }
     }
@@ -140,12 +141,12 @@ export function ThesisAmendments({
     });
   };
   var active = job && ['queued', 'running', 'awaiting_approval'].includes(job.status);
-  if (focusId && (!loaded || error || !job)) return /*#__PURE__*/React.createElement("section", {
+  if (focusId && (!loaded || readError || !job)) return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel thesis-amendments",
     "aria-label": "Saved evidence proposal"
   }, /*#__PURE__*/React.createElement("h3", null, "Saved evidence proposal \xB7 ", ticker), /*#__PURE__*/React.createElement("p", {
-    role: error ? 'alert' : 'status'
-  }, error || (!loaded ? 'Loading the exact saved proposal…' : 'This proposal was not found for this company. No other proposal has been selected.')), /*#__PURE__*/React.createElement("p", null, "Opening this link does not start research or accept edits."), /*#__PURE__*/React.createElement("button", {
+    role: readError ? 'alert' : 'status'
+  }, readError || (!loaded ? 'Loading the exact saved proposal…' : 'This proposal was not found for this company. No other proposal has been selected.')), /*#__PURE__*/React.createElement("p", null, "Opening this link does not start research or accept edits."), /*#__PURE__*/React.createElement("button", {
     onClick: refresh
   }, "Retry saved proposal"), /*#__PURE__*/React.createElement("button", {
     onClick: onClearFocus
