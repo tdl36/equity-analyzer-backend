@@ -1,3 +1,4 @@
+import { checkedResearchImport, checkedLabImportRequest } from './lab-import-receipts.mjs';
 import LabNote from './pipeline-lab-note';
 import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
@@ -364,7 +365,7 @@ function LabStock({
         revision: saved.revision,
         task
       };
-      if (!body || typeof body.requestId !== 'string' || !Number.isInteger(body.revision) || !['thesis', 'note'].includes(body.task)) throw Error('Saved import request is unreadable. Preserve this session and inspect import status.');
+      checkedLabImportRequest(body);
       if (!old) sessionStorage.setItem(importKey, JSON.stringify(body));
       if (sessionStorage.getItem(importKey) !== JSON.stringify(body)) throw Error('Could not preserve import identity. No import was sent.');
       setPendingImport(true);
@@ -375,7 +376,7 @@ function LabStock({
         },
         body: JSON.stringify(body)
       });
-      if (d.requestId !== body.requestId) throw Error('Import receipt does not match. Retry the same request to reconcile.');
+      checkedResearchImport(d, ticker, body, saved.revision === body.revision ? saved.selection[body.task] : null);
       sessionStorage.removeItem(importKey);
       if (alive.current) {
         setPendingImport(false);

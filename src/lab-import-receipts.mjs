@@ -35,3 +35,13 @@ export async function reconcileLabImport(read,api,ticker,body){
  try{return checkedLabImport(await read(api,`/api/pipeline-lab/icloud-import/${body.requestId}`),ticker,body);}
  catch(e){if(e.status===404)return null;throw e;}
 }
+
+export function checkedResearchImport(receipt,ticker,request,expectedSources=null){
+ checkedLabImportRequest(request);
+ const reject=()=>{throw Error('Research import receipt could not be verified. The saved request is retained; reconcile the same request before importing again.');};
+ if(!object(receipt)||receipt.requestId!==request.requestId||receipt.input?.ticker!==ticker||receipt.input?.task!==request.task||receipt.input?.revision!==request.revision||receipt.revision!==request.revision+1||receipt.researchStarted!==false)reject();
+ const rows=receipt.receipts;
+ if(!Array.isArray(rows)||!rows.length||rows.length>8||new Set(rows.map(r=>r?.source)).size!==rows.length||rows.some(r=>!object(r)||typeof r.source!=='string'||!/^charlie:research_[a-zA-Z0-9_-]{1,128}$/.test(r.source)||typeof r.target!=='string'||!/^charlie:thesis_[1-9][0-9]*$/.test(r.target)||typeof r.sha256!=='string'||!/^[a-f0-9]{64}$/.test(r.sha256)||!Number.isSafeInteger(r.bytes)||r.bytes<1||r.bytes>15000000)||rows.reduce((n,r)=>n+r.bytes,0)>60000000)reject();
+ if(expectedSources!==null){const expected=expectedSources.filter(r=>r.startsWith('charlie:research_'));if(expected.length!==rows.length||rows.some(r=>!expected.includes(r.source)))reject();}
+ return receipt;
+}

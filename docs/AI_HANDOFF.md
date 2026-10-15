@@ -2,6 +2,25 @@
 
 Updated: October 14, 2026
 
+## T290 — Validate Research-storage import receipts
+
+Research-storage import success now requires matching request/company/task/base
+revision, the next saved revision, no research dispatch, and nonempty bounded
+source/destination/hash/size receipts. When the original saved revision is still
+loaded, returned Research identities must exactly match its selected originals.
+Replay against a newer loaded revision validates the original request signature
+and receipt structure, without comparing against unrelated newer selections.
+This is receipt validation, not a new browser-side hash of original bytes; the
+backend remains responsible for exact-byte verification. A malformed success
+preserves pending identity and existing inventory rather than announcing success.
+
+198 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks retained a wrong-task receipt and reconciled a subsequent matching receipt
+with the same request body. All writes were intercepted fixtures; no real import,
+paid research or investor approval was performed. Production verification pending.
+Backend/agent unchanged. Next: real source-to-output and investor acceptance remain
+open; preserve the historical valuation provider-schema checkpoint.
+
 ## T289 — Read-only reconciliation before iCloud resubmission
 
 A retained iCloud import submission now checks its exact saved request through the

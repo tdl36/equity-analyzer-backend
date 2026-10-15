@@ -28,3 +28,14 @@ test('pending import reconciliation uses a read and preserves ambiguous outcomes
  await assert.rejects(()=>reconcileLabImport(read,'','ABT',{...body,requestId:'../bad'}));
  assert.equal(calls.length,2);
 });
+
+test('Research import completion binds task, revision, source identities and bounded receipts',async()=>{
+ const {checkedResearchImport}=await import('../../src/lab-import-receipts.mjs');
+ const request={requestId:job.requestId,task:'note',revision:2};
+ const row={source:'charlie:research_abc-123',target:'charlie:thesis_8',sha256:'a'.repeat(64),bytes:12};
+ const receipt={requestId:request.requestId,input:{ticker:'ABT',task:'note',revision:2},revision:3,researchStarted:false,receipts:[row]};
+ assert.equal(checkedResearchImport(receipt,'ABT',request,[row.source,'charlie:thesis_2']),receipt);
+ for(const change of [{input:{...receipt.input,ticker:'MSFT'}},{input:{...receipt.input,task:'thesis'}},{revision:4},{researchStarted:true},{receipts:[]},{receipts:[row,row]},{receipts:[null]},{receipts:[{...row,sha256:'bad'}]},{receipts:[{...row,bytes:15000001}]},{receipts:[{...row,target:'charlie:research_8'}]}])assert.throws(()=>checkedResearchImport({...receipt,...change},'ABT',request));
+ assert.throws(()=>checkedResearchImport(receipt,'ABT',request,['charlie:research_other']));
+ assert.equal(checkedResearchImport({...receipt,replayed:true},'ABT',request).replayed,true);
+});
