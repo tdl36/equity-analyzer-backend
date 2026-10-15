@@ -35,6 +35,25 @@ metadata; no inferred accepted-thesis freshness, model screening or new coordina
 Shared Ready expansion remains after the connected proof. Eight-priority live and
 investor acceptance and historical security reference-schema gaps remain open.
 
+T311 production verified: Render 5691d01d3323ad96dc40b2188b734a83b4056f34;
+Cloudflare 56dd5159-eacd-4c11-8d6d-63dc650117e4. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac-agent health ok at 4.3 seconds. Original/library
+authentication and missing-identity refusals pass. A read-only complete archive
+inspection found four assignments, two completed, zero eligible completed source-
+only assignments and no remaining history cursor. No live approval, paid research,
+source mutation or Operations collection action occurred.
+
+Next-action implementation map: processing_proposal_sources.context already
+freezes role, ISO-normalized publishedDate, publisher, sourceKind and exact-hash
+referencedBySavedThesis for each selected documentId. Derive a bounded coverage
+summary from those frozen values and the saved discovery window, not current live
+metadata or thesis.updated_at. Count known/unknown dates and types, collected vs
+supplemental originals, historical/outside-window sources and hash references;
+show observed date range without calling it continuous/exhaustive coverage. Keep
+legacy proposals without sourceContext explicitly unknown. Tests must cover mixed
+roles, missing dates, out-of-window history, legacy rows and no false thesis-
+incorporation or freshness claims. Existing UI: src/processing-proposals.jsx.
+
 ## T310 — Frozen full-note and meeting processing choices
 
 Collection-linked processing proposals now support the full versioned Lab note
