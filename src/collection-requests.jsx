@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {collectionRequests,collectionOpen,collectionTime,collectionNext} from './collection-request-model.mjs';
+import {collectionRequests,collectionOpen,collectionTime,collectionNext,collectionQueueMessage} from './collection-request-model.mjs';
 export function CollectionRequests({requests=[],query,onQuery,busy,onAction,available,focusId='',onClearFocus}) {
  const [finished,setFinished]=React.useState(false);
  const rows=focusId?requests.filter(r=>r.id===focusId&&(!query||r.ticker===query)):collectionRequests(requests,query,finished);
@@ -8,6 +8,7 @@ export function CollectionRequests({requests=[],query,onQuery,busy,onAction,avai
  <p className="desk-explainer">{rows.length} matching requests among {requests.length} reported by this Mac · unfinished work and the latest 50 finished requests. Search and document counts describe collection progress, not report completion.</p>
  {!available?<p role="status">Waiting for a Mac collection snapshot.</p>:!rows.length?<p>{focusId?'The linked request is outside this snapshot or belongs to another company. No replacement request is selected.':`No ${finished?'matching':'unfinished'} collection requests in this snapshot.`}</p>:rows.map(r=><article className="workspace-panel" key={r.id}><div className="workspace-section-heading"><h4>{r.ticker} · {String(r.status||'unknown').replaceAll('_',' ')}</h4><small>Submitted {collectionTime(r.created)?.toLocaleString()||'time unavailable'}</small></div>
  {r.issue&&<p className="workspace-error" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{r.issue}</p>}<p><strong>Next:</strong> {collectionNext(r)}</p>
+ {collectionOpen(r)&&<p role="status" className="desk-explainer">{collectionQueueMessage(r)}</p>}
  {r.result?.newDocuments!=null&&<p>{r.result.newDocuments} new eligible originals reported.</p>}
  <details><summary>Saved searches and originals</summary>{r.sourceProgress?.tasks?.length?<ul>{r.sourceProgress.tasks.map((t,i)=><li key={i}>{t.kind} · {t.status}{t.expected!=null?` · ${t.expected} expected`:''}</li>)}</ul>:<p>No search-progress receipt available.</p>}{Object.entries(r.sourceProgress?.documents||{}).map(([state,count])=><p key={state}>{String(state).replaceAll('_',' ')}: {count}</p>)}<p className="desk-explainer">Request {r.id}. Staged or handed-off counts alone do not prove cloud import or downstream research completion.</p></details>
  <div className="desk-filter">{['attention','needs_auth'].includes(r.status)&&<button disabled={busy} onClick={()=>onAction('retry',{ticker:r.ticker,refreshRequestId:r.id})}>{r.status==='needs_auth'?'Signed in on Mac — resume':'Retry after resolving'}</button>}{collectionOpen(r)&&<button disabled={busy} onClick={()=>onAction('cancel',{ticker:r.ticker,refreshRequestId:r.id})}>Cancel this refresh</button>}</div>

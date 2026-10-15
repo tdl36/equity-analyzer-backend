@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { collectionRequests, collectionOpen, collectionTime, collectionNext } from './collection-request-model.mjs';
+import { collectionRequests, collectionOpen, collectionTime, collectionNext, collectionQueueMessage } from './collection-request-model.mjs';
 export function CollectionRequests({
   requests = [],
   query,
@@ -59,7 +59,10 @@ export function CollectionRequests({
       whiteSpace: 'pre-wrap',
       overflowWrap: 'anywhere'
     }
-  }, r.issue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", collectionNext(r)), r.result?.newDocuments != null && /*#__PURE__*/React.createElement("p", null, r.result.newDocuments, " new eligible originals reported."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Saved searches and originals"), r.sourceProgress?.tasks?.length ? /*#__PURE__*/React.createElement("ul", null, r.sourceProgress.tasks.map((t, i) => /*#__PURE__*/React.createElement("li", {
+  }, r.issue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Next:"), " ", collectionNext(r)), collectionOpen(r) && /*#__PURE__*/React.createElement("p", {
+    role: "status",
+    className: "desk-explainer"
+  }, collectionQueueMessage(r)), r.result?.newDocuments != null && /*#__PURE__*/React.createElement("p", null, r.result.newDocuments, " new eligible originals reported."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Saved searches and originals"), r.sourceProgress?.tasks?.length ? /*#__PURE__*/React.createElement("ul", null, r.sourceProgress.tasks.map((t, i) => /*#__PURE__*/React.createElement("li", {
     key: i
   }, t.kind, " \xB7 ", t.status, t.expected != null ? ` · ${t.expected} expected` : ''))) : /*#__PURE__*/React.createElement("p", null, "No search-progress receipt available."), Object.entries(r.sourceProgress?.documents || {}).map(([state, count]) => /*#__PURE__*/React.createElement("p", {
     key: state

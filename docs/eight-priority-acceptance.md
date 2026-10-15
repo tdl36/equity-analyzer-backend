@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T335 exposes read-only collection eligibility, default queue position and occupied
+slots with explicit stale/unknown states. CVS is eligible but waiting; live queue
+metadata is not collection progress or end-to-end acceptance.
+
 T334 adds read-only local-versus-saved work comparison with exact revision checks,
 late-response protection and confirmed replacement. Synthetic phone/desktop checks
 pass; no live work, generation or investor acceptance. All eight remain uncertified.

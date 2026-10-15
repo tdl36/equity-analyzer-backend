@@ -2,6 +2,47 @@
 
 Updated: October 14, 2026
 
+## T335 — Explain collection queue eligibility and occupied slots
+
+Critical-path diagnosis used a read-only SQLite connection, not a collector claim:
+CVS request 9f7ced1d-7b7a-42d1-9747-6e51f0cfff4d (assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105) is manual, enabled, eligible and
+unclaimed (fair turn 0). At 23:06 UTC it ranked 7 of 56 in the default eligible
+order; HUM held an unexpired collecting lease. CVS's four searches remain pending.
+This explains the occupied slot and queue position, not why earlier targeted
+worker turns selected other requests. No scheduling defect or import failure was
+established. Do not disrupt HUM or duplicate the Operations browser worker.
+
+Added a read-only queue diagnostic projection to existing Mac collection snapshots:
+eligible/default position, occupied slot (bounded public request/ticker/lease metadata),
+paused policy, missing policy, attention, and unexpired/expired lease distinctions.
+It uses the existing claim query's ordering/eligibility without claiming, changing
+fair turns, renewing leases or exposing owner tokens/config/source bodies. Explicit
+worker targets may differ; no ETA or exhaustive collection-progress claim.
+Charlie Collection requests shows these explanations with snapshot time, stale/
+missing/inconsistent fallback and a warning when reported leases have since expired.
+Existing old agent snapshots remain usable with an explicit diagnostic-unavailable
+message. Scheduling, original Pipeline, automatic synthesis and approval rules unchanged.
+
+Validation: 37 focused collection tests, 1,676 full safe backend tests, 250 frontend
+tests, Python compilation and production build pass. Synthetic actual-component
+390/1280px checks cover eligible/paused/missing-policy/active/stale/legacy states,
+company filtering and saved task visibility, with no network or mutations. Phone
+screenshot inspected; no overflow/browser errors. Read-only live diagnostic query
+matched CVS's default position and active HUM lease with zero DB changes.
+Logs: /tmp/charlie-T335-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Release preflight found historical audio-orphan warnings after prior backend
+restarts; the current read-only /api/transcription-jobs check returned no in-memory
+audio jobs. Do not infer those prior paid outcomes or retry them. Reload the existing
+Mac agent dependency at an idle boundary and verify new queue fields reach the cloud;
+never restart the browser collector or alter its lease to exercise diagnostics.
+
+Next: verify production and the fresh Mac diagnostic snapshot. Then inspect the
+Operations worker's retained claim/task metadata to determine whether explicit
+request targeting explains CVS's prolonged wait; no external messaging, new worker,
+claims or retries here. Preserve the live authorized processing/investor proof gap.
+
 ## T334 — Compare unfinished work with newer saved revisions
 
 Existing/restored work drafts now offer a read-only comparison with the latest

@@ -228,7 +228,10 @@ class RefreshManager:
                OR id IN (SELECT id FROM refresh_requests WHERE status IN ('complete','cancelled')
                          ORDER BY created DESC LIMIT 50)
             ORDER BY created DESC""")]
+        from collection_queue import queue_diagnostics
+        queue = queue_diagnostics(self.db, self.clock())
         for r in requests:
+            r['queueState'] = queue.get(r['id'])
             r['result'] = json.loads(r['result']) if r['result'] else None
             r['sourceProgress'] = {
                 'tasks': [dict(t) for t in self.db.execute(
