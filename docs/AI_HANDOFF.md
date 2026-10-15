@@ -27,6 +27,25 @@ after a font-load timeout), frozen note disclosure,
 meeting requirements, reload and explicit approval. Release verification follows.
 No live processing, research acceptance or collection actions were performed.
 
+T310 production verified: Render 8e19f199b3e003d05a46a4fcd3d16550f31cbff2;
+Cloudflare 0145a47d-41c2-4194-9016-633061bf3e28. Hosted JS/service-worker bytes
+and HTML marker match. Mac-agent health reports ok (71.7 seconds old). Original
+and library authentication/missing-identity refusals pass. No production writes
+or paid runs were used for verification.
+
+Next concrete engineering increment: use the existing local-only
+pipeline_lab_note_sources.prepare planner when saving a full-note processing
+proposal. Freeze representation hash, batch count and warnings in the proposal;
+show unreadable/unsupported originals, PDF-text requirements and the eight-batch
+bound before approval. Recheck the frozen representation before dispatch and pass
+it through assignment_note; never invoke token-count/model APIs for this check.
+Currently T310 freezes the representation policy, but actual readable/batch
+planning still happens in assignment_note after the shared report. Surface this
+remaining readiness gap rather than calling the full end-to-end build complete.
+Keep real connected proof pending a completed source-only collection and explicit
+investor processing approval. Do not expand the shared dashboard ahead of that
+proof, duplicate Operations collection, or run paid research solely for QA.
+
 ## T309 — Foundational evidence in collection-linked processing proposals
 
 The handoff now allows explicit supplemental selections from the same company's
