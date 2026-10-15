@@ -66,6 +66,7 @@ export function focusRows(data) {
 }
 
 export function activityDestination(row) {
+ if(row.workflow==='evidence_amendment')return {view:'desk',section:'evidence',...workLink(row,'desk','evidence','amendment')};
  if(row.workflow==='research_decision')return {view:'stockanalysis',section:'reviews',...workLink(row,'stockanalysis','reviews','decision')};
  const sections={auto_evidence_intake:'evidence',evidence_amendment:'evidence',catalyst_signal:'collection',catalyst_watch:'collection',collection_control:'collection',command_meeting:'command',agent_runs:'runs'};
  if(row.id?.startsWith('collection:'))return {view:'desk',section:'collection',...workLink(row,'desk','collection','collection')};

@@ -1,3 +1,4 @@
+import {workId} from './workspace-model.mjs';
 import {ResearchChat} from './research-chat';
 import {ResearchAutomationControl} from './research-automation';
 import {ThesisAmendments} from './thesis-amendments';
@@ -5,7 +6,8 @@ import {SavedResearchContext} from './saved-research-context';
 import * as React from 'react';
 const {useState,useEffect,useRef}=React;
 const date=value=>value?String(value).slice(0,10):'Undated';
-export function EvidenceWorkspace({api,analyses,onCompany,initialTicker='DE'}) {
+export function EvidenceWorkspace({api,analyses,onCompany,initialTicker='DE',routeWork='',onWorkChange}) {
+  const focusId=workId(routeWork,'amendment');
   const [ticker,setTicker]=useState(initialTicker||'DE'),[input,setInput]=useState(initialTicker||'DE');
   const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
   const [selected,setSelected]=useState(null),[refresh,setRefresh]=useState(0);
@@ -27,9 +29,9 @@ export function EvidenceWorkspace({api,analyses,onCompany,initialTicker='DE'}) {
   const showCompany=()=>onCompany(ticker,'portfolio');
   return <section className="evidence-workspace">
     <div className="evidence-intro"><div><p className="workspace-eyebrow">RESEARCH / EVIDENCE & CHANGES</p><h2>Read the change. Inspect the evidence.</h2><p className="desk-explainer">Read your saved thesis, inspect available documents, and compare investment reviews when a baseline exists.</p></div>
-    <form className="evidence-search" onSubmit={e=>{e.preventDefault();const tk=input.trim().toUpperCase();if(/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(tk)){setTicker(tk);setRefresh(x=>x+1);}else setError('Enter a valid ticker.');}}><label htmlFor="evidence-ticker">Company ticker</label><div><input id="evidence-ticker" list="evidence-companies" value={input} onChange={e=>setInput(e.target.value)} maxLength={20}/><button className="workspace-primary" type="submit">Open →</button></div><datalist id="evidence-companies">{[...new Set((analyses||[]).map(a=>a.ticker).filter(Boolean))].map(t=><option key={t} value={t}/>)}</datalist></form></div>
+    <form className="evidence-search" onSubmit={e=>{e.preventDefault();const tk=input.trim().toUpperCase();if(/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(tk)){onWorkChange?.('');setTicker(tk);setRefresh(x=>x+1);}else setError('Enter a valid ticker.');}}><label htmlFor="evidence-ticker">Company ticker</label><div><input id="evidence-ticker" list="evidence-companies" value={input} onChange={e=>setInput(e.target.value)} maxLength={20}/><button className="workspace-primary" type="submit">Open →</button></div><datalist id="evidence-companies">{[...new Set((analyses||[]).map(a=>a.ticker).filter(Boolean))].map(t=><option key={t} value={t}/>)}</datalist></form></div>
     <ResearchAutomationControl api={api}/>
-    {!loading&&!error&&data&&<ThesisAmendments key={ticker} api={api} ticker={ticker} context={data} onApplied={()=>setRefresh(x=>x+1)}/>}
+    {!loading&&!error&&data&&<ThesisAmendments key={ticker+':'+focusId} focusId={focusId} onClearFocus={()=>onWorkChange?.('')} api={api} ticker={ticker} context={data} onApplied={()=>setRefresh(x=>x+1)}/>}
     {!loading&&!error&&(data?.savedThesis||review)&&<details className="workspace-panel"><summary>Discuss this research with an analyst</summary><ResearchChat key={`${ticker}:${refresh}`} api={api} onApplied={()=>setRefresh(x=>x+1)} context={{ticker,type:review?'review':'thesis',content:JSON.stringify(review?.state||data.savedThesis)}}/></details>}
     {loading?<p role="status" className="workspace-empty">Loading saved research for {ticker}…</p>:error?<div className="workspace-error" role="alert">{error} <button onClick={()=>setRefresh(x=>x+1)}>Retry</button></div>:!review?<SavedResearchContext key={ticker} data={data} ticker={ticker} onCompany={onCompany}/>:<>
       <details className="workspace-panel evidence-context-toggle"><summary>Saved company thesis & available documents</summary><SavedResearchContext key={ticker} data={data} ticker={ticker} onCompany={onCompany}/></details>

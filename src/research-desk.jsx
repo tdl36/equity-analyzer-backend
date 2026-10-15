@@ -71,7 +71,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
     {section==='command'&&<CommandCharlie api={api} onNavigate={onNavigate} onSection={setSection}/>}
     {section==='history'&&<ResearchHistory api={api} onSection={setSection} onNavigate={onNavigate}/>}
     {section==='earnings'&&<EarningsWorkspace api={api} onRefresh={refresh} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onCompany={onCompany} renderHtml={renderRecapHtml||renderHtml}/>}
-    {section==='evidence'&&<EvidenceWorkspace initialTicker={workTicker||initialTicker} api={api} analyses={analyses} onCompany={onCompany}/>}
+    {section==='evidence'&&<EvidenceWorkspace routeWork={routeWork} onWorkChange={onWorkChange} initialTicker={workTicker||initialTicker} api={api} analyses={analyses} onCompany={onCompany}/>}
     {section==='overview'&&<>
       <div className="desk-metrics">{[[counts.active,'Active in latest 100 runs','runs'],[pending.length,'Awaiting your review','inbox'],[queue.length,`Theses ${days}+ days old or undated`,'queue'],[data.analysts.length,'Sector analysts','playbooks']].map(([n,label,id])=><button key={label} onClick={()=>setSection(id)}><strong>{n}</strong><span>{label}</span><small>Open →</small></button>)}</div>
       {statusChecks.length>0&&<p className="workspace-notice">{statusChecks.length} run(s) have been marked active for more than two hours. Their status may be stale. <button className="underline" onClick={()=>setSection('runs')}>Inspect runs →</button></p>}

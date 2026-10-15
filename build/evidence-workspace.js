@@ -1,3 +1,4 @@
+import { workId } from './workspace-model.mjs';
 import { ResearchChat } from './research-chat';
 import { ResearchAutomationControl } from './research-automation';
 import { ThesisAmendments } from './thesis-amendments';
@@ -13,8 +14,11 @@ export function EvidenceWorkspace({
   api,
   analyses,
   onCompany,
-  initialTicker = 'DE'
+  initialTicker = 'DE',
+  routeWork = '',
+  onWorkChange
 }) {
+  var focusId = workId(routeWork, 'amendment');
   var [ticker, setTicker] = useState(initialTicker || 'DE'),
     [input, setInput] = useState(initialTicker || 'DE');
   var [data, setData] = useState(null),
@@ -83,6 +87,7 @@ export function EvidenceWorkspace({
       e.preventDefault();
       var tk = input.trim().toUpperCase();
       if (/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(tk)) {
+        onWorkChange?.('');
         setTicker(tk);
         setRefresh(x => x + 1);
       } else setError('Enter a valid ticker.');
@@ -106,7 +111,9 @@ export function EvidenceWorkspace({
   }))))), /*#__PURE__*/React.createElement(ResearchAutomationControl, {
     api: api
   }), !loading && !error && data && /*#__PURE__*/React.createElement(ThesisAmendments, {
-    key: ticker,
+    key: ticker + ':' + focusId,
+    focusId: focusId,
+    onClearFocus: () => onWorkChange?.(''),
     api: api,
     ticker: ticker,
     context: data,

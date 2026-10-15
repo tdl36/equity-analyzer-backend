@@ -64,6 +64,11 @@ Remaining: verify the complete live Home agenda against actual active work,
 review needs and meetings, including unavailable-service states. The fixtures do
 not establish live coverage or freshness.
 
+T314 repairs a demonstrated Activity link defect: evidence proposals now retain
+the exact company/job identity, including older proposals; missing/error reads
+never substitute the newest active proposal. Synthetic mobile/desktop back/forward
+checks passed without writes. Wider live Home coverage remains open.
+
 ## 4. Coherent company workspace
 
 Implemented: ticker/section/work routing with browser navigation and distinct

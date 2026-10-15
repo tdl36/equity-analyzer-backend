@@ -336,6 +336,8 @@ export function ResearchDesk({
     onCompany: onCompany,
     renderHtml: renderRecapHtml || renderHtml
   }), section === 'evidence' && /*#__PURE__*/React.createElement(EvidenceWorkspace, {
+    routeWork: routeWork,
+    onWorkChange: onWorkChange,
     initialTicker: workTicker || initialTicker,
     api: api,
     analyses: analyses,

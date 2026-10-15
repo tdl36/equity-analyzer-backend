@@ -68,3 +68,8 @@ test('Home retains recent completed assignment links without treating collection
  assert.equal(JSON.stringify(items),before);
  assert.deepEqual(recentAssignments({items:[{...row(0),bucket:'older'}]}),[]);
 });
+
+test('evidence review retains exact proposal identity',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ assert.deepEqual(activityDestination({workflow:'evidence_amendment',jobId:id}),{view:'desk',section:'evidence',work:'amendment:'+id});
+});

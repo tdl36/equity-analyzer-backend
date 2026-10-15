@@ -22,3 +22,10 @@ test('saved meeting links survive reload and reject invalid or misplaced ids',()
  for(const value of ['meeting:0','meeting:-1','meeting:01','meeting:2147483648','meeting:1:2','meeting:<script>'])assert.equal(readRoute('#view=meetingprep&work='+encodeURIComponent(value)).work,undefined);
  assert.equal(readRoute('#view=desk&work=meeting%3A42').work,undefined);
 });
+
+test('evidence proposal deep link survives routing only in its workspace',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const hash=routeHash('desk','ABT','evidence','amendment:'+id);
+ assert.equal(readRoute(hash).work,'amendment:'+id);
+ assert.equal(readRoute(routeHash('desk','ABT','collection','amendment:'+id)).work,undefined);
+});

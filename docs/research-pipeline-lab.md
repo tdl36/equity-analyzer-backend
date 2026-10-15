@@ -1,3 +1,33 @@
+## T314 — Exact saved evidence-proposal navigation
+
+Read-only Activity inspection found eleven evidence-amendment rows, including
+multiple ETN and DOV proposals. Their links previously discarded job identity;
+the destination selected the newest active company proposal even when the clicked
+row referred to an older failure. Activity now carries an amendment work identity.
+Evidence review retrieves that exact company/stage/thesis-target record, including
+records older than the ten-item recent list. Missing, wrong-company, wrong-target,
+failed-read and mismatched-identity results never select another proposal.
+
+Focused historical review hides new-comparison authoring and has an explicit
+return to company proposals. Browser back/forward preserves the selected identity.
+Opening, restoring or retrying a read cannot start research or accept edits. Existing
+explicit proposal decisions remain in the existing workflow. No original Pipeline,
+automatic-synthesis policy, research content or collection request was changed.
+
+Validation: 26 focused backend tests (including compact saved IDs), 1,628 broader
+safe backend tests before the final compact-ID regression, 213 frontend tests,
+Python compilation and production build passed. Full-app synthetic 390/1280px
+checks cover Activity navigation, older/newer proposals, back/forward, missing
+records, outages and identity mismatch, with zero writes/page errors or horizontal
+overflow. Production verification follows. This closes a demonstrated review-link
+defect, not full Home/company or end-to-end acceptance.
+
+Next: verify the deployed exact-ID read using existing saved records; retain the
+genuine collection-to-explicit-processing-to-output gap. Continue saved-object
+navigation and unavailable-service acceptance while Operations owns collection.
+Shared Ready expansion still follows connected-journey proof. Historical reference
+semantics, real recovery/provider evidence and investor acceptance remain open.
+
 ## T313 — Recover unsaved processing-proposal choices
 
 The proposal form now retains authoring choices in session storage scoped to API

@@ -9,7 +9,9 @@ export function ThesisAmendments({
   api,
   ticker,
   context,
-  onApplied
+  onApplied,
+  focusId = '',
+  onClearFocus
 }) {
   var [instructions, setInstructions] = useState(context?.bridge?.instructions || '');
   var [jobs, setJobs] = useState([]),
@@ -26,7 +28,7 @@ export function ThesisAmendments({
   var thesisDate = parseTimestamp(context?.savedThesis?.updatedAt);
   var isNew = d => thesisDate && parseTimestamp(d.addedAt) > thesisDate;
   var newCount = documents.filter(isNew).length;
-  var job = jobs.find(j => ['queued', 'running', 'awaiting_approval'].includes(j.status)) || jobs[0];
+  var job = focusId ? jobs.find(j => j.id === focusId && j.ticker === ticker) : jobs.find(j => ['queued', 'running', 'awaiting_approval'].includes(j.status)) || jobs[0];
   var changes = job?.result?.changes || [];
   var fieldLabel = path => {
     if (path === 'thesis.summary') return 'Thesis summary';
@@ -54,10 +56,12 @@ export function ThesisAmendments({
   var refresh = async () => {
     var id = ++sequence.current;
     try {
-      var d = await fetchJson(`/api/research/amendments/${encodeURIComponent(ticker)}`);
+      var d = await fetchJson(`/api/research/amendments/${encodeURIComponent(ticker)}${focusId ? '?requestId=' + encodeURIComponent(focusId) : ''}`);
+      if (focusId && (!Array.isArray(d.jobs) || d.jobs.length > 1 || d.jobs.some(j => j.id !== focusId || j.ticker !== ticker))) throw Error('The saved proposal identity could not be verified. No other proposal was selected.');
       if (alive.current && id === sequence.current) {
         setJobs(d.jobs || []);
         setLoaded(true);
+        if (focusId) setError('');
       }
     } catch (e) {
       if (alive.current && id === sequence.current) {
@@ -77,7 +81,7 @@ export function ThesisAmendments({
       sequence.current++;
       clearInterval(timer);
     };
-  }, [api, ticker]);
+  }, [api, ticker, focusId]);
   useEffect(() => {
     setAccepted([]);
     if (job && !['queued', 'running', 'awaiting_approval'].includes(job.status)) requestId.current = null;
@@ -136,9 +140,21 @@ export function ThesisAmendments({
     });
   };
   var active = job && ['queued', 'running', 'awaiting_approval'].includes(job.status);
+  if (focusId && (!loaded || error || !job)) return /*#__PURE__*/React.createElement("section", {
+    className: "workspace-panel thesis-amendments",
+    "aria-label": "Saved evidence proposal"
+  }, /*#__PURE__*/React.createElement("h3", null, "Saved evidence proposal \xB7 ", ticker), /*#__PURE__*/React.createElement("p", {
+    role: error ? 'alert' : 'status'
+  }, error || (!loaded ? 'Loading the exact saved proposal…' : 'This proposal was not found for this company. No other proposal has been selected.')), /*#__PURE__*/React.createElement("p", null, "Opening this link does not start research or accept edits."), /*#__PURE__*/React.createElement("button", {
+    onClick: refresh
+  }, "Retry saved proposal"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClearFocus
+  }, "All company proposals"));
   return /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel thesis-amendments"
-  }, /*#__PURE__*/React.createElement("p", {
+  }, focusId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Saved proposal \xB7 ", ticker), " \xB7 ", job.created_at ? /*#__PURE__*/React.createElement("time", null, parseTimestamp(job.created_at)?.toLocaleString() || 'Date unavailable') : null, /*#__PURE__*/React.createElement("button", {
+    onClick: onClearFocus
+  }, "All company proposals")), /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
   }, "NEW EVIDENCE \u2192 PROPOSED THESIS EDITS"), /*#__PURE__*/React.createElement("h3", null, "What should change?"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
@@ -177,7 +193,7 @@ export function ThesisAmendments({
   }, "Resume saved proposal work \u2192")), job && /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer",
     role: "status"
-  }, "Last proposal: ", job.status.replaceAll('_', ' '), job.error ? ` · ${job.error}` : ''), !context?.savedThesis ? /*#__PURE__*/React.createElement("p", null, "Save an investment thesis before preparing edits.") : !documents.length ? /*#__PURE__*/React.createElement("p", null, "Import source documents into Charlie first. Files listed only in the iCloud inventory must be imported before this comparison can read them.") : /*#__PURE__*/React.createElement("details", {
+  }, "Last proposal: ", job.status.replaceAll('_', ' '), job.error ? ` · ${job.error}` : ''), !focusId && (!context?.savedThesis ? /*#__PURE__*/React.createElement("p", null, "Save an investment thesis before preparing edits.") : !documents.length ? /*#__PURE__*/React.createElement("p", null, "Import source documents into Charlie first. Files listed only in the iCloud inventory must be imported before this comparison can read them.") : /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Select documents to compare (", selected.length, "/10)"), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
@@ -210,7 +226,7 @@ export function ThesisAmendments({
     className: "workspace-primary",
     disabled: busy || !selected.length,
     onClick: launch
-  }, busy ? 'Submitting…' : 'Find material changes →'))), ['awaiting_approval', 'applied'].includes(job?.status) && /*#__PURE__*/React.createElement(React.Fragment, null, !changes.length ? /*#__PURE__*/React.createElement("p", {
+  }, busy ? 'Submitting…' : 'Find material changes →')))), ['awaiting_approval', 'applied'].includes(job?.status) && /*#__PURE__*/React.createElement(React.Fragment, null, !changes.length ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-notice"
   }, "No material edits were proposed from these sources. This is not a guarantee that the thesis is complete or correct.") : changes.map(c => /*#__PURE__*/React.createElement("article", {
     className: "amendment-card",
