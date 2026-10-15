@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T329 separates server proposal visibility from damaged/unavailable browser recovery
+state, blocks unsafe new submissions and retains frozen uncertain saves. Focused
+backend and synthetic browser failure checks pass; no live processing was approved.
+
 T328 makes exact thesis-review reads independent of inbox availability and guards
 selection identity, late responses and review consent on reload. Synthetic failure
 checks and local replay of real ABT/UNH saved payloads pass. This is delivery/recovery

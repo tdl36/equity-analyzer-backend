@@ -3,7 +3,7 @@ import {ProcessingSelectionReview} from './processing-selection-review';
 import {OriginalDownload} from './original-download';
 import {CollectedSourcePicker} from './collected-source-picker';
 import {processingProposal,processingProposalList} from './processing-proposal-status.mjs';
-import {emptyDraft,draftKey,readDraft,writeDraft} from './processing-proposal-draft.mjs';
+import {emptyDraft,draftKey,readDraft,writeDraft,readSubmission} from './processing-proposal-draft.mjs';
 import {ProcessingCoverage} from './processing-coverage';
 import {ProcessingSourceLibrary} from './processing-source-library';
 import * as React from 'react';
@@ -17,6 +17,7 @@ export function ProcessingProposals({api,job}){
 function ProposalReview({api,job}){
  const localKey=draftKey(api,job.id),[restored]=React.useState(()=>{try{return readDraft(sessionStorage,localKey);}catch{return {value:null,error:'Local draft storage is unavailable. Saved proposals are unaffected.'};}});
  const initial=restored.value||emptyDraft();
+ const [submissionIssue,setSubmissionIssue]=React.useState('');
  const [draftIssue,setDraftIssue]=React.useState(restored.error),[restoredNotice,setRestoredNotice]=React.useState(!!restored.value);
  const [fullNote,setFullNote]=React.useState(initial.fullNote),[allowPdfText,setAllowPdfText]=React.useState(initial.allowPdfText),[meetingDate,setMeetingDate]=React.useState(initial.meetingDate),[meetingType,setMeetingType]=React.useState(initial.meetingType);
  const [collectionInventory,setCollectionInventory]=React.useState({rows:[],loaded:false}),[libraryInventory,setLibraryInventory]=React.useState({rows:[],loaded:false});
@@ -34,15 +35,25 @@ function ProposalReview({api,job}){
  const call=async(url,body)=>{const response=await fetch(api+url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let data;try{data=await response.json();}catch{throw Error('Response unavailable. Refresh saved proposals before retrying.');}if(!response.ok){const e=Error(data.error||'Processing proposals unavailable');e.status=response.status;throw e;}return data;};
  const refresh=async()=>{try{
   const data=await call(path),proposals=processingProposalList(data,job);
-  const raw=sessionStorage.getItem(key);
-  if(raw){const saved=JSON.parse(raw);if(proposals.some(p=>p.id===saved.requestId)){sessionStorage.removeItem(key);if(live.current){setPending(null);resetForm();}}}
-  if(live.current){setRows(proposals);setLoaded(true);setReadIssue('');}
+  // Browser recovery must not hide verified server records.
+  let recovered;try{recovered=readSubmission(sessionStorage,key);}catch{recovered=readSubmission(null,key);}
+  let issue=recovered.error;
+  if(recovered.value){
+   if(live.current)setPending(recovered.value);
+   if(proposals.some(p=>p.id===recovered.value.requestId)){
+    try{sessionStorage.removeItem(key);if(live.current){setPending(null);resetForm();}}
+    catch{issue='The saved proposal was found, but its local recovery record could not be cleared. Restore browser storage and refresh before submitting again.';}
+   }else if(live.current)setPending(recovered.value);
+  }else if(!issue&&live.current)setPending(null);
+  if(live.current){setSubmissionIssue(issue);setRows(proposals);setLoaded(true);setReadIssue('');}
  }catch(e){if(live.current)setReadIssue(e.message);throw e;}};
- React.useEffect(()=>{live.current=true;try{const raw=sessionStorage.getItem(key);if(raw)setPending(JSON.parse(raw));}catch{setError('Saved submission could not be read. Inspect saved proposals before creating another.');return;}refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;};},[key]);
+ React.useEffect(()=>{live.current=true;refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;};},[key]);
  const act=async fn=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();await refresh();}catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
  const save=()=>act(async()=>{
+  if(submissionIssue)throw Error(submissionIssue);
   const body=pending||{requestId:crypto.randomUUID(),filenames:[...selected].sort(),supplementalIds:[...supplements].sort(),plan:{researchPurpose:purpose==='event_note'?{kind:purpose,event:{title:title.trim(),date:eventDate}}:{kind:purpose},outputs:[...outputs].sort(),instruction,horizon:'12–24 months',...(fullNote?{labFullNote:{allowPdfText}}:{}),...(outputs.includes('meeting_prep')?{meeting:{date:meetingDate,type:meetingType}}:{})}};
-  sessionStorage.setItem(key,JSON.stringify(body));setPending(body);
+  try{sessionStorage.setItem(key,JSON.stringify(body));}catch{setSubmissionIssue('Submission was not sent because browser recovery could not be saved. Restore browser storage and refresh before submitting.');throw Error('No proposal was sent. Browser recovery storage is unavailable.');}
+  setPending(body);
   try{const receipt=processingProposal(await call(path,body),job);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');sessionStorage.removeItem(key);setPending(null);resetForm();}
   catch(e){if(e.status===409){sessionStorage.removeItem(key);setPending(null);}throw e;}
  });
@@ -52,6 +63,7 @@ function ProposalReview({api,job}){
   {readIssue&&<p role="alert">{readIssue}</p>}{error&&error!==readIssue&&<p role="alert">{error}</p>}
   {restoredNotice&&<p role="status">Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested.</p>}
   {draftIssue&&<p role="alert">{draftIssue}</p>}
+  {submissionIssue&&<p role="alert">{submissionIssue}</p>}
   <p><small>Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record.</small> <button disabled={busy||!!pending} onClick={resetForm}>Discard unsaved choices</button></p>
   <button disabled={busy} onClick={()=>act(async()=>{})}>Refresh saved proposals</button>
   {pending&&<p role="status">A proposal submission is unresolved. Refresh to find its receipt, or retry the same saved submission below. Its choices are frozen.</p>}
@@ -70,7 +82,7 @@ function ProposalReview({api,job}){
    {fullNote&&<div><p>Saving checks source readability and batch limits without model calls, then freezes the model, instructions and source representations. The full note uses up to eight additional model calls, capped at 32,000 output tokens per call. Large evidence packs are processed in bounded stages; omissions remain visible.</p><label className="sa-check"><input type="checkbox" checked={allowPdfText} onChange={e=>setAllowPdfText(e.target.checked)}/>Allow extracted PDF text when needed · charts and layout may be omitted</label></div>}
    <label>Focus and evidence gaps<textarea rows={3} maxLength={1800} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label>
   </fieldset>
-  <button disabled={busy||!loaded||!!readIssue||(!pending&&(!collectionReady||selectionSummary.metadataPending||selectionSummary.missing>0||selectionSummary.unavailable>0||!selected.length||!outputs.length||(outputs.includes('meeting_prep')&&!meetingDate)||(purpose==='event_note'&&(!title.trim()||!eventDate))))} onClick={save}>{pending?'Retry saved proposal submission':'Save proposal · no generation'}</button>
+  <button disabled={busy||!loaded||!!readIssue||!!submissionIssue||(!pending&&(!collectionReady||selectionSummary.metadataPending||selectionSummary.missing>0||selectionSummary.unavailable>0||!selected.length||!outputs.length||(outputs.includes('meeting_prep')&&!meetingDate)||(purpose==='event_note'&&(!title.trim()||!eventDate))))} onClick={save}>{pending?'Retry saved proposal submission':'Save proposal · no generation'}</button>
   <p><small>Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.</small></p>
   {!loaded?<p>{readIssue?'Saved proposals unavailable. Refresh to check their status.':'Loading saved proposals…'}</p>:!rows.length?<p>No saved processing proposals for this collection.</p>:rows.map(p=><article key={p.id} style={{borderTop:'1px solid var(--border-color,#d8dedd)',padding:'14px 0'}}>
    <strong>{p.plan.researchPurpose.kind==='event_note'?p.plan.researchPurpose.event.title:'Longitudinal thesis review'}</strong> · {p.status}

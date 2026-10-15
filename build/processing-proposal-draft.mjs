@@ -22,3 +22,27 @@ export function writeDraft(storage,key,value){
  if(JSON.stringify(clean)===JSON.stringify(emptyDraft()))storage.removeItem(key);
  else storage.setItem(key,JSON.stringify(clean));
 }
+
+// Preserve the exact submitted bytes/choices for replay; never repair a damaged
+// recovery record into a new request or silently discard an uncertain submission.
+export function readSubmission(storage,key){
+ try {
+  const raw=storage.getItem(key);if(!raw)return {value:null,error:''};
+  if(raw.length>3000000)throw Error();
+  const value=JSON.parse(raw),p=value?.plan,purpose=p?.researchPurpose;
+  const object=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+  if(!object(value)||!object(p)||!object(purpose)||
+   !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.requestId)||
+   Object.keys(value).some(k=>!['requestId','filenames','supplementalIds','plan'].includes(k))||
+   Object.keys(p).some(k=>!['researchPurpose','outputs','instruction','horizon','labFullNote','meeting'].includes(k))||
+   (p.horizon!==undefined&&(typeof p.horizon!=='string'||p.horizon.length>100))||
+   (p.labFullNote!==undefined&&(!object(p.labFullNote)||Object.keys(p.labFullNote).some(k=>k!=='allowPdfText')||typeof p.labFullNote.allowPdfText!=='boolean'))||
+   (p.meeting!==undefined&&(!object(p.meeting)||Object.keys(p.meeting).some(k=>!['date','type'].includes(k)))))throw Error();
+  const draft=validDraft({...emptyDraft(),selected:value.filenames,supplements:value.supplementalIds??[],purpose:purpose.kind,
+   title:purpose.event?.title??'',eventDate:purpose.event?.date??'',outputs:p.outputs,instruction:p.instruction??'',
+   fullNote:p.labFullNote!==undefined,allowPdfText:p.labFullNote?.allowPdfText??false,
+   meetingDate:p.meeting?.date??'',meetingType:p.meeting?.type??'management'});
+  if(!draft||!draft.selected.length||!draft.outputs.length)throw Error();
+  return {value,error:''};
+ }catch{return {value:null,error:'Local submission recovery is unavailable or damaged. Saved server proposals can still be reviewed. Restore browser storage and refresh before creating or retrying a submission; the local record has not been discarded.'};}
+}

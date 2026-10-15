@@ -16,3 +16,15 @@ test('malformed, oversized, cross-purpose and quota-failed drafts stay explicit'
  const denied={getItem(){throw Error('denied')},setItem(){throw Error('quota')},removeItem(){throw Error('denied')}};
  assert.ok(readDraft(denied,'bad').error);assert.throws(()=>writeDraft(denied,'key',{...emptyDraft(),selected:['one']}),/quota/);
 });
+
+test('submission recovery retains exact replay and refuses damaged or unavailable storage',async()=>{
+ const {readSubmission}=await import('../../src/processing-proposal-draft.mjs');
+ const body={requestId:'11111111-1111-4111-8111-111111111111',filenames:['one.pdf'],plan:{researchPurpose:{kind:'thesis_review'},outputs:['thesis']}};
+ const storage=raw=>({getItem:()=>raw});
+ assert.deepEqual(readSubmission(storage(JSON.stringify(body)),'key'),{value:body,error:''});
+ const note={...body,supplementalIds:['2'],plan:{researchPurpose:{kind:'event_note',event:{title:'Earnings',date:'2026-10-01'}},outputs:['summary_note','meeting_prep'],labFullNote:{allowPdfText:true},meeting:{date:'2026-10-20',type:'expert'},instruction:'Context',horizon:'12–24 months'}};
+ assert.deepEqual(readSubmission(storage(JSON.stringify(note)),'key').value,note);
+ for(const raw of ['{','null','[]',JSON.stringify({...body,requestId:'bad'}),JSON.stringify({...body,filenames:[]}),JSON.stringify({...body,plan:{...body.plan,outputs:['trade']}}),'x'.repeat(3000001)])assert.ok(readSubmission(storage(raw),'key').error);
+ assert.ok(readSubmission({getItem(){throw Error('denied');}},'key').error);
+ assert.deepEqual(readSubmission(storage(null),'key'),{value:null,error:''});
+});

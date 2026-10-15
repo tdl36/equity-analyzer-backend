@@ -2,6 +2,36 @@
 
 Updated: October 14, 2026
 
+## T329 — Server proposals stay readable when browser recovery fails
+
+Processing-proposal reads no longer depend on browser recovery storage. Verified
+server proposals remain visible when the local submission record is unreadable or
+malformed. A distinct recovery warning blocks new/replayed submissions while
+preserving the original local record; restoring storage and refreshing reconciles
+it. A storage write failure stops before any proposal POST. Pending recovery data
+is validated without rewriting its request identity or frozen choices, including
+legacy collected-only selections and full-note/meeting options.
+
+Server-read failure still disables proposal decisions; local-storage failure is
+not misreported as a missing server proposal. Exact saved receipts clear resolved
+submissions only when local cleanup succeeds. Lost-response recovery keeps the
+same saved submission frozen and reconciles via a read, not another dispatch.
+Existing backend authorization and byte/baseline guards remain unchanged.
+
+Validation: 237 frontend tests, 64 focused disposable backend processing-proposal,
+full-note and coverage tests, and production build pass. Actual-component browser
+checks with production parent styles at 390/1280px cover corrupt/denied reads,
+write failure before POST, unavailable server status, selected-library read failure,
+retained selections and lost-save receipt reconciliation. Only fixture reads and
+one mocked no-generation proposal save were used; no processing approval clicked.
+Full backend last passed 1,672 tests in T327; no backend source changed here.
+
+Next: verify exact deployment, then continue the integrated source-to-output
+acceptance matrix using existing tests/fixtures. No new completed collection-only
+request was observed in T328; avoid repeating the unchanged archive audit. Real
+request-specific processing/investor acceptance and historical-reference schema
+remain open. Preserve original Pipeline, collection authorization and synthesis pause.
+
 ## T328 — Exact thesis-review loading and recovery
 
 An exact thesis draft now loads independently of the inbox. Inbox failure no

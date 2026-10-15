@@ -3,7 +3,7 @@ import { ProcessingSelectionReview } from './processing-selection-review';
 import { OriginalDownload } from './original-download';
 import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
-import { emptyDraft, draftKey, readDraft, writeDraft } from './processing-proposal-draft.mjs';
+import { emptyDraft, draftKey, readDraft, writeDraft, readSubmission } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
 import { ProcessingSourceLibrary } from './processing-source-library';
 import * as React from 'react';
@@ -40,6 +40,7 @@ function ProposalReview({
       }
     });
   var initial = restored.value || emptyDraft();
+  var [submissionIssue, setSubmissionIssue] = React.useState('');
   var [draftIssue, setDraftIssue] = React.useState(restored.error),
     [restoredNotice, setRestoredNotice] = React.useState(!!restored.value);
   var [fullNote, setFullNote] = React.useState(initial.fullNote),
@@ -151,18 +152,30 @@ function ProposalReview({
     try {
       var data = await call(path),
         proposals = processingProposalList(data, job);
-      var raw = sessionStorage.getItem(key);
-      if (raw) {
-        var saved = JSON.parse(raw);
-        if (proposals.some(p => p.id === saved.requestId)) {
-          sessionStorage.removeItem(key);
-          if (live.current) {
-            setPending(null);
-            resetForm();
-          }
-        }
+      // Browser recovery must not hide verified server records.
+      var recovered;
+      try {
+        recovered = readSubmission(sessionStorage, key);
+      } catch {
+        recovered = readSubmission(null, key);
       }
+      var issue = recovered.error;
+      if (recovered.value) {
+        if (live.current) setPending(recovered.value);
+        if (proposals.some(p => p.id === recovered.value.requestId)) {
+          try {
+            sessionStorage.removeItem(key);
+            if (live.current) {
+              setPending(null);
+              resetForm();
+            }
+          } catch {
+            issue = 'The saved proposal was found, but its local recovery record could not be cleared. Restore browser storage and refresh before submitting again.';
+          }
+        } else if (live.current) setPending(recovered.value);
+      } else if (!issue && live.current) setPending(null);
       if (live.current) {
+        setSubmissionIssue(issue);
         setRows(proposals);
         setLoaded(true);
         setReadIssue('');
@@ -174,13 +187,6 @@ function ProposalReview({
   };
   React.useEffect(() => {
     live.current = true;
-    try {
-      var raw = sessionStorage.getItem(key);
-      if (raw) setPending(JSON.parse(raw));
-    } catch {
-      setError('Saved submission could not be read. Inspect saved proposals before creating another.');
-      return;
-    }
     refresh().catch(e => live.current && setError(e.message));
     return () => {
       live.current = false;
@@ -202,6 +208,7 @@ function ProposalReview({
     }
   };
   var save = () => act(async () => {
+    if (submissionIssue) throw Error(submissionIssue);
     var body = pending || {
       requestId: crypto.randomUUID(),
       filenames: [...selected].sort(),
@@ -232,7 +239,12 @@ function ProposalReview({
         } : {})
       }
     };
-    sessionStorage.setItem(key, JSON.stringify(body));
+    try {
+      sessionStorage.setItem(key, JSON.stringify(body));
+    } catch {
+      setSubmissionIssue('Submission was not sent because browser recovery could not be saved. Restore browser storage and refresh before submitting.');
+      throw Error('No proposal was sent. Browser recovery storage is unavailable.');
+    }
     setPending(body);
     try {
       var receipt = processingProposal(await call(path, body), job);
@@ -262,7 +274,9 @@ function ProposalReview({
     role: "status"
   }, "Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested."), draftIssue && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, draftIssue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record."), " ", /*#__PURE__*/React.createElement("button", {
+  }, draftIssue), submissionIssue && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, submissionIssue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record."), " ", /*#__PURE__*/React.createElement("button", {
     disabled: busy || !!pending,
     onClick: resetForm
   }, "Discard unsaved choices")), /*#__PURE__*/React.createElement("button", {
@@ -360,7 +374,7 @@ function ProposalReview({
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !!readIssue || !pending && (!collectionReady || selectionSummary.metadataPending || selectionSummary.missing > 0 || selectionSummary.unavailable > 0 || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !!readIssue || !!submissionIssue || !pending && (!collectionReady || selectionSummary.metadataPending || selectionSummary.missing > 0 || selectionSummary.unavailable > 0 || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
   }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, readIssue ? 'Saved proposals unavailable. Refresh to check their status.' : 'Loading saved proposals…') : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,
