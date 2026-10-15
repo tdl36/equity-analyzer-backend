@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T331 separates unfinished longitudinal and event-purpose drafts, including evidence,
+outputs and instructions. Synthetic switch/reload/scoped-discard and lost-save
+checks pass; no live processing or investor acceptance was performed.
+
 T330 adds read-only wider-library refresh with retained selections and exact failed-page
 retry. Synthetic selection/eligibility/recovery checks pass at phone and desktop
 widths. This improves processing readiness; no live generation or investor acceptance.

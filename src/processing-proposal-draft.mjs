@@ -46,3 +46,26 @@ export function readSubmission(storage,key){
   return {value,error:''};
  }catch{return {value:null,error:'Local submission recovery is unavailable or damaged. Saved server proposals can still be reviewed. Restore browser storage and refresh before creating or retrying a submission; the local record has not been discarded.'};}
 }
+
+// Keep unfinished event and longitudinal work independent; migrate a legacy
+// single draft without copying its sources or instructions to another purpose.
+export function emptyPurposeDraft(purpose){return {...emptyDraft(),purpose,outputs:purpose==='event_note'?['summary_note']:['thesis']};}
+export function readDraftWorkspace(storage,key){
+ try{
+  const raw=storage.getItem(key);if(!raw)return {value:null,drafts:{},error:''};
+  if(raw.length>6000000)throw Error();
+  const data=JSON.parse(raw);
+  if(data?.version===1){const value=validDraft(data);if(!value)throw Error();return {value,drafts:{[value.purpose]:value},error:''};}
+  if(data?.version!==2||!['thesis_review','event_note'].includes(data.activePurpose)||!data.drafts||Array.isArray(data.drafts)||Object.keys(data).sort().join('|')!=='activePurpose|drafts|version'||Object.keys(data.drafts).some(k=>!['thesis_review','event_note'].includes(k)))throw Error();
+  const drafts={};for(const [purpose,record] of Object.entries(data.drafts)){const value=validDraft(record);if(!value||value.purpose!==purpose)throw Error();drafts[purpose]=value;}
+  if(!drafts[data.activePurpose])throw Error();
+  return {value:drafts[data.activePurpose],drafts,error:''};
+ }catch{return {value:null,drafts:{},error:'Unsaved choices could not be restored. The saved processing proposals are unaffected.'};}
+}
+export function writeDraftWorkspace(storage,key,active,drafts){
+ const records={...drafts,[active.purpose]:active};
+ const value={version:2,activePurpose:active.purpose,drafts:records},raw=JSON.stringify(value);
+ if(readDraftWorkspace({getItem:()=>raw},key).error)throw Error('Unsaved choices are invalid. Review them before saving.');
+ storage.setItem(key,raw);
+ if(storage.getItem(key)!==raw)throw Error('Unsaved choices could not be verified in browser storage.');
+}

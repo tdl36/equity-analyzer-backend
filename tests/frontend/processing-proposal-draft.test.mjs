@@ -28,3 +28,25 @@ test('submission recovery retains exact replay and refuses damaged or unavailabl
  assert.ok(readSubmission({getItem(){throw Error('denied');}},'key').error);
  assert.deepEqual(readSubmission(storage(null),'key'),{value:null,error:''});
 });
+
+test('purpose workspace migrates legacy drafts without copying evidence or instructions',async()=>{
+ const {readDraftWorkspace,writeDraftWorkspace,emptyPurposeDraft}=await import('../../src/processing-proposal-draft.mjs');
+ let raw=JSON.stringify({...emptyDraft(),selected:['foundation.pdf'],instruction:'Longitudinal view',outputs:['thesis','visual']});
+ const storage={getItem:()=>raw,setItem:(_,value)=>{raw=value;}};
+ const restored=readDraftWorkspace(storage,'key');assert.equal(restored.value.purpose,'thesis_review');assert.equal(restored.drafts.event_note,undefined);
+ const event={...emptyPurposeDraft('event_note'),selected:['earnings.pdf'],title:'Earnings',eventDate:'2026-10-15',instruction:'Guidance changes'};
+ writeDraftWorkspace(storage,'key',event,restored.drafts);
+ let next=readDraftWorkspace(storage,'key');assert.deepEqual(next.value,event);assert.deepEqual(next.drafts.thesis_review,restored.value);
+ writeDraftWorkspace(storage,'key',emptyPurposeDraft('event_note'),next.drafts);
+ next=readDraftWorkspace(storage,'key');assert.deepEqual(next.value.selected,[]);assert.deepEqual(next.drafts.thesis_review,restored.value);
+ assert.deepEqual(emptyPurposeDraft('event_note').outputs,['summary_note']);assert.equal(emptyPurposeDraft('event_note').instruction,'');
+});
+test('purpose workspace rejects mixed identities and silent storage failures without repairing data',async()=>{
+ const {readDraftWorkspace,writeDraftWorkspace,emptyPurposeDraft}=await import('../../src/processing-proposal-draft.mjs');
+ const valid={version:2,activePurpose:'thesis_review',drafts:{thesis_review:emptyDraft()}};
+ for(const change of [d=>d.drafts.thesis_review.purpose='event_note',d=>d.activePurpose='event_note',d=>d.drafts.other=emptyDraft(),d=>d.drafts.thesis_review.requestId='unexpected']){
+  const d=structuredClone(valid);change(d);assert.ok(readDraftWorkspace({getItem:()=>JSON.stringify(d)},'key').error);
+ }
+ assert.throws(()=>writeDraftWorkspace({getItem:()=>null,setItem(){}},'key',emptyPurposeDraft('event_note'),{}),/verified/);
+ assert.ok(readDraftWorkspace({getItem:()=>'{bad'},'key').error);
+});

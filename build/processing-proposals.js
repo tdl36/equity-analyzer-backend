@@ -3,7 +3,7 @@ import { ProcessingSelectionReview } from './processing-selection-review';
 import { OriginalDownload } from './original-download';
 import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
-import { emptyDraft, draftKey, readDraft, writeDraft, readSubmission } from './processing-proposal-draft.mjs';
+import { emptyDraft, emptyPurposeDraft, draftKey, readDraftWorkspace, writeDraftWorkspace, readSubmission } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
 import { ProcessingSourceLibrary } from './processing-source-library';
 import * as React from 'react';
@@ -31,7 +31,7 @@ function ProposalReview({
   var localKey = draftKey(api, job.id),
     [restored] = React.useState(() => {
       try {
-        return readDraft(sessionStorage, localKey);
+        return readDraftWorkspace(sessionStorage, localKey);
       } catch {
         return {
           value: null,
@@ -40,6 +40,7 @@ function ProposalReview({
       }
     });
   var initial = restored.value || emptyDraft();
+  var purposeDrafts = React.useRef(restored.drafts || {});
   var [submissionIssue, setSubmissionIssue] = React.useState('');
   var [draftIssue, setDraftIssue] = React.useState(restored.error),
     [restoredNotice, setRestoredNotice] = React.useState(!!restored.value);
@@ -96,13 +97,13 @@ function ProposalReview({
   React.useLayoutEffect(() => {
     if (draftIssue || pending) return;
     try {
-      writeDraft(sessionStorage, localKey, authoring);
+      writeDraftWorkspace(sessionStorage, localKey, authoring, purposeDrafts.current);
+      purposeDrafts.current[purpose] = authoring;
     } catch {
       setDraftIssue('Unsaved choices cannot be kept on this device. Save a proposal before leaving.');
     }
   }, [localKey, JSON.stringify(authoring), draftIssue, pending]);
-  var resetForm = () => {
-    var d = emptyDraft();
+  var applyDraft = d => {
     setSelected(d.selected);
     setSupplements(d.supplements);
     setPurpose(d.purpose);
@@ -114,12 +115,22 @@ function ProposalReview({
     setAllowPdfText(d.allowPdfText);
     setMeetingDate(d.meetingDate);
     setMeetingType(d.meetingType);
+  };
+  var changePurpose = next => {
+    purposeDrafts.current[purpose] = authoring;
+    applyDraft(purposeDrafts.current[next] || emptyPurposeDraft(next));
+    setRestoredNotice(false);
+  };
+  var resetForm = () => {
+    var d = emptyPurposeDraft(purpose);
+    purposeDrafts.current[purpose] = d;
+    applyDraft(d);
     setRestoredNotice(false);
     try {
-      sessionStorage.removeItem(localKey);
+      writeDraftWorkspace(sessionStorage, localKey, d, purposeDrafts.current);
       setDraftIssue('');
     } catch {
-      setDraftIssue('Local choices could not be cleared. Saved proposals are unaffected.');
+      setDraftIssue('Current draft could not be cleared in browser recovery. Keep this screen open.');
     }
   };
   var key = 'charlie-processing-proposal:' + api + ':' + job.id;
@@ -279,7 +290,7 @@ function ProposalReview({
   }, submissionIssue), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Unsaved choices are kept in this browser tab while storage is available. Saving a proposal creates the durable server record."), " ", /*#__PURE__*/React.createElement("button", {
     disabled: busy || !!pending,
     onClick: resetForm
-  }, "Discard unsaved choices")), /*#__PURE__*/React.createElement("button", {
+  }, "Discard current purpose draft")), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => act(async () => {})
   }, "Refresh saved proposals"), pending && /*#__PURE__*/React.createElement("p", {
@@ -289,15 +300,12 @@ function ProposalReview({
   }, /*#__PURE__*/React.createElement("legend", null, "Select evidence and purpose"), /*#__PURE__*/React.createElement("label", null, "Processing purpose", /*#__PURE__*/React.createElement("select", {
     "aria-label": "Processing purpose",
     value: purpose,
-    onChange: e => {
-      setPurpose(e.target.value);
-      setOutputs(e.target.value === 'event_note' ? ['summary_note'] : ['thesis']);
-    }
+    onChange: e => changePurpose(e.target.value)
   }, /*#__PURE__*/React.createElement("option", {
     value: "thesis_review"
   }, "Thesis review \xB7 longitudinal"), /*#__PURE__*/React.createElement("option", {
     value: "event_note"
-  }, "Event note \xB7 specific catalyst"))), /*#__PURE__*/React.createElement("p", null, purpose === 'thesis_review' ? 'Review the full investment case over time. Add relevant foundational and historical originals from the wider library below. The collection window does not limit the investment case; missing evidence remains a gap.' : 'Debrief an identified event with contextual history. This does not change the thesis or mark it current. Thesis implications need a separate proposal.'), purpose === 'event_note' && /*#__PURE__*/React.createElement("div", {
+  }, "Event note \xB7 specific catalyst"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Each purpose keeps its own unfinished sources, outputs and instructions in this browser tab. Switching restores that purpose\u2019s draft; it never copies or submits the other one.")), /*#__PURE__*/React.createElement("p", null, purpose === 'thesis_review' ? 'Review the full investment case over time. Add relevant foundational and historical originals from the wider library below. The collection window does not limit the investment case; missing evidence remains a gap.' : 'Debrief an identified event with contextual history. This does not change the thesis or mark it current. Thesis implications need a separate proposal.'), purpose === 'event_note' && /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "Event title", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Processing event title",

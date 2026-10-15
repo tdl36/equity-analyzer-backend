@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T331 — Independent unfinished thesis-review and event-note drafts
+
+Switching processing purpose previously reset outputs while carrying the same
+sources/instructions into the other workflow. Each purpose now retains a separate
+unfinished draft: selected collected/history originals, output choices, instructions,
+event identity, meeting settings and full-note options. Switching restores that
+purpose only; first use starts empty with its own allowed output default. No
+source choices or instructions are copied across purposes. Discarding or reconciling
+a saved proposal clears only the active purpose draft and preserves the other.
+
+Browser-session recovery uses a validated two-purpose envelope under the existing
+collection/API key. Legacy single drafts migrate into their recorded purpose only.
+Malformed recovery is not silently repaired; storage writes are read back for
+verification. Submitted request recovery stays immutable and separate. No backend
+or frozen legacy collection/processing authorization changed.
+
+Validation: 240 frontend tests, 64 focused disposable backend proposal/note/coverage
+tests and production build pass. Actual-component synthetic UI at 390/1280px tests
+purpose roundtrips, reload, required source metadata recheck, scoped discard and
+lost event-save reconciliation retaining the thesis draft. One mocked no-generation
+proposal POST per width; no processing approval. Existing corrupt/denied storage,
+write-failure and lost-save regression scenarios also pass. Phone screenshot inspected.
+Full safe backend last passed 1,672 in T327; backend source unchanged here.
+
+Next: verify exact hosted release. Continue company navigation/unsaved-edit acceptance
+from this checkpoint, especially browser storage failure recovery and switching
+between saved assignment identities. Do not duplicate coordinator/purpose machinery.
+Live collection-only -> specifically authorized processing -> saved output proof
+and investor acceptance remain open, as does permitted historical-reference schema.
+Original Pipeline and automatic-synthesis backfill pause remain unchanged.
+Logs: /tmp/charlie-T331-{frontend,backend,build,ui,recovery,deploy,verify}.log.
+
 ## T330 — Refresh wider-library metadata without losing selections
 
 The collection-to-processing handoff now offers a read-only library refresh that
