@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T294 — Inspect the checked source pack before generation
+
+The Lab source-check result now expands into the reported original filenames,
+exact byte counts, source identities and optional recorded SHA-256 fingerprints,
+labeled with task and saved revision. Previously only the checked count was shown.
+Partial verified originals remain inspectable alongside blockers; this does not
+turn a partial check into a ready pack. No downloads, source moves, additional
+checks or research are triggered by expanding the receipt. Original Pipeline is
+unchanged.
+
+200 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks verified that the expanded receipt shows both original names, correct sizes
+and stored identities and exposes the recorded fingerprint. All API calls were
+mocked; no paid research or approvals. Production verification pending.
+Next: real source-to-output acceptance and investor review remain open; preserve
+the historical valuation provider-schema checkpoint.
+
 ## T293 — Bind source checks to the saved selection
 
 Lab validates source-check responses before displaying success or making generation

@@ -671,7 +671,13 @@ function LabStock({
     onClick: check
   }, checking ? 'Checking stored originals…' : 'Check selected originals'), dirty && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Save your selection before checking the stored originals.")), checkResult && !dirty && checkResult.task === task && checkResult.revision === saved.revision && /*#__PURE__*/React.createElement("div", {
     role: "status"
-  }, /*#__PURE__*/React.createElement("p", null, checkResult.verified.length, " selected original(s) checked against stored bytes."), checkResult.blockers.length > 0 ? /*#__PURE__*/React.createElement("ul", null, checkResult.blockers.map((b, i) => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("p", null, checkResult.verified.length, " selected original(s) checked against stored bytes."), checkResult.verified.length > 0 && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Review checked originals (", checkResult.verified.length, ")"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved ", checkResult.task, " selection \xB7 version ", checkResult.revision, ". These are the originals reported by the last check, including any shown alongside blockers below.")), /*#__PURE__*/React.createElement("ul", null, checkResult.verified.map(r => /*#__PURE__*/React.createElement("li", {
+    key: r.reference,
+    style: {
+      marginBottom: 12,
+      overflowWrap: 'anywhere'
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.bytes.toLocaleString('en-US'), " bytes \xB7 ", r.reference), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Recorded byte fingerprint"), /*#__PURE__*/React.createElement("small", null, r.sha256)))))), checkResult.blockers.length > 0 ? /*#__PURE__*/React.createElement("ul", null, checkResult.blockers.map((b, i) => /*#__PURE__*/React.createElement("li", {
     key: i,
     style: {
       overflowWrap: 'anywhere'
