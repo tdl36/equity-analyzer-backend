@@ -36,6 +36,24 @@ Keep live/investor acceptance and historical-reference schema gaps open; continu
 independent engineering when external evidence is pending. Agent code unchanged;
 no agent restart required. Original Pipeline and backfill synthesis pause preserved.
 
+T337 production verified: Render 85c5777cd4ae489efe107bfbefd642bc84e28ca7;
+Cloudflare 3d4b3e40-d111-4385-a5a5-e3ba29b7daa1. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy (12.7s), no restart needed. Read-only
+authentication and completed-collection prerequisite checks pass for exact proposal
+lookup. Successful multi-page/exact proposal history is proven with isolated
+synthetic records, not a live completed source-only assignment. Activity reports no
+unavailable dependencies, unchanged research/audio truncation and no full-note rows.
+Verification: /tmp/charlie-T337-verify.log. No processing/acceptance was authorized.
+
+Post-release collection snapshot is 121 seconds old: CVS remains queued, default
+position 2 of 54 eligible requests with one occupied slot; four searches pending.
+No completed source pack or processing readiness is claimed. Next: inspect CVS's
+existing preserved-original and import receipts when Operations finishes; use the
+linked proposal handoff without generation authorization. Until then, continue
+independent demonstrated delivery/recovery repairs, preserving the live/investor
+acceptance and historical schema gaps. This documentation-only receipt uses
+[skip render] to avoid another backend restart; unrelated dirty files preserved.
+
 ## T336 — Fence uncertain automatic audio/text uploads across restarts
 
 Priority-1 job recovery: the SUMMARIES watcher previously removed failed/missing
