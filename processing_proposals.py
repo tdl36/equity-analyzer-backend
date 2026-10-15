@@ -55,6 +55,8 @@ def dispatch(cur, proposed_plan, ident):
     if frozen['plan'].get('labFullNote'):
         if not frozen.get('labNotePlan'):
             raise ValueError('Full-note settings are missing. Save a fresh proposal.')
+        from processing_proposal_note import verify_sources
+        verify_sources(cur, row['ticker'], pack, frozen['labNotePlan'])
         proposed_plan['labNotePlan'] = frozen['labNotePlan']
     if frozen.get('sourceContext'):
         proposed_plan['processingSourceContext'] = frozen['sourceContext']
@@ -159,6 +161,8 @@ def register(co):
                         raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
                     frozen['sourceContext'] = context(cur, parent['ticker'], sources, filenames, baseline_package)
                 if note_config is not None:
+                    from processing_proposal_note import source_plan
+                    note_config['sourcePreparation'] = source_plan(cur, parent['ticker'], sources, note_config)
                     frozen['labNotePlan'] = note_config
                 frozen['digest'] = digest(frozen)
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'pending',%s::jsonb,'{}'::jsonb) RETURNING *", (ident, STAGE, parent['ticker'], json.dumps(frozen)))

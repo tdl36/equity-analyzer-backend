@@ -111,6 +111,9 @@ def assignment_note(get_db, ident, assignment, pack):
         if checked['blockers'] or len(pack)!=len(docs) or actual!=expected:
             raise ValueError('Full note originals differ from the assignment pack. Saved research is retained.')
         prepared=prepare(assignment['ticker'],checked['verified'],docs,allow_pdf_text=cfg['allowPdfText'])
+        if cfg.get('sourcePreparation') is not None:
+            from pipeline_lab_note_plan import verify_preparation
+            verify_preparation(cfg['sourcePreparation'],prepared)
         return enqueue(cur,{'noteId':note_id,'ticker':assignment['ticker'],
             'title':assignment['ticker']+(' — '+assignment['researchPurpose']['event']['title'] if assignment.get('researchPurpose',{}).get('kind')=='event_note' else ' — Equity research note'),
             'context':json.dumps(assignment['thesisBaseline'],default=str),

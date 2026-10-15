@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T311 adds pre-approval full-note source planning, representation-drift guards and
+explicit PDF/OCR/batch blockers. Local/synthetic planning is not provider budget
+validation, investment-quality acceptance or a genuine end-to-end run.
+
 T310 adds collection-linked full-note/meeting configuration and preserves the
 saved model/instructions through approval. Isolated fixtures test the selected
 source-to-report-to-note/meeting handoff; this is not genuine paid-run evidence

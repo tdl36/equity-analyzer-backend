@@ -131,6 +131,9 @@ class Coordinator:
                     state['step']='Originals collected and verified in Charlie; no research generation requested'
                     self.store(ident,state,'complete');return
                 if not state.get('researchInput'):
+                    if p.get('labNotePlan',{}).get('sourcePreparation') is not None:
+                        from processing_proposal_note import verify_sources
+                        with self.db() as (_,cur):verify_sources(cur,ticker,pack,p['labNotePlan'])
                     state['sources']=pack
                     q=('Research from explicitly selected stored originals; no new external collection was performed. Requested context window '+p['since']+' through '+p['until']+'. ' if (p.get('labSelection') or p.get('processingProposal')) else 'Research evidence collected '+p['since']+' through '+p['until']+'. ')+p['instruction']+' Distinguish source dates, financial periods, forecasts and interpretation. Identify evidence gaps; do not infer current price or consensus.'
                     from research_purpose import context

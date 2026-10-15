@@ -17,6 +17,15 @@ class Integration(fixtures.Review):
             c.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s)',(ticker,'fixture.txt',base64.b64encode(raw).decode(),'{}'))
         pack=[{'filename':'fixture.txt','sha256':hashlib.sha256(raw).hexdigest()}]
         assignment={'ticker':ticker,'thesisBaseline':{'analysis':'Frozen fixture'},'labNotePlan':{'promptTemplate':'Synthetic playbook','modelKey':'fixture','allowPdfText':False}}
+        from processing_proposal_note import source_plan
+        with self.db() as (_,c):
+            c.execute('SELECT id::text AS id,filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s',(ticker,))
+            doc=c.fetchone();ref='charlie:thesis_'+doc['id']
+            verified=check_originals(ticker,'note',0,[ref],{ref:doc})['verified']
+            assignment['labNotePlan']['sourcePreparation']=source_plan(c,ticker,[dict(s,documentId=doc['id']) for s in verified],assignment['labNotePlan'])
+        bad=json.loads(json.dumps(assignment));bad['labNotePlan']['sourcePreparation']['representationSha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'representation changed'):
+            assignment_note(self.db,ident,bad,pack)
         receipt=assignment_note(self.db,ident,assignment,pack)
         self.assertEqual(receipt['status'],'queued')
         self.assertEqual(assignment_note(self.db,ident,assignment,pack)['noteId'],receipt['noteId'])

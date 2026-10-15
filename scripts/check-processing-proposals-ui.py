@@ -25,7 +25,7 @@ with sync_playwright() as p:
      else:
       assert body['filenames']==['recent.pdf'];assert body['supplementalIds']==['3'];assert body['plan']['researchPurpose']=={'kind':'event_note','event':{'title':'Guidance update','date':'2026-10-01'}}
       assert body['plan']['labFullNote']=={'allowPdfText':True};assert body['plan']['meeting']=={'date':'2026-10-20','type':'expert'};assert body['plan']['outputs']==['meeting_prep','summary_note']
-      d={'id':body['requestId'],'ticker':'ABT','revision':1,'digest':'a'*64,'status':'pending','fullNote':{'modelKey':'fixture-v1','maxCalls':8,'maxTokens':32000,'allowPdfText':True,'configDigest':'c'*64,'promptSha256':'d'*64},'sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','filename':'recent.pdf','bytes':10},{'documentId':'3','filename':'annual-2024-10-K.pdf','bytes':20}],'plan':{**body['plan'],'since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
+      d={'id':body['requestId'],'ticker':'ABT','revision':1,'digest':'a'*64,'status':'pending','fullNote':{'modelKey':'fixture-v1','maxCalls':8,'maxTokens':32000,'allowPdfText':True,'configDigest':'c'*64,'promptSha256':'d'*64,'sourcePreparation':{'sourcePack':[{'reference':'charlie:thesis_1'},{'reference':'charlie:thesis_3'}],'batchCount':2,'representationSha256':'e'*64,'warnings':[{'reference':'charlie:thesis_3','issue':'Extracted text representation; embedded images and layout are not verified.'}]}},'sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','reference':'charlie:thesis_1','filename':'recent.pdf','bytes':10},{'documentId':'3','reference':'charlie:thesis_3','filename':'annual-2024-10-K.pdf','bytes':20}],'plan':{**body['plan'],'since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
     else:d={'proposals':proposals}
    elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64}]}}]}
    elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
@@ -94,13 +94,17 @@ with sync_playwright() as p:
   assert len(writes)==1
   expect(review.get_by_text('Full versioned note · frozen model fixture-v1',exact=False)).to_be_visible()
   expect(review.get_by_text('Meeting preparation · 2026-10-20 · expert',exact=True)).to_be_visible()
+  expect(review.get_by_text('Full-note source check: 2 originals planned across 2 batches.',exact=False)).to_be_visible()
+  review.get_by_text('Source representation limitations · 1',exact=True).click()
+  expect(review.get_by_text('Extracted text representation; embedded images and layout are not verified.',exact=False)).to_be_visible()
+  expect(review.get_by_text('annual-2024-10-K.pdf: Extracted text representation;',exact=False)).to_be_visible()
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T310-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T311-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   approve.click()
   link=review.get_by_role('link',name='Open saved processing job and outputs')
   expect(link).to_have_attribute('href', '#view=stockanalysis&ticker=ABT&section=stock-analysis&work=assignment%3A'+NOTE)
   assert len(writes)==2,writes
-  print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, frozen roles, full-note settings, meeting preparation and explicit approval passed',flush=True)
+  print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, frozen roles, source readiness/limitations, full-note settings, meeting preparation and explicit approval passed',flush=True)
   page.close()
  b.close()

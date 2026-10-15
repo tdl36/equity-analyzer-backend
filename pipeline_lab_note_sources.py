@@ -24,8 +24,10 @@ def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False):
         from notegen import plan_batches
         planner = plan_batches
     batches = planner(selected)
-    if not isinstance(batches,list) or not 1 <= len(batches) <= 8:
-        raise ValueError('The selected source pack could not be planned completely.')
+    if not isinstance(batches,list) or not batches:
+        raise ValueError('Selected originals have no readable full-note representation. Choose supported readable sources.')
+    if len(batches) > 8:
+        raise ValueError(f'This full note needs {len(batches)} batches; the generation limit is eight. Select a smaller evidence pack; the collected library is retained.')
     seen = []
     output = []
     warnings = []
@@ -50,7 +52,7 @@ def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False):
                 content.append({'type':'text','text':'[Original: '+ref+'; '+original['filename']+']'})
             elif mode in ('text','file'):
                 if is_pdf and not allow_pdf_text:
-                    raise ValueError('A PDF requires text-only conversion. Review that representation before generation.')
+                    raise ValueError('PDF '+original['filename']+' requires text-only conversion. Explicitly allow extracted PDF text or choose a smaller pack.')
                 text = doc.get('extracted_text')
                 if not isinstance(text,str) or not text.strip() or len(text.encode('utf-8')) > 2_000_000:
                     raise ValueError('A selected original has no bounded readable text representation.')
@@ -60,7 +62,8 @@ def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False):
                 raise ValueError('A selected original cannot be represented; no source may be silently skipped.')
         output.append(content)
     if set(seen) != set(references):
-        raise ValueError('The source plan omitted a selected original; generation is blocked.')
+        missing = [s['filename'] for s in pack if s['reference'] not in seen]
+        raise ValueError('The source plan omitted unreadable originals: '+', '.join(missing[:10])+'. Select readable sources; generation is blocked.')
     # Bind the actual ordered representations, including any extraction, rather
     # than only the original hashes. A changed extraction cannot reuse a call.
     digest = hashlib.sha256(json.dumps(output,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()

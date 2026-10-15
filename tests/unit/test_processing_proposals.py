@@ -314,3 +314,71 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(len(self.note_calls), 1)
         self.assertEqual(row['result']['meetingId'], 45)
         self.assertIsNone(self.row(child(aid, 'collection')))
+
+    def test_source_readiness_is_frozen_without_text_or_paid_calls(self):
+        self.parent();self.note_hooks()
+        self.body['plan']['labFullNote'] = {'allowPdfText': False}
+        proposal = self.client.post(self.url, json=self.body).json
+        readiness = proposal['fullNote']['sourcePreparation']
+        self.assertEqual(readiness['batchCount'], 1)
+        self.assertEqual(readiness['sourcePack'][0]['sha256'], self.sha)
+        self.assertEqual(len(readiness['warnings']), 1)
+        self.assertNotIn('batches', readiness)
+        self.assertFalse(self.submits);self.assertFalse(self.note_calls)
+        from unittest.mock import patch
+        with patch('notegen.plan_batches', side_effect=AssertionError('Replay planned sources')):
+            self.assertEqual(self.client.post(self.url, json=self.body).status_code, 200)
+
+    def test_changed_extraction_blocks_approval_and_queued_research(self):
+        from unittest.mock import patch
+        self.parent();self.note_hooks();self.body['plan']['labFullNote'] = {'allowPdfText': False}
+        proposal = self.client.post(self.url, json=self.body).json
+        def changed(docs):
+            return [[dict(d, send_as='file', extracted_text='Changed extraction, same original') for d in docs]]
+        with patch('notegen.plan_batches', side_effect=changed):
+            self.assertEqual(self.decision(proposal).status_code, 409)
+        self.assertEqual(self.row(proposal['id'])['status'], 'pending')
+        self.assertEqual(self.decision(proposal).status_code, 202)
+        aid = assignment_id(proposal['id'])
+        with patch('notegen.plan_batches', side_effect=changed), self.app.app_context():
+            self.co.advance(aid)
+        self.assertEqual(self.co.read(aid)['status'], 'attention')
+        self.assertFalse(self.submits);self.assertFalse(self.note_calls)
+        self.assertIn('representation changed', self.co.read(aid)['error'])
+
+    def test_unreadable_and_over_batch_sources_do_not_save_or_dispatch(self):
+        from unittest.mock import patch
+        self.parent();self.note_hooks();self.body['plan']['labFullNote'] = {'allowPdfText': False}
+        extra = self.extra('broken.pdf', b'not a PDF')
+        self.body['supplementalIds'] = [extra]
+        result = self.client.post(self.url, json=self.body)
+        self.assertEqual(result.status_code, 409)
+        self.assertIn('broken.pdf', result.json['error'])
+        self.assertIsNone(self.row(self.body['requestId']))
+        self.body['supplementalIds'] = []
+        with patch('notegen.plan_batches', return_value=[]):
+            result = self.client.post(self.url, json=self.body)
+            self.assertEqual(result.status_code, 409)
+            self.assertIn('no readable', result.json['error'])
+        with patch('notegen.plan_batches', return_value=[[]]*9):
+            result = self.client.post(self.url, json=self.body)
+            self.assertEqual(result.status_code, 409)
+            self.assertIn('needs 9 batches', result.json['error'])
+        self.assertIsNone(self.row(self.body['requestId']))
+        self.assertFalse(self.submits);self.assertFalse(self.note_calls)
+
+    def test_old_full_note_proposals_keep_their_frozen_contract(self):
+        self.parent();self.note_hooks();self.body['plan']['labFullNote'] = {'allowPdfText': False}
+        proposal = self.client.post(self.url, json=self.body).json
+        # Synthetic T310 row: representation policy existed, preparation did not.
+        from processing_proposals import digest, public
+        frozen = self.row(proposal['id'])['input']
+        frozen['labNotePlan'].pop('sourcePreparation');frozen.pop('digest')
+        frozen['digest'] = digest(frozen)
+        with self.db(True) as (_, cur):
+            cur.execute('UPDATE mp_jobs SET input=%s::jsonb WHERE id=%s', (json.dumps(frozen), proposal['id']))
+        proposal = public(self.row(proposal['id']))
+        self.assertEqual(self.decision(proposal).status_code, 202)
+        with self.app.app_context(): self.co.advance(assignment_id(proposal['id']))
+        self.assertEqual(len(self.submits), 1)
+        self.assertNotIn('sourcePreparation', self.note_calls[0])

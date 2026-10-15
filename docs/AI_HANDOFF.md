@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T311 — Full-note source readiness before processing approval
+
+New full-note processing proposals now run local source planning at save. They
+freeze source representation hashes, batch count and extraction warnings alongside
+the T310 settings. Exact original IDs/bytes remain bound. Approval rechecks the
+representation, the queued assignment checks it before starting shared research,
+and the note adapter checks it again before enqueueing. Changed extraction cannot
+silently substitute a different representation. Legacy T310 proposals retain their
+frozen contract; no retrospective authorization or automatic reprocessing occurs.
+
+The review displays planned originals/batches and per-source limitations. Unreadable
+or omitted originals, damaged/encrypted PDFs, unapproved PDF-text conversion and
+more than eight generation batches are blocked before saving. Oversized PDFs that
+need OCR are explicitly blocked; interactive checks do not launch OCR, token-count
+APIs or model calls. Native PDF page planning does not prove every figure is
+readable. Provider context/budget validation still occurs at execution. Collection
+breadth is unchanged and can exceed the selected generation pack.
+
+Validation: 39 focused tests, 1,620 safe backend tests, 208 frontend tests, Python
+compilation and production build pass. Synthetic 390/1280px review checks cover
+readiness/warnings (all APIs intercepted, remote fonts blocked). Fixtures cover
+representation drift, queue delay, PDF policy/OCR refusal, legacy replay and saved-
+note integration. Production verification follows. No paid research or live approvals.
+
+Next: genuine completed collection → explicitly approved processing → saved
+outputs proof remains open. While waiting for that evidence, priority 3 independent
+engineering is the saved proposal's coverage summary: selected publication range,
+unknown dates, collection vs supplemental counts and exact-hash thesis references,
+with clear limits (references do not establish incorporation). Reuse frozen source
+metadata; no inferred accepted-thesis freshness, model screening or new coordinator.
+Shared Ready expansion remains after the connected proof. Eight-priority live and
+investor acceptance and historical security reference-schema gaps remain open.
+
 ## T310 — Frozen full-note and meeting processing choices
 
 Collection-linked processing proposals now support the full versioned Lab note
