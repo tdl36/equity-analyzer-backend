@@ -14,8 +14,11 @@ retain the exact request for inspection without dispatching replacement research
 
 194 frontend tests, model policy and build passed. Synthetic desktop/390px checks
 verified that a same-ID/different-output receipt preserves recovery, then a matching
-receipt clears it through GET reconciliation with zero writes. Production
-verification pending. Backend/agent unchanged; no paid QA or approvals.
+receipt clears it through GET reconciliation with zero writes. Verified Render
+`b4307fa0889a42adf23b40333422cbedb3db6562`, Cloudflare
+`c310c6ca-8ee0-4091-903c-c0af4b7ac2d3`, T287 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (76 seconds old); read-only endpoint auth checks passed.
+Backend/agent unchanged; no paid QA or approvals.
 Next: actual source-to-output acceptance still requires an authorized real request
 and investor review. Historical valuation stays at its documented provider-schema
 checkpoint. Continue independent recovery/receipt consistency review as needed.
