@@ -13,9 +13,16 @@ originals fail visibly. Research-storage and iCloud-only sources still need thei
 existing explicit import before this action is available. No files move and no
 analysis, extraction or model call occurs from reviewing an original.
 
-Validation and deployment verification pending. Next: real source-quality and
-investor acceptance evidence; historical valuation remains at its documented
-security-mapping provider-schema/assignment-locked storage checkpoint.
+Verified Render revision `451c50354b00e5166e1bbb845c5a9eaf78e36501`, Cloudflare
+`5bc4ab5b-0041-4c09-b165-534c29aa95b8`, T280 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (65.6 seconds old). Live read-only checks confirmed
+401 without auth and 404 for an absent exact identity with auth. 1,533 safe backend
+tests, 184 frontend tests, compile, model policy and build passed. Synthetic desktop/
+390px download checks verified fixture bytes and no writes; backend tests distinguish
+same-named IDs and reject wrong-company, malformed and excluded originals.
+No paid QA or live research/approval changes. Next: real source-quality/investor
+acceptance evidence; historical valuation remains at its documented security-mapping
+provider-schema/assignment-locked storage checkpoint.
 
 ## T279 — Collected-source follow-through
 
