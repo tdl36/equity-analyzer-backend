@@ -102,7 +102,7 @@ class Coordinator:
                 if len(pack)>1000:raise ValueError('Source manifest exceeds the supported 1000-original bound.')
                 # Persist exact originals and request payload before dispatch. Every retry uses this payload.
                 report_id=child(ident,'stock-analysis');state['reportId']=report_id
-                if p.get('collectionOnly') and len(pack)>8:
+                if p.get('collectionOnly'):
                     # Verify one original at a time; a library is not one model context.
                     from company_research import eligible
                     from command_thesis_bridge import file_hash
@@ -116,6 +116,9 @@ class Coordinator:
                     state['step']='Originals collected and verified in Charlie; no research generation requested'
                     self.store(ident,state,'complete');return
                 with self.db() as (_,cur):
+                    cur.execute('SELECT COALESCE(SUM(octet_length(file_data)),0) AS encoded_bytes FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,[s['filename'] for s in pack]))
+                    if cur.fetchone()['encoded_bytes']>80_000_000:
+                        raise ValueError('Collected library exceeds the 60 MB generation pack. Originals are retained; select a smaller task-specific pack in Lab.')
                     cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,[s['filename'] for s in pack]));docs=list(cur.fetchall())
                 from company_research import eligible
                 from command_thesis_bridge import file_hash

@@ -97,6 +97,7 @@ class ApiTests(unittest.TestCase):
                 elif 'FROM investment_case_versions' in sql:self.result=[{'revision':outer.revision,'body':{'thesis':'Synthetic baseline'}}]
                 elif 'FROM llm_usage' in sql:
                     outer.usage_args=args;self.result=[]
+                elif 'AS encoded_bytes FROM document_files' in sql:self.result=[{'encoded_bytes':getattr(outer,'encoded_bytes',40)}]
                 elif 'FROM document_files' in sql:self.result=[{'filename':'Original.txt','file_data':base64.b64encode(b'Synthetic original content').decode(),'metadata':{'usage':'reference_only' if outer.restricted else 'research'}}]
                 elif sql.startswith('SELECT') and 'FROM company_research_runs' in sql:
                     if 'WHERE id=' in sql:self.result=[copy.deepcopy(outer.rows[args[0]])] if args[0] in outer.rows else []
@@ -151,6 +152,13 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.thread.call_count,calls)
         self.assertEqual(result.headers['Cache-Control'],'no-store')
         self.assertEqual(self.client.get('/api/research/company-run/missing/usage-evidence').status_code,404)
+
+    def test_oversized_selection_rejected_before_research_reservation(self):
+        self.encoded_bytes=80_000_004
+        response=self.client.post('/api/research/company/ABC',json=self.payload())
+        self.assertEqual(response.status_code,400)
+        self.assertIn('60 MB',response.json['error'])
+        self.assertEqual(self.rows,{})
 
     def test_submission_retry_is_idempotent_and_freezes_case_and_hashes(self):
         p=self.payload();url='/api/research/company/ABC'

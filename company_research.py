@@ -337,6 +337,9 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             current=baseline(cur,ticker)
             if len(json.dumps(current))>80000:return jsonify(error='Case exceeds the research context bound. Shorten working assumptions before starting.'),400
             if current['revision']!=revision:return jsonify(error='The investment case changed. Reload before starting research.'),409
+            cur.execute('SELECT COALESCE(SUM(octet_length(file_data)),0) AS encoded_bytes FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,names))
+            if cur.fetchone()['encoded_bytes']>80_000_000:
+                return jsonify(error='Selected originals exceed the 60 MB generation pack. Keep the library and choose a smaller task-specific selection.'),400
             cur.execute('SELECT '+('id,' if expected_originals is not None else '')+'filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,names));docs=list(cur.fetchall())
             if len(docs)!=len(names) or any(not eligible(d.get('metadata') or {}) for d in docs):return jsonify(error='Sources missing or restricted. Reload your source selection.'),409
             try:hashes={d['filename']:file_hash(d) for d in docs}
