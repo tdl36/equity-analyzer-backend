@@ -14,7 +14,13 @@ Pipeline, originals, existing research and approvals are unchanged.
 
 Validation: isolated worker lease/recovery and coordinator stop tests, broader safe
 backend/frontend suites, compile, model policy and build. No paid research or live
-job mutations for testing. Deployment verification recorded after release.
+job mutations for testing. Verified backend revision `565eb2c5aac7e6794a99f85c82f9d53a57e6ff51` and
+Cloudflare `d187835e-4f17-427a-86d7-04a0f520eb3c`; hosted HTML T270 and exact
+JS/service-worker bytes matched. Mac heartbeat healthy. 1,529 safe backend tests
+plus the final 32-test coordinator suite passed; 180 frontend tests, compile,
+model policy and build passed. No live stop or paid execution was used for QA.
+Next: continue newly imported source review and exact output navigation; real-run
+acceptance remains outstanding and Operations owns browser collection.
 
 ## Research Pipeline Lab T269 — integration release
 
