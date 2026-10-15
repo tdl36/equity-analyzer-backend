@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T332 keeps saved follow-up proposal links accessible through browser recovery
+failures while blocking unsafe submissions. Synthetic navigation/recovery checks
+pass; the live due-work queue is empty and supplies no acceptance evidence.
+
 T331 separates unfinished longitudinal and event-purpose drafts, including evidence,
 outputs and instructions. Synthetic switch/reload/scoped-discard and lost-save
 checks pass; no live processing or investor acceptance was performed.

@@ -2,6 +2,40 @@
 
 Updated: October 14, 2026
 
+## T332 — Saved meeting-follow-up links survive local recovery failure
+
+The follow-up-to-thesis handoff previously read browser submission recovery before
+requesting its saved server proposals. Damaged/denied storage therefore hid saved
+links. Server status now loads independently; a separate recovery warning blocks
+new/replayed generation until local recovery succeeds. Checking both states keeps
+submission disabled, including the interval after server links arrive but before
+an exact pending receipt is reconciled. Server-read errors still block submission.
+
+An exact saved receipt is shown even if clearing the local recovery record fails;
+the pending request remains retained and blocked. Once storage is restored, a
+read reconciles the same request without dispatch. Sequence ownership prevents
+older reads replacing newer status. No backend or investor-acceptance logic changed.
+
+Validation: 240 frontend tests, 19 focused safe backend meeting-answer/proposal/
+exact-amendment tests and production build pass. Full-app synthetic checks at
+390/1280px cover exact older-proposal links, reload/back/forward, changed follow-up
+revision, lost response, identity mismatch, corrupt/denied storage with saved links,
+and failed cleanup followed by read-only recovery. All API traffic is intercepted;
+three mocked submission attempts per width preserve replay identity; no real paid
+research or investor action. Browser script compiles and phone screenshot inspected.
+Full safe backend last passed 1,672 in T327; this increment changes frontend only.
+
+Read-only live due-work inventory returned zero items and no extra issue-review
+page. It supplies no real saved follow-up journey for acceptance; synthetic tests
+are not live proof. No records, answers, approvals or research were created.
+
+Next: verify exact hosted release, then continue company-workspace unsaved-work
+recovery around the existing research workbench. Inspect its actual edit/new-record
+and version-history transitions before changing them. Do not repeat the repaired
+proposal storage/link path or invent real follow-up evidence. Live collection-only
+processing proof/investor acceptance and historical-reference schema remain open.
+Logs: /tmp/charlie-T332-{frontend,backend,build,ui,deploy,verify}.log.
+
 ## T331 — Independent unfinished thesis-review and event-note drafts
 
 Switching processing purpose previously reset outputs while carrying the same

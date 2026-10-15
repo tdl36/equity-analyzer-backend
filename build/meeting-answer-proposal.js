@@ -21,6 +21,8 @@ function ProposalHandoff({
     [message, setMessage] = React.useState(''),
     [error, setError] = React.useState(''),
     [loaded, setLoaded] = React.useState(false);
+  var [checking, setChecking] = React.useState(true);
+  var [recoveryError, setRecoveryError] = React.useState('');
   var [pending, setPending] = React.useState(null),
     [receipt, setReceipt] = React.useState(null);
   var lock = React.useRef(false),
@@ -30,35 +32,46 @@ function ProposalHandoff({
   var refresh = async () => {
     if (lock.current) return;
     var seq = ++sequence.current;
+    setChecking(true);
+    var current = () => alive.current && seq === sequence.current;
+    // Saved server links must remain accessible even when local recovery fails.
+    try {
+      var r = await fetch(`${api}/api/research/amendments/${encodeURIComponent(ticker)}?workId=${encodeURIComponent(record.id)}`, {
+        signal: AbortSignal.timeout(20000)
+      });
+      if (!r.ok) throw Error('Proposal status unavailable. Previously loaded links remain available.');
+      var d = linkedProposals(await r.json(), ticker, record.id);
+      if (current()) {
+        setData(d);
+        setError('');
+        setLoaded(true);
+      }
+    } catch (e) {
+      if (current()) setError(e.message);
+    }
+    if (!current()) return;
     try {
       var saved = readProposalIntent(sessionStorage, key, record.id);
-      if (alive.current) setPending(saved);
+      if (current()) setPending(saved);
       if (saved) {
         var _r = await fetch(`${api}/api/research/amendments/${encodeURIComponent(ticker)}?requestId=${encodeURIComponent(saved.requestId)}`, {
           signal: AbortSignal.timeout(20000)
         });
         if (!_r.ok) throw Error('Exact proposal status unavailable. No submission was retried.');
         var found = proposalReceipt(await _r.json(), ticker, saved);
-        if (!alive.current || seq !== sequence.current) return;
+        if (!current()) return;
         if (found) {
+          setReceipt(found);
           clearProposalIntent(sessionStorage, key, record.id, saved);
           setPending(null);
-          setReceipt(found);
           setMessage('Saved proposal found. No additional comparison was started.');
         }
       }
-      var r = await fetch(`${api}/api/research/amendments/${encodeURIComponent(ticker)}?workId=${encodeURIComponent(record.id)}`, {
-        signal: AbortSignal.timeout(20000)
-      });
-      if (!r.ok) throw Error('Proposal status unavailable. Previously loaded links remain available.');
-      var d = linkedProposals(await r.json(), ticker, record.id);
-      if (alive.current && seq === sequence.current) {
-        setData(d);
-        setError('');
-        setLoaded(true);
-      }
+      if (current()) setRecoveryError('');
     } catch (e) {
-      if (alive.current && seq === sequence.current) setError(e.message || 'Browser storage is unavailable. Proposal submission is paused.');
+      if (current()) setRecoveryError('Local submission recovery is unresolved. ' + (e.message || 'Browser storage is unavailable.') + ' Preparing research remains paused; saved server links are still available.');
+    } finally {
+      if (current()) setChecking(false);
     }
   };
   React.useEffect(() => {
@@ -119,7 +132,9 @@ function ProposalHandoff({
     className: "desk-explainer"
   }, "Uses model credits only when you submit. Recorded notes are not independently verified transcripts. Changed answers or case baselines require an updated follow-up. The saved thesis stays unchanged until you explicitly accept edits."), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), pending && /*#__PURE__*/React.createElement("p", {
+  }, error), recoveryError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, recoveryError), pending && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Unresolved submission for saved follow-up revision ", pending.workEvidence.revision, pending.workEvidence.revision !== record.revision ? ' (different from the current revision)' : '', ". Reloading only checks its status. An explicit retry reuses this exact request; it does not use newer answers."), receipt && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: proposalLink(ticker, receipt.id)
@@ -132,7 +147,7 @@ function ProposalHandoff({
   }, "Review this saved proposal"))), data.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the 30 most recent proposals for this follow-up. Older proposal links remain valid; this is not a complete history."), active && /*#__PURE__*/React.createElement("p", null, "A thesis proposal already exists for this company. ", /*#__PURE__*/React.createElement("a", {
     href: proposalLink(ticker, active.id)
   }, "Review the active company proposal"), " before starting another. It may relate to different evidence."), /*#__PURE__*/React.createElement("button", {
-    disabled: disabled || busy || !!error || active || !loaded,
+    disabled: disabled || busy || checking || !!error || !!recoveryError || active || !loaded,
     onClick: submit
   }, busy ? 'Submitting…' : pending ? 'Retry original saved request' : 'Prepare thesis proposal from saved answer'), ' ', /*#__PURE__*/React.createElement("button", {
     disabled: busy,
