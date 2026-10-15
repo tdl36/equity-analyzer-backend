@@ -31,6 +31,16 @@ Shared Ready expansion remains after genuine connected-journey proof. The last
 verified CVS checkpoint (T316, 18:41 UTC) was running, collecting/verifying originals,
 zero verified sources and no saved error; no collection status was supplied.
 
+T317 production verified: Render a747635f5a698ffaa84b56418efa147d29e23775;
+Cloudflare 092ff131-62f8-4395-8143-9a934d0b6702. Exact hosted JS/service-worker
+bytes and HTML marker match. Mac-agent health ok (119.5 seconds). Three existing
+ETN exact-proposal reads, wrong-company refusal, follow-up query identity, empty
+history, authentication and malformed filters passed. An additional seven safe
+backend read-query tests passed (11 focused backend checks total). Render returned
+one transient 502 during rollout, then exact-revision verification succeeded.
+All live checks were GET-only; no collection, synthesis or investor decision was
+submitted. Logs: /tmp/charlie-T317-{frontend,focused,read-tests,build,ui,deploy,verify}.log.
+
 ## T316 — Follow-up proposal links and atomic history navigation
 
 Meeting-answer follow-ups now retrieve their own proposal history independently
