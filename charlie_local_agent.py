@@ -37,6 +37,7 @@ from xml.etree import ElementTree
 import requests
 import anthropic
 import catalyst_delivery
+import audio_intake_receipts
 from catalyst_sources import inventory as catalyst_inventory, fingerprint as catalyst_fingerprint, read_sources as read_catalyst_sources, SOURCE_EXTS as CATALYST_SOURCE_EXTS
 
 # ---------------------------------------------------------------------------
@@ -2656,11 +2657,25 @@ AUDIO_EXTS = {'.mp3', '.mp4', '.m4a', '.wav', '.webm', '.ogg', '.flac'}
 TEXT_EXTS = {'.pdf', '.docx', '.doc', '.txt', '.md'}
 SUMMARIES_EXTS = AUDIO_EXTS | TEXT_EXTS
 
-def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
-    """Poll the transcription job status. Move to Processed/ only if the
-    backend reports 'complete'. If the job ends up 'error'/'failed', leave
-    the file in place so the next tick re-uploads (useful after backend
-    deploys that kill in-flight transcriptions)."""
+def _hold_audio_intake(receipt, filename, reason):
+    if receipt:
+        try:
+            current=audio_intake_receipts.update(receipt['id'],'attention',reason=reason)
+            if current['status']=='complete':return
+            if audio_intake_receipts.reserve_alert(receipt['id']):
+                response=requests.post(CHARLIE_API+'/api/alerts',headers=_agent_headers(),timeout=15,
+                    json={'alertType':'audio_recovery','ticker':'','title':'Processing needs review: '+filename,
+                          'detail':{'filename':filename,'jobId':receipt.get('job_id'),
+                                    'intakeId':receipt['id'],'reason':reason,
+                                    'action':'Original preserved. Review saved processing before explicitly requesting any new attempt.'}})
+                response.raise_for_status()
+        except Exception:
+            log.warning('Automatic intake recovery retained locally; cloud alert could not be confirmed')
+    log.warning('Automatic intake held for review; no re-upload authorized')
+
+
+def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str, receipt=None) -> None:
+    """Read-only recovery of the saved job; never authorize another upload."""
     if not job_id or job_id == '?':
         return
     import threading as _t
@@ -2685,10 +2700,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                     timeout=15,
                 )
                 if r.status_code == 404:
-                    # Job id never landed (or rolled off) — treat as failure.
-                    log.warning(f"Audio job {job_id} not found (backend restart?); leaving {fname} for next tick retry")
-                    try: _known_audio_files.discard(fname)
-                    except Exception: pass
+                    _hold_audio_intake(receipt, fname, 'Saved job is unavailable; its processing outcome is unknown.')
                     return
                 if not r.ok:
                     continue
@@ -2705,12 +2717,19 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                         continue
                     try:
                         if fpath.exists():
+                            if receipt and not audio_intake_receipts.same_original(fpath,receipt['digest']):
+                                _hold_audio_intake(receipt,fname,'Original bytes changed while processing. The current file was preserved.')
+                                return
+                            if (processed_dir / fname).exists():
+                                _hold_audio_intake(receipt,fname,'Processed destination already exists. Both originals were preserved.')
+                                return
                             fpath.rename(processed_dir / fname)
                             log.info(f"Audio complete: {fname} (job {job_id}); moved to Processed/")
                         else:
                             log.info(f"Audio complete: {fname} (job {job_id})")
                     except Exception as e:
                         log.warning(f"Move to Processed/ failed for {fname}: {e}")
+                    if receipt:audio_intake_receipts.update(receipt['id'],'complete')
                     # Notify Telegram on completion (mirrors the earnings recap
                     # start/complete pattern). Visible in user's chat as soon as
                     # the summary lands in the DB.
@@ -2720,37 +2739,25 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str) -> None:
                         notify(f"*Audio summary ready:* {fname}")
                     else:
                         notify(f"*Audio summary ready:* {fname}\nSummary Lab did not start. Open Summary Lab and run it from the saved Summary; check Charlie alerts for details.")
-                    # Also remove from known-files so a re-dropped version
-                    # next time will fire a fresh job
+                    # The durable receipt still fences identical re-dropped bytes.
+                    # A changed original must also pass the saved-history check.
                     try:
                         _known_audio_files.discard(fname)
                         _audio_started_notified.discard(fname)
                     except Exception:
                         pass
                     return
-                if status in ('error', 'failed'):
-                    err = js.get('error') or 'unknown'
-                    log.warning(f"Audio job {job_id} failed for {fname}: {err[:200]}. Leaving file for next-tick retry.")
-                    notify(f"*Audio summary FAILED:* {fname}\n{err[:200]}")
-                    try:
-                        _known_audio_files.discard(fname)
-                        _audio_started_notified.discard(fname)
-                    except Exception:
-                        pass
+                if status in ('error', 'failed', 'interrupted', 'attention'):
+                    _hold_audio_intake(receipt,fname,'Saved processing failed or was interrupted. Review its outcome before any new processing.')
                     return
             except Exception as e:
                 log.debug(f"Audio poll ({job_id}) error: {e}")
-        # Soft cap hit. The backend job MIGHT still be working — leave the
-        # file in place AND keep it in _known_audio_files so the scanner
-        # doesn't redetect-and-reupload (which would spawn a duplicate job
-        # while the original is still processing). User can check Render
-        # logs / move the file manually if it's truly stuck.
-        log.warning(f"Audio job {job_id} for {fname} still running after 90 min — leaving file in place; NOT re-uploading to avoid duplicate jobs")
-        notify(f"*Audio still processing after 90 min:* {fname}\nJob {job_id} may be stuck. Check Render logs.")
+        _hold_audio_intake(receipt,fname,'Status polling ended without a confirmed result. The saved job may still be running.')
 
     _t.Thread(target=_poll, daemon=True).start()
 
 
+_audio_startup_files = set()  # unknown pre-existing originals require recovery review
 _audio_in_flight = set()  # filenames currently being uploaded or transcribed
 _audio_failed_attempts = {}  # fname -> consecutive-failure count
 # Filenames we've already fired the "Audio summary started" Telegram for.
@@ -2786,12 +2793,8 @@ def check_for_new_audio():
         for f in SUMMARIES_DIR.iterdir():
             if f.is_file() and not f.name.startswith('.') and f.suffix.lower() in SUMMARIES_EXTS:
                 if f.name in already_processed:
-                    # Move it again so iCloud doesn't keep re-restoring it
-                    try:
-                        f.unlink()
-                        log.info(f"Duplicate file removed (already in Processed/): {f.name}")
-                    except Exception as e:
-                        log.debug(f"Could not remove duplicate {f.name}: {e}")
+                    # A matching filename is not proof of identical bytes.
+                    # Preserve both copies; never delete an original during scanning.
                     continue
                 if f.name in _audio_in_flight:
                     # Skip — another worker thread is already handling it
@@ -2804,10 +2807,10 @@ def check_for_new_audio():
                     continue
                 current_files.add(f.name)
 
-        # On first tick, treat files already present as NEW so pre-existing
-        # audio gets processed. Processed files move to SUMMARIES/Processed/
-        # so restart doesn't re-trigger them.
+        # Inspect existing receipts on startup, but never assume an original
+        # without a receipt is new: older agents may have lost a paid outcome.
         if not _audio_initialized:
+            _audio_startup_files.update(current_files)
             new_files = current_files
             _known_audio_files = current_files
             _audio_initialized = True
@@ -2880,7 +2883,18 @@ def check_for_new_audio():
                     is_text = fn_ext in TEXT_EXTS
                     endpoint = '/api/auto-process-text' if is_text else '/api/auto-process-audio'
                     kind = 'Document' if is_text else 'Audio'
+                    receipt=None
                     try:
+                        def read_history(name):
+                            r=requests.get(CHARLIE_API+'/api/transcription-jobs',params={'filename':name},headers=_agent_headers(),timeout=20)
+                            r.raise_for_status();return r.json()
+                        receipt,allowed=audio_intake_receipts.prepare(fn,fdata,endpoint,read_history,allow_new=fn not in _audio_startup_files)
+                        if not allowed:
+                            if receipt['status']=='submitted' and receipt.get('job_id'):
+                                _wait_for_audio_job_and_move(fn,fp,receipt['job_id'],receipt)
+                            elif receipt['status']!='complete':
+                                _hold_audio_intake(receipt,fn,receipt.get('reason') or 'An earlier upload has an uncertain outcome. It will not be repeated automatically.')
+                            return
                         # Audio uploads can be 100+ MB at slow Render speeds —
                         # 30-min cap. Text files are tiny (<5 MB typical) so a
                         # tighter timeout is fine but we keep the same generous
@@ -2899,6 +2913,8 @@ def check_for_new_audio():
                         if res.ok:
                             data = res.json()
                             jid = data.get('jobId', '?')
+                            audio_intake_receipts.update(receipt['id'],'submitted',job_id=jid)
+                            receipt.update(status='submitted',job_id=jid)
                             log.info(f"{kind} auto-process started: {fn} (job {jid})")
                             # Only fire the "started" Telegram once per filename
                             # — retries during Render redeploys would otherwise
@@ -2907,39 +2923,17 @@ def check_for_new_audio():
                                 notify(f"*{kind} summary started:* {fn}")
                                 _audio_started_notified.add(fn)
                             _audio_failed_attempts.pop(fn, None)
-                            _wait_for_audio_job_and_move(fn, fp, jid)
+                            _wait_for_audio_job_and_move(fn, fp, jid, receipt)
                         else:
-                            err_text = res.text[:300] if res.text else f'HTTP {res.status_code}'
-                            log.warning(f"{kind} auto-process failed for {fn}: {res.status_code} — {err_text}")
-                            notify(f"*{kind} summary upload FAILED:* {fn} (HTTP {res.status_code})\n{err_text[:200]}")
-                            _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
+                            _hold_audio_intake(receipt,fn,'Upload returned HTTP '+str(res.status_code)+'. Processing outcome requires review before another upload.')
+                    except Exception:
+                        if receipt:
+                            _hold_audio_intake(receipt,fn,'Upload or receipt recovery is uncertain. No automatic re-upload will be attempted.')
+                        else:
+                            # History/storage failed before POST. A later read may recover;
+                            # the durable reservation still fences any earlier POST.
+                            log.warning('Automatic intake blocked before upload: history or receipt storage unavailable')
                             _known_audio_files.discard(fn)
-                    except Exception as e:
-                        log.warning(f"Error in {kind.lower()} upload thread for {fn}: {e}")
-                        # Don't count transient transport errors toward the
-                        # 5-failure giveup cap. Render redeploys cause
-                        # "Response ended prematurely" / connection-reset /
-                        # remote-disconnect for ~3-4 min while gunicorn
-                        # workers swap; the file is fine, the upload just
-                        # needs to retry on the next tick.
-                        emsg = str(e).lower()
-                        is_transient = any(s in emsg for s in (
-                            'response ended prematurely',
-                            'remote end closed',
-                            'connection aborted',
-                            'connection reset',
-                            'connection refused',
-                            'broken pipe',
-                            'eof',
-                            'read timed out',
-                            'timed out',
-                            'temporarily unavailable',
-                        ))
-                        if not is_transient:
-                            _audio_failed_attempts[fn] = _audio_failed_attempts.get(fn, 0) + 1
-                            if _audio_failed_attempts[fn] >= 5:
-                                log.error(f"{kind.upper()} GIVE UP: {fn} failed {_audio_failed_attempts[fn]} times. Investigate manually.")
-                        _known_audio_files.discard(fn)
                     finally:
                         _audio_in_flight.discard(fn)
 
@@ -4275,7 +4269,7 @@ def main() -> None:
 
         # Between ticks -- no job is in flight here -- pick up a new version of
         # this file by exiting; launchd's KeepAlive restarts us immediately.
-        if _source_changed() and not _synthesis_in_flight:
+        if _source_changed() and not _synthesis_in_flight and not _audio_in_flight:
             log.info("Agent source changed on disk; restarting to pick it up")
             return
 

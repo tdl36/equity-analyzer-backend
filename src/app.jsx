@@ -101,7 +101,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-15T335';
+        const BUILD_VERSION = '2026-10-15T336';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -30051,10 +30051,18 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                                 {alert.ticker && (
                                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-medium">{alert.ticker}</span>
                                                                 )}
-                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'audio_summary' ? 'Audio Summary' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType === 'signpost' ? 'Signpost' : alert.alertType}</span>
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-slate-400">{alert.alertType === 'new_files' ? 'New Files' : alert.alertType === 'audio_summary' ? 'Audio Summary' : alert.alertType === 'audio_recovery' ? 'Processing review' : alert.alertType === 'web_sweep' ? 'Web Sweep' : alert.alertType === 'signpost' ? 'Signpost' : alert.alertType}</span>
                                                                 <span className="text-[9px] text-slate-600 ml-auto">{alert.createdAt ? fmtETDateTime(alert.createdAt) : ''}</span>
                                                             </div>
                                                             <p className="text-sm text-slate-200 font-medium">{alert.title}</p>
+                                                            {alert.alertType === 'audio_recovery' && (
+                                                                <div className="mt-2 space-y-2 text-xs text-slate-300 break-words">
+                                                                    <p>{typeof alert.detail?.reason === 'string' ? alert.detail.reason : 'The earlier processing outcome needs review.'}</p>
+                                                                    <p>The original is preserved. Automatic re-upload is on hold. Check saved summaries and Activity before explicitly starting any new processing.</p>
+                                                                    {typeof alert.detail?.jobId === 'string' && <p>Saved job: {alert.detail.jobId}</p>}
+                                                                    <button type="button" onClick={() => switchTab('summary')} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200">Open saved summaries</button>
+                                                                </div>
+                                                            )}
                                                             {/* A signpost alert asserts something moved. Showing the
                                                                 quote that justifies it answers "says who?" here, rather
                                                                 than making someone open the thesis to find out. */}

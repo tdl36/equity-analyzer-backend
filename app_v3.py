@@ -7589,6 +7589,7 @@ def auto_process_text():
 
         job_id = str(uuid.uuid4())[:8]
         _transcription_jobs[job_id] = {'status': 'starting', 'filename': filename, 'autoProcess': True, 'sourceType': 'text'}
+        _mirror_transcription_state(job_id)
 
         thread = threading.Thread(
             target=_run_auto_process_text,
@@ -9057,6 +9058,24 @@ def transcribe_audio_status(job_id):
 @app.route('/api/transcription-jobs', methods=['GET'])
 def list_transcription_jobs():
     """Debug: list all active transcription jobs."""
+    filename = request.args.get('filename')
+    if filename is not None:
+        if not filename or len(filename)>500:
+            return jsonify(error='A bounded exact filename is required.'),400
+        try:
+            with get_db() as (_,cur):
+                cur.execute('SELECT id,status,summary_id,summary_lab_id FROM transcription_jobs WHERE filename=%s ORDER BY created_at DESC,id DESC LIMIT 21',(filename,))
+                rows=[dict(r) for r in cur.fetchall()]
+            # Include unmirrored live work: an empty DB read alone is not clearance.
+            found={str(r['id']):{'id':str(r['id']),'status':r['status'],'hasSavedSummary':bool(r.get('summary_id')),'hasSavedLab':bool(r.get('summary_lab_id'))} for r in rows}
+            for jid,job in _transcription_jobs.items():
+                if job.get('filename')==filename:
+                    found[str(jid)]={'id':str(jid),'status':job.get('status'),'hasSavedSummary':bool(job.get('summaryId')),'hasSavedLab':bool(job.get('summaryLabId'))}
+            response=jsonify(filename=filename,history=list(found.values())[:20],truncated=len(found)>20)
+            response.headers['Cache-Control']='no-store'
+            return response
+        except Exception:
+            return jsonify(error='Saved processing history unavailable. No new upload is safe yet.'),503
     jobs = {}
     for jid, job in _transcription_jobs.items():
         info = {'status': job.get('status'), 'progress': job.get('progress'), 'filename': job.get('filename')}

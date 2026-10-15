@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T336 adds durable automatic audio/text upload reservations and conservative
+legacy-startup holds; uncertain paid outcomes are never re-uploaded automatically.
+Synthetic recovery checks pass; no live paid replay or investor acceptance.
+
 T335 exposes read-only collection eligibility, default queue position and occupied
 slots with explicit stale/unknown states. CVS is eligible but waiting; live queue
 metadata is not collection progress or end-to-end acceptance.

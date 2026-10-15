@@ -2,6 +2,53 @@
 
 Updated: October 14, 2026
 
+## T336 — Fence uncertain automatic audio/text uploads across restarts
+
+Priority-1 job recovery: the SUMMARIES watcher previously removed failed/missing
+jobs and transport failures from its in-memory seen set, allowing paid re-uploads.
+A durable local SQLite receipt now reserves endpoint/content hash before POST,
+records a valid returned job ID, and resumes only read-only status polling after
+restart. Lost/malformed responses, HTTP errors, failed/missing jobs and poll timeout
+hold for review. Concurrent same-byte reservations permit only one upload; late
+errors cannot overwrite completion or change a saved job identity. Receipts contain
+hashes/identities/status only, not source bodies or credentials; file mode is 0600.
+
+Legacy safety: files already present when the agent starts without a reliable
+receipt are held for review, even if saved history is empty (older text jobs could
+have spent credits without a persisted row). Files newly observed during normal
+operation also require a successful bounded exact-filename history read; any prior
+job or truncated/unavailable history blocks automatic dispatch. Existing submitted
+receipts resume read-only polling. Text intake now mirrors its starting job before
+launching the worker. This does not establish a provider outcome or global
+idempotency for manual uploads; no ambiguous attempt is automatically retried.
+
+Original preservation: matching Processed filenames are no longer deleted during
+scans. Completion checks the exact current file hash and refuses to overwrite an
+existing destination. Recovery alerts show the hold reason, original-preservation
+instructions, known job identity and a read-only link to saved summaries. Alert
+notification is attempted at most once per receipt; a lost cloud alert remains in
+the local recovery ledger/log, not evidence of successful delivery. No retry button
+or processing authorization is added. Source-change reload waits for active upload
+threads as well as synthesis; persisted submitted jobs can resume after reload.
+
+Validation: 19 focused synthetic tests, 1,695 full safe backend tests, 250 frontend
+tests, touched Python compilation and production build passed. Tests cover lost
+responses/restarts, concurrency, malformed receipts, old/unavailable history,
+legacy startup holds, failed/missing saved jobs and changed/colliding originals.
+Actual recovery-alert fragment at 390/1280px: readable guidance, saved identity,
+summary navigation only, no network/mutation or overflow; phone screenshot checked.
+Pre-deploy read-only audio inventory contains one completed job and no active jobs.
+No real file was processed for QA, no investor action or paid retry was performed.
+Logs: /tmp/charlie-T336-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify exact production release, restart/reconcile the existing Mac agent at
+an idle boundary, and verify the read-only history contract. Then return to the
+existing CVS collection receipt -> selected processing proposal -> explicit user
+processing -> saved output/review critical path. Operations owns collection; do
+not duplicate its worker. Live processing/investor acceptance, historical reference
+schema and eight-priority acceptance remain open. Original Pipeline and backfill
+synthesis pause are unchanged.
+
 ## T335 — Explain collection queue eligibility and occupied slots
 
 Critical-path diagnosis used a read-only SQLite connection, not a collector claim:
