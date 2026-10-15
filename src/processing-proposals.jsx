@@ -2,7 +2,7 @@ import {processingSelection} from './processing-selection-model.mjs';
 import {ProcessingSelectionReview} from './processing-selection-review';
 import {OriginalDownload} from './original-download';
 import {CollectedSourcePicker} from './collected-source-picker';
-import {processingProposal,processingProposalList} from './processing-proposal-status.mjs';
+import {processingProposal,processingProposalPage,mergeProcessingProposals} from './processing-proposal-status.mjs';
 import {emptyDraft,emptyPurposeDraft,draftKey,readDraftWorkspace,writeDraftWorkspace,readSubmission} from './processing-proposal-draft.mjs';
 import {ProcessingCoverage} from './processing-coverage';
 import {ProcessingSourceLibrary} from './processing-source-library';
@@ -26,6 +26,8 @@ function ProposalReview({api,job}){
  const [supplements,setSupplements]=React.useState(initial.supplements);
  const [selected,setSelected]=React.useState(initial.selected),[purpose,setPurpose]=React.useState(initial.purpose),[title,setTitle]=React.useState(initial.title),[eventDate,setEventDate]=React.useState(initial.eventDate),[outputs,setOutputs]=React.useState(initial.outputs),[instruction,setInstruction]=React.useState(initial.instruction);
  const [rows,setRows]=React.useState([]),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[readIssue,setReadIssue]=React.useState(''),[loaded,setLoaded]=React.useState(false),[pending,setPending]=React.useState(null);
+ const [nextCursor,setNextCursor]=React.useState(null),[historyIssue,setHistoryIssue]=React.useState('');
+ const readEpoch=React.useRef(0);
  const lock=React.useRef(false),live=React.useRef(true);
  const selectionSummary=processingSelection({selected,supplements,collection:collectionInventory,library:libraryInventory,since:job.input.since,until:job.input.until});
  const authoring={version:1,selected,supplements,purpose,title,eventDate,outputs,instruction,fullNote,allowPdfText,meetingDate,meetingType};
@@ -36,21 +38,32 @@ function ProposalReview({api,job}){
  const key='charlie-processing-proposal:'+api+':'+job.id;
  const path='/api/research/assignments/'+job.id+'/processing-proposals';
  const call=async(url,body)=>{const response=await fetch(api+url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let data;try{data=await response.json();}catch{throw Error('Response unavailable. Refresh saved proposals before retrying.');}if(!response.ok){const e=Error(data.error||'Processing proposals unavailable');e.status=response.status;throw e;}return data;};
- const refresh=async()=>{try{
-  const data=await call(path),proposals=processingProposalList(data,job);
+ const refresh=async()=>{const epoch=++readEpoch.current;const current=()=>live.current&&epoch===readEpoch.current;try{
+  const data=await call(path),page=processingProposalPage(data,job);let proposals=page.rows;
+  if(!current())return;
+  if(current()){setRows(proposals);setNextCursor(page.nextCursor);setLoaded(true);}
   // Browser recovery must not hide verified server records.
   let recovered;try{recovered=readSubmission(sessionStorage,key);}catch{recovered=readSubmission(null,key);}
   let issue=recovered.error;
   if(recovered.value){
    if(live.current)setPending(recovered.value);
+   if(!proposals.some(p=>p.id===recovered.value.requestId)){
+    const exact=processingProposalPage(await call(path+'?requestId='+encodeURIComponent(recovered.value.requestId)),job,{requestId:recovered.value.requestId});
+    proposals=mergeProcessingProposals(proposals,exact.rows);
+   }
+   if(!current())return;
    if(proposals.some(p=>p.id===recovered.value.requestId)){
     try{sessionStorage.removeItem(key);if(live.current){setPending(null);resetForm();}}
     catch{issue='The saved proposal was found, but its local recovery record could not be cleared. Restore browser storage and refresh before submitting again.';}
    }else if(live.current)setPending(recovered.value);
   }else if(!issue&&live.current)setPending(null);
-  if(live.current){setSubmissionIssue(issue);setRows(proposals);setLoaded(true);setReadIssue('');}
- }catch(e){if(live.current)setReadIssue(e.message);throw e;}};
- React.useEffect(()=>{live.current=true;refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;};},[key]);
+  if(current()){setSubmissionIssue(issue);setRows(proposals);setNextCursor(page.nextCursor);setHistoryIssue('');setLoaded(true);setReadIssue('');}
+ }catch(e){if(!current())return;setReadIssue(e.message);throw e;}};
+ const older=async()=>{if(lock.current||!nextCursor)return;lock.current=true;setBusy(true);setHistoryIssue('');const cursor=nextCursor,epoch=readEpoch.current;try{
+  const page=processingProposalPage(await call(path+'?after='+encodeURIComponent(cursor)),job,{after:cursor});
+  if(live.current&&epoch===readEpoch.current){setRows(old=>mergeProcessingProposals(old,page.rows));setNextCursor(page.nextCursor);}
+ }catch(e){if(live.current&&epoch===readEpoch.current)setHistoryIssue(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
+ React.useEffect(()=>{live.current=true;refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;readEpoch.current++;};},[key]);
  const act=async fn=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();await refresh();}catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
  const save=()=>act(async()=>{
   if(submissionIssue)throw Error(submissionIssue);
@@ -100,5 +113,8 @@ function ProposalReview({api,job}){
    {p.status==='pending'&&<><button className="workspace-primary" disabled={busy||!!readIssue||!loaded} onClick={()=>act(async()=>{await call('/api/research/processing-proposals/'+p.id+'/approve',{revision:p.revision,digest:p.digest});})}>Approve processing · uses research credits</button> <button disabled={busy||!!readIssue||!loaded} onClick={()=>act(async()=>{await call('/api/research/processing-proposals/'+p.id+'/cancel',{revision:p.revision,digest:p.digest});})}>Cancel proposal</button></>}
    {p.assignmentId&&<p><a href={routeHash('stockanalysis',p.ticker,'stock-analysis','assignment:'+p.assignmentId)}>Open saved processing job and outputs</a></p>}
   </article>)}
+  {loaded&&<p><small>{rows.length} saved proposals loaded{nextCursor?' · older proposals remain': ''}. Refresh returns to the latest page.</small></p>}
+  {historyIssue&&<p role="alert">Older proposal history unavailable: {historyIssue} Loaded proposals are retained.</p>}
+  {nextCursor&&<button disabled={busy||!!readIssue} onClick={older}>{historyIssue?'Retry older proposals':'Load older proposals'}</button>}
  </section>;
 }

@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T337 keeps older processing proposals and uncertain save receipts reachable through
+scoped read-only paging and exact lookup. Synthetic recovery/navigation checks pass;
+this is not live processing or investor acceptance.
+
 T336 adds durable automatic audio/text upload reservations and conservative
 legacy-startup holds; uncertain paid outcomes are never re-uploaded automatically.
 Synthetic recovery checks pass; no live paid replay or investor acceptance.

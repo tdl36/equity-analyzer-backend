@@ -445,3 +445,39 @@ class ProcessingProposalTests(unittest.TestCase):
         with self.db(True) as (_,cur):cur.execute("UPDATE mp_jobs SET status='running' WHERE id=%s",(self.ident,))
         self.assertEqual(self.client.get(url).status_code,409)
         self.assertFalse(self.submits)
+
+    def test_proposal_history_pages_and_exact_recovery_are_scoped_readonly(self):
+        proposal = self.save()
+        frozen = self.row(proposal['id'])['input']
+        ids = [proposal['id']] + [str(uuid.uuid4()) for _ in range(55)]
+        with self.db(True) as (_, cur):
+            cur.execute("UPDATE mp_jobs SET created_at='2026-01-01' WHERE id=%s", (proposal['id'],))
+            for ident in ids[1:]:
+                cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result,created_at) VALUES(%s,'processing_proposal',%s,'cancelled',%s::jsonb,'{}','2026-01-01')", (ident,self.ticker,json.dumps(frozen)))
+        first = self.client.get(self.url)
+        self.assertEqual(first.status_code,200,first.json)
+        self.assertIn('no-store',first.headers['Cache-Control'])
+        ordered = sorted(ids,reverse=True)
+        self.assertEqual([r['id'] for r in first.json['proposals']],ordered[:50])
+        self.assertEqual(first.json['nextCursor'],ordered[49])
+        second = self.client.get(self.url+'?after='+first.json['nextCursor'])
+        self.assertEqual([r['id'] for r in second.json['proposals']],ordered[50:])
+        self.assertIsNone(second.json['nextCursor'])
+        exact = self.client.get(self.url+'?requestId='+ordered[-1])
+        self.assertEqual([r['id'] for r in exact.json['proposals']],[ordered[-1]])
+        self.assertIsNone(exact.json['nextCursor'])
+        self.assertFalse(self.submits)
+        self.assertIsNone(self.row(assignment_id(proposal['id'])))
+
+    def test_proposal_history_rejects_bad_or_foreign_cursors_and_hides_foreign_receipts(self):
+        proposal = self.save()
+        foreign = str(uuid.uuid4())
+        frozen = dict(self.row(proposal['id'])['input'],collectionId=str(uuid.uuid4()))
+        with self.db(True) as (_,cur):
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,'processing_proposal',%s,'pending',%s::jsonb,'{}')",(foreign,self.ticker,json.dumps(frozen)))
+        for query in ['after=bad','after=','unknown=1','after='+foreign,'after='+proposal['id']+'&requestId='+proposal['id'],'requestId='+proposal['id']+'&requestId='+proposal['id']]:
+            with self.subTest(query=query):self.assertEqual(self.client.get(self.url+'?'+query).status_code,400)
+        self.assertEqual(self.client.get(self.url+'?requestId='+foreign).json['proposals'],[])
+        self.assertEqual(self.client.get(self.url+'?requestId='+self.ident).json['proposals'],[])
+        self.assertEqual(self.row(proposal['id'])['status'],'pending')
+        self.assertFalse(self.submits)

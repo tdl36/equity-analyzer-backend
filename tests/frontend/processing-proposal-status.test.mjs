@@ -18,3 +18,19 @@ test('partial, duplicate and oversized lists are not empty or actionable',()=>{
  for(const data of [{},{proposals:null},{proposals:[proposal(),proposal()]},{proposals:Array(51).fill(proposal())}])assert.throws(()=>processingProposalList(data,job),/incomplete/);
  const p=proposal();p.plan.outputs=['summary_note'];p.plan.researchPurpose={kind:'event_note',event:{title:'Earnings',date:'2026-10-01'}};assert.equal(processingProposal(p,job),p);
 });
+
+test('history pages retain exact cursors and reject ambiguous recovery receipts',async()=>{
+ const {processingProposalPage}=await import('../../src/processing-proposal-status.mjs');
+ const rows=Array.from({length:50},(_,i)=>({...proposal(),id:`11111111-1111-4111-8111-${String(i).padStart(12,'0')}`}));
+ const cursor=rows.at(-1).id;
+ assert.equal(processingProposalPage({proposals:rows,nextCursor:cursor},job).nextCursor,cursor);
+ assert.equal(processingProposalPage({proposals:[proposal()]},job).nextCursor,null);
+ assert.deepEqual(processingProposalPage({proposals:[],nextCursor:null},job,{requestId:id}).rows,[]);
+ for(const [data,scope] of [[{proposals:rows,nextCursor:cursor},{after:cursor}],[{proposals:rows,nextCursor:rows[0].id},{}],[{proposals:[proposal()],nextCursor:id},{}],[{proposals:rows,nextCursor:cursor},{requestId:id}],[{proposals:[proposal()]},{requestId:collection}]])assert.throws(()=>processingProposalPage(data,job,scope),/could not be verified/);
+});
+test('paged recovery merges duplicate identities while retaining updated server decisions',async()=>{
+ const {mergeProcessingProposals}=await import('../../src/processing-proposal-status.mjs');
+ const p=proposal(),other={...p,id:collection},updated={...p,status:'cancelled'};
+ const rows=mergeProcessingProposals([p,other],[updated]);
+ assert.equal(rows.length,2);assert.equal(rows[0].status,'cancelled');assert.equal(rows[1],other);
+});

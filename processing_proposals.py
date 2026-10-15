@@ -76,6 +76,41 @@ def public(row):
                 assignmentId=obj(row['result']).get('assignmentId'), created_at=row['created_at'])
 
 
+
+def history_page(cur, collection_id, ticker, args):
+    """Bounded, scoped reads; exact recovery never depends on the first page."""
+    if (set(args) - {'after', 'requestId'} or len(args) > 1
+            or any(len(args.getlist(key)) != 1 for key in args)):
+        raise ValueError('Invalid proposal history filters. Refresh saved proposals.')
+    key = next(iter(args), None)
+    ident = None
+    if key:
+        try:
+            ident = str(uuid.UUID(args[key]))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError('Invalid proposal identity. Refresh saved proposals.') from None
+    scope = (STAGE, collection_id, ticker)
+    if key == 'requestId':
+        cur.execute("SELECT * FROM mp_jobs WHERE stage=%s AND input->>'collectionId'=%s AND ticker=%s AND id=%s", (*scope, ident))
+        row = cur.fetchone()
+        return {'proposals': [public(row)] if row else [], 'nextCursor': None}
+    boundary = None
+    if key == 'after':
+        cur.execute("SELECT created_at,id FROM mp_jobs WHERE stage=%s AND input->>'collectionId'=%s AND ticker=%s AND id=%s", (*scope, ident))
+        boundary = cur.fetchone()
+        if not boundary:
+            raise ValueError('Proposal history cursor is unavailable for this collection. Refresh saved proposals.')
+    sql = "SELECT * FROM mp_jobs WHERE stage=%s AND input->>'collectionId'=%s AND ticker=%s"
+    values = scope
+    if boundary:
+        sql += ' AND (created_at,id)<(%s,%s)'
+        values += (boundary['created_at'], boundary['id'])
+    cur.execute(sql + ' ORDER BY created_at DESC,id DESC LIMIT 51', values)
+    rows = list(cur.fetchall())
+    return {'proposals': [public(row) for row in rows[:50]],
+            'nextCursor': rows[49]['id'] if len(rows) > 50 else None}
+
+
 def register(co):
     bp = co.bp
 
@@ -118,12 +153,14 @@ def register(co):
         if not parent or parent['status'] != 'complete' or not obj(parent['input']).get('collectionOnly'):
             return jsonify(error='Choose a completed source-only collection.'), 409
         if request.method == 'GET':
-            with co.db() as (_, cur):
-                cur.execute("SELECT * FROM mp_jobs WHERE stage=%s AND input->>'collectionId'=%s ORDER BY created_at DESC LIMIT 50", (STAGE, collection_id))
-                rows = [public(r) for r in cur.fetchall()]
-            response = jsonify(proposals=rows)
-            response.headers['Cache-Control'] = 'private, no-store'
-            return response
+            try:
+                with co.db() as (_, cur):
+                    page = history_page(cur, collection_id, parent['ticker'], request.args)
+                response = jsonify(page)
+                response.headers['Cache-Control'] = 'private, no-store'
+                return response
+            except ValueError as exc:
+                return jsonify(error=str(exc)), 400
         try:
             data = request.get_json(silent=True)
             if not isinstance(data, dict) or set(data) not in ({'requestId', 'filenames', 'plan'}, {'requestId', 'filenames', 'plan', 'supplementalIds'}):

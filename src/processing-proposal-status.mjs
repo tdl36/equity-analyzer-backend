@@ -26,3 +26,16 @@ export function processingProposalList(data,job){
  if(!object(data)||!Array.isArray(data.proposals)||data.proposals.length>50||!unique(data.proposals.map(p=>p?.id)))throw Error('Saved processing proposal list is incomplete. Refresh before saving or approving.');
  return data.proposals.map(p=>processingProposal(p,job));
 }
+
+export function processingProposalPage(data,job,{after=null,requestId=null}={}){
+ const rows=processingProposalList(data,job),nextCursor=data.nextCursor??null;
+ if((nextCursor!==null&&(!uuid(nextCursor)||rows.length!==50||nextCursor!==rows.at(-1)?.id||nextCursor===after))||
+ (requestId&&(rows.length>1||nextCursor!==null||rows.some(p=>p.id!==requestId))))
+ throw Error('Saved proposal history page could not be verified. Refresh or retry this page; loaded proposals remain visible.');
+ return {rows,nextCursor};
+}
+export function mergeProcessingProposals(loaded,incoming){
+ const rows=new Map(loaded.map(p=>[p.id,p]));
+ for(const p of incoming)rows.set(p.id,p);
+ return [...rows.values()];
+}

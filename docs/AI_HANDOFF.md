@@ -2,6 +2,40 @@
 
 Updated: October 14, 2026
 
+## T337 — Keep older processing proposals and uncertain save receipts reachable
+
+Critical-path handoff recovery: the proposal list previously returned only the
+latest 50 records without exposing truncation. Older pending/dispatched proposals
+and an unresolved save receipt could disappear from the existing approval screen.
+Added scoped, read-only cursor pages with deterministic timestamp/identity ordering,
+explicit older-history controls and exact request-ID lookup for submission recovery.
+Foreign/malformed cursors are rejected; exact reads cannot cross company/collection
+or job stage. Bounded pages and exact lookup spend no credits and never dispatch.
+
+The existing review screen retains loaded proposals on page failure, retries the
+same cursor, merges duplicate receipt identities and preserves saved-output links.
+Exact receipt failure keeps server rows visible and the unresolved local submission
+intact while blocking unsafe actions. Late refresh responses cannot clear newer
+choices. Existing purpose separation, source/baseline rechecks and explicit
+processing/investor approval remain unchanged; no broad dashboard expansion.
+
+Validation: 59 focused backend tests, 1,697 full safe backend tests, 252 frontend
+tests, Python compilation and production build pass. Synthetic actual-component
+checks at 390/1280px cover 56-record paging, retained failed-page retry, older exact
+save recovery, exact-read failure, deduplication, saved output links and late reads
+preserving newer drafts. GET-only fixtures; phone screenshot inspected, no overflow
+or browser errors. Pre-deploy audio inventory empty. No live proposal, approval,
+collection, original import or paid generation was performed for QA.
+Logs: /tmp/charlie-T337-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify production, then inspect the existing CVS collection for genuine
+original/import receipts. Latest pre-work snapshot still queued, default position 3,
+all four searches pending; no collection completion is claimed. Move completed
+collection into the selected processing proposal without approving generation.
+Keep live/investor acceptance and historical-reference schema gaps open; continue
+independent engineering when external evidence is pending. Agent code unchanged;
+no agent restart required. Original Pipeline and backfill synthesis pause preserved.
+
 ## T336 — Fence uncertain automatic audio/text uploads across restarts
 
 Priority-1 job recovery: the SUMMARIES watcher previously removed failed/missing
