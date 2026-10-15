@@ -33,6 +33,25 @@ Continue independent fixes while external collection/investor evidence is pendin
 Shared-dashboard expansion, historical schema and eight-priority acceptance remain
 open; automatic synthesis remains paused and original Pipeline is preserved.
 
+T323 production verified: Render 1cf3805779cad5bcb00edf0822672eb35ddce2ae;
+Cloudflare 6c5422ef-247a-4cea-846a-81f21a1f2cde. Exact hosted JS/service-worker
+bytes and HTML marker match. Read-only authentication/identity guards and agent
+health (110.2 seconds) passed. Logs: /tmp/charlie-T323-{focused,backend,frontend,
+build,deploy,verify}.log. No new live collection-to-output or investor acceptance.
+
+Next-action audit: pipeline_lab_notes.normalized currently preserves sourcePack
+identities and generationEvidence, but no structured purpose/source-date register.
+pipeline_lab_note_response.store_draft materializes from the final reply plus original
+identities and warnings; src/pipeline-lab-note.jsx renders that register without
+frozen roles/dates. Next add server-owned, versioned provenance from the immutable
+note plan to NEW drafts, retain it through edits/history/export, and display explicit
+purpose/event identity and source roles/dates. Do not infer purpose from a title,
+relabel old drafts, substitute live metadata, or rely on model prose as the register.
+Keep plan/call replay and saved-note revision identities unchanged for legacy jobs.
+Test source-pack mismatch, metadata drift, edit retention, legacy replay and mobile
+review/export rendering with synthetic fixtures. Real approved-run proof remains
+separate and pending; no collector or processing approval was triggered here.
+
 ## T322 — Frozen source provenance reaches derivative outputs
 
 New summary notes, stock summaries and both one-pager renderers now carry frozen
