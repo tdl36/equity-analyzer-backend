@@ -220,3 +220,97 @@ class ProcessingProposalTests(unittest.TestCase):
             self.assertFalse(rows[extra]['referencedBySavedThesis'])
             rows=context(cur,self.ticker,[{'documentId':extra,'filename':'annual-2024.txt','sha256':'a'*64}],[],{'sourceRegister':[{'filename':'different-name.txt','sha256':'a'*64}]})
             self.assertTrue(rows[extra]['referencedBySavedThesis'])
+
+    def note_hooks(self):
+        self.note_calls = []
+        self.note_id = str(uuid.uuid4())
+        self.co.lab_note_defaults = lambda: {'modelKey': 'fixture-v1', 'promptTemplate': 'Holistic fixture instructions'}
+        def dispatch(ident, plan, pack):
+            self.note_calls.append(copy.deepcopy(plan['labNotePlan']))
+            return {'noteId': self.note_id, 'status': 'draft', 'revision': 1}
+        self.co.lab_note_dispatch = dispatch
+        self.co.lab_note_stop = lambda cur, ident: None
+
+    def test_full_note_settings_freeze_at_save_and_replay_without_defaults(self):
+        self.parent();self.note_hooks()
+        self.body['plan'].update(labFullNote={'allowPdfText': False}, instruction='Explain guidance changes')
+        response = self.client.post(self.url, json=self.body)
+        self.assertEqual(response.status_code, 201, response.json)
+        proposal = response.json
+        frozen = self.row(proposal['id'])['input']['labNotePlan']
+        self.assertIn('standalone professional event debrief', frozen['promptTemplate'])
+        self.assertIn('Explain guidance changes', frozen['promptTemplate'])
+        self.assertNotIn('Holistic fixture', frozen['promptTemplate'])
+        self.assertNotIn('promptTemplate', proposal['fullNote'])
+        self.assertEqual(proposal['fullNote']['maxCalls'], 8)
+        self.assertFalse(self.note_calls);self.assertFalse(self.submits)
+        self.co.lab_note_defaults = lambda: (_ for _ in ()).throw(AssertionError('Mutable defaults consulted'))
+        self.assertEqual(self.client.post(self.url, json=self.body).json, proposal)
+        approved = self.decision(proposal)
+        self.assertEqual(approved.status_code, 202, approved.json)
+        aid = assignment_id(proposal['id'])
+        self.assertEqual(self.co.read(aid)['input']['labNotePlan'], frozen)
+        with self.app.app_context(): self.co.advance(aid)
+        self.assertEqual(self.note_calls, [frozen])
+        self.assertEqual(self.co.read(aid)['result']['labNoteId'], self.note_id)
+        self.assertEqual(self.co.read(aid)['status'], 'complete')
+        self.assertNotIn('thesisDraftId', self.co.read(aid)['result'])
+        self.assertEqual(self.decision(proposal).status_code, 200)
+        self.assertEqual(len(self.submits), 1)
+
+    def test_full_note_missing_integration_preserves_pending_approval(self):
+        self.parent();self.body['plan']['labFullNote'] = {'allowPdfText': False}
+        self.assertEqual(self.client.post(self.url, json=self.body).status_code, 409)
+        self.note_hooks()
+        proposal = self.client.post(self.url, json=self.body).json
+        self.co.lab_note_dispatch = None
+        self.assertEqual(self.decision(proposal).status_code, 409)
+        self.assertEqual(self.row(proposal['id'])['status'], 'pending')
+        self.assertIsNone(self.row(assignment_id(proposal['id'])))
+        self.assertFalse(self.submits)
+
+    def test_thesis_note_scope_and_changed_configuration_need_new_proposal(self):
+        self.parent();self.note_hooks()
+        self.body['plan'].update(researchPurpose={'kind': 'thesis_review'}, labFullNote={'allowPdfText': True})
+        first = self.client.post(self.url, json=self.body).json
+        frozen = self.row(first['id'])['input']['labNotePlan']
+        self.assertIn('Holistic fixture instructions', frozen['promptTemplate'])
+        self.assertIn('longitudinal thesis review', frozen['promptTemplate'])
+        self.co.lab_note_defaults = lambda: {'modelKey': 'fixture-v2', 'promptTemplate': 'New instructions'}
+        self.body['requestId'] = str(uuid.uuid4())
+        second = self.client.post(self.url, json=self.body).json
+        self.assertNotEqual(first['fullNote']['configDigest'], second['fullNote']['configDigest'])
+        tampered = dict(first['plan'], requestId=assignment_id(first['id']), processingProposal={'id': first['id'], 'revision': 1, 'digest': first['digest']}, labFullNote={'allowPdfText': False})
+        self.assertEqual(self.client.post('/api/research/assignments', json=tampered).status_code, 409)
+        self.assertEqual(self.row(first['id'])['status'], 'pending')
+
+    def test_meeting_and_full_note_reuse_selected_report_without_collection(self):
+        self.parent();self.note_hooks()
+        self.body['plan'].update(outputs=['summary_note', 'meeting_prep'], meeting={'date': '2026-10-20', 'type': 'expert'}, labFullNote={'allowPdfText': False})
+        original_report = self.report
+        def report():
+            run = original_report();question = 'What supports the revenue outlook?'
+            run['state']['report']['diligence_questions'] = [question]
+            run['state']['citations']['/diligence_questions/0'] = {**copy.deepcopy(run['state']['citations']['/summary/one_liner']), 'statement': question}
+            return run
+        self.report = report
+        meetings = [];original_invoke = self.co.invoke
+        def invoke(endpoint, method, body, params):
+            if endpoint == 'research_meeting_handoff.handoff':
+                meetings.append(copy.deepcopy(body))
+                return {'meetingId': 45, 'questionSetId': 46}, 200
+            return original_invoke(endpoint, method, body, params)
+        self.co.invoke = invoke
+        response = self.client.post(self.url, json=self.body)
+        self.assertEqual(response.status_code, 201, response.json)
+        proposal = response.json
+        self.assertFalse(meetings);self.assertFalse(self.note_calls)
+        approved = self.decision(proposal);self.assertEqual(approved.status_code, 202, approved.json)
+        aid = assignment_id(proposal['id'])
+        with self.app.app_context(): self.co.advance(aid)
+        row = self.co.read(aid)
+        self.assertEqual(row['status'], 'complete', row.get('error'))
+        self.assertEqual(len(meetings), 1);self.assertEqual(len(self.submits), 1)
+        self.assertEqual(len(self.note_calls), 1)
+        self.assertEqual(row['result']['meetingId'], 45)
+        self.assertIsNone(self.row(child(aid, 'collection')))

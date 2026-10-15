@@ -36,8 +36,9 @@ Approval freezes the exact proposal revision and dispatches existing workers onc
 Protect concurrent changes, reloads, lost responses and ambiguous paid outcomes.
 A changed proposal needs fresh authorization. T309 adds explicit wider-library
 foundational selections, frozen collection/supplemental roles and exact-hash saved-
-thesis reference labels. Full-note/meeting configuration in this handoff UI remains
-open; freeze those generation settings and disclose their incremental calls next. Next prove the connected journey with genuine
+thesis reference labels. T310 adds full-note and meeting choices: saved proposals
+freeze note model, instructions, PDF representation and bounded call disclosure;
+meeting preparation reuses the shared report. Next prove the connected journey with genuine
 request-specific processing authorization before shared-dashboard expansion. Merely viewing a proposal starts no
 research. A raw library or unverified selection is not ready to run.
 

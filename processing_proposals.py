@@ -52,6 +52,10 @@ def dispatch(cur, proposed_plan, ident):
     pack = original_pack(cur, row['ticker'], [s['filename'] for s in frozen['sources']])
     if pack != frozen['sources']:
         raise ValueError('Selected originals changed. Save a fresh proposal before processing.')
+    if frozen['plan'].get('labFullNote'):
+        if not frozen.get('labNotePlan'):
+            raise ValueError('Full-note settings are missing. Save a fresh proposal.')
+        proposed_plan['labNotePlan'] = frozen['labNotePlan']
     if frozen.get('sourceContext'):
         proposed_plan['processingSourceContext'] = frozen['sourceContext']
     cur.execute("UPDATE mp_jobs SET status='dispatched',result=%s::jsonb,updated_at=NOW() WHERE id=%s", (json.dumps({'assignmentId': ident}), row['id']))
@@ -60,9 +64,10 @@ def dispatch(cur, proposed_plan, ident):
 
 def public(row):
     frozen = obj(row['input'])
+    from processing_proposal_note import public as note_public
     return dict(id=row['id'], ticker=row['ticker'], status=row['status'], revision=1,
                 digest=frozen['digest'], collectionId=frozen['collectionId'], plan=frozen['plan'],
-                sources=frozen['sources'], sourceContext=frozen.get('sourceContext', {}), baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
+                sources=frozen['sources'], fullNote=note_public(frozen.get('labNotePlan')), sourceContext=frozen.get('sourceContext', {}), baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
                 assignmentId=obj(row['result']).get('assignmentId'), created_at=row['created_at'])
 
 
@@ -108,7 +113,7 @@ def register(co):
             from processing_proposal_sources import supplemental_ids, context
             supplements = supplemental_ids(data.get('supplementalIds', []), len(filenames))
             choices = data['plan']
-            allowed = {'researchPurpose', 'outputs', 'horizon', 'instruction', 'meeting', 'visualFundamentals'}
+            allowed = {'researchPurpose', 'outputs', 'horizon', 'instruction', 'meeting', 'visualFundamentals', 'labFullNote'}
             if not isinstance(choices, dict) or set(choices) - allowed or 'researchPurpose' not in choices:
                 raise ValueError('An explicit thesis-review or event-note purpose is required.')
             parent_plan = obj(parent['input'])
@@ -125,6 +130,8 @@ def register(co):
                 if old['stage'] != STAGE or obj(old['input']).get('intentHash') != intent_hash:
                     raise ValueError('Proposal identity already used for different choices.')
                 return jsonify(public(old)), 200
+            from processing_proposal_note import freeze as freeze_note
+            note_config = freeze_note(co, normalized)
             baseline_package = co.call('thesis_imports.prepare', ticker=parent['ticker'])['package']
             baseline = baseline_package['baseline']
             revision = co.call('stock_analysis.listing', ticker=parent['ticker'])['baseline']['revision']
@@ -151,6 +158,8 @@ def register(co):
                     if len({s['sha256'] for s in sources}) != len(sources):
                         raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
                     frozen['sourceContext'] = context(cur, parent['ticker'], sources, filenames, baseline_package)
+                if note_config is not None:
+                    frozen['labNotePlan'] = note_config
                 frozen['digest'] = digest(frozen)
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'pending',%s::jsonb,'{}'::jsonb) RETURNING *", (ident, STAGE, parent['ticker'], json.dumps(frozen)))
                 saved = public(cur.fetchone())

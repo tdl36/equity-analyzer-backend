@@ -1,3 +1,19 @@
+## T310 full-note and meeting choices in processing approval
+
+Completed collection-only assignments can now propose a full versioned Lab note
+and/or meeting questions from the explicitly selected pack. Saving freezes the note
+model, purpose-specific instructions, PDF-text fallback choice and configuration
+hash. Approval uses that saved configuration even if central defaults change.
+The event-note prompt cannot become a holistic thesis prompt. Meeting date/type
+are frozen too; meeting preparation reuses the existing shared report.
+
+The review shows the extra note budget (up to eight calls, 32,000 output tokens
+per call), in addition to the shared research budget. No exact monetary estimate
+is claimed. No generation occurs at save; processing and research acceptance stay
+separate. Missing integration blocks dispatch and retains the pending proposal.
+The original Pipeline, collection workers and paused auto-synthesis are unchanged.
+Live collection-to-approved-output proof and shared Ready integration remain open.
+
 ## T309 supplemental foundational evidence
 
 The processing-approval form now includes a wider stored-original library. Browse
@@ -10,9 +26,8 @@ Filtering covers loaded entries; unknown dates and inferred types stay explicit.
 Saved proposals are durable; collapsing the form also retains unsaved in-screen
 choices, but navigation before saving does not create a durable proposal.
 
-The original Pipeline and paused auto-synthesis controls are unchanged. Full-note
-and meeting configuration in this handoff UI, live authorized processing proof and
-shared Ready integration remain open. Supported stored originals appear here;
+The original Pipeline and paused auto-synthesis controls are unchanged. Full-note and meeting choices were subsequently added in T310; live authorized
+processing proof and shared Ready integration remain open. Supported stored originals appear here;
 iCloud-only/research-storage evidence needs the existing import path first.
 
 ## T308 collection-to-processing handoff
@@ -28,8 +43,8 @@ created and automatic synthesis remains paused during backfill.
 
 T308 initially used originals from the collection only; T309 adds explicit
 supplemental history from the supported stored-original library.
-Collection dates are not accepted-thesis coverage. Full-note/meeting configuration
-in this approval form and integration into Ready to process remain open. Existing
+Collection dates are not accepted-thesis coverage. T310 adds full-note/meeting configuration
+in this approval form; integration into Ready to process remains open. Existing
 Lab note/meeting paths remain available. Synthetic checks establish mechanics, not
 live investment-quality acceptance.
 

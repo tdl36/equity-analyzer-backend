@@ -269,7 +269,10 @@ class Coordinator:
                     inv={'baseline':{'revision':0}} if p.get('collectionOnly') else self.call('stock_analysis.listing',ticker=p['ticker'])
                 except ValueError as exc:return jsonify(error=str(exc)),409
                 p.update(thesisBaseline=prepared,caseRevision=inv['baseline']['revision'],fingerprint=fingerprint)
-                if p.get('labFullNote'):
+                if p.get('labFullNote') and p.get('processingProposal'):
+                    if not callable(self.lab_note_dispatch) or not callable(self.lab_note_stop):
+                        return jsonify(error='Full Lab note integration unavailable. Proposal remains pending.'),409
+                if p.get('labFullNote') and not p.get('processingProposal'):
                     if not self.lab_note_defaults:return jsonify(error='Full Lab note integration unavailable.'),409
                     p['labNotePlan']={**self.lab_note_defaults(),'allowPdfText':p['labFullNote']['allowPdfText']}
                     if p.get('researchPurpose',{}).get('kind')=='event_note':

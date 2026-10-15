@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T310 adds collection-linked full-note/meeting configuration and preserves the
+saved model/instructions through approval. Isolated fixtures test the selected
+source-to-report-to-note/meeting handoff; this is not genuine paid-run evidence
+or investor acceptance. The eight priorities remain open as recorded below.
+
 ## 1. Job recovery
 
 Implemented: durable reservations, ownership/leases, retained checkpoints,

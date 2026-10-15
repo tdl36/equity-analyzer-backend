@@ -20,6 +20,10 @@ function ProposalReview({
   api,
   job
 }) {
+  var [fullNote, setFullNote] = React.useState(false),
+    [allowPdfText, setAllowPdfText] = React.useState(false),
+    [meetingDate, setMeetingDate] = React.useState(''),
+    [meetingType, setMeetingType] = React.useState('management');
   var [supplements, setSupplements] = React.useState([]);
   var [selected, setSelected] = React.useState([]),
     [purpose, setPurpose] = React.useState('thesis_review'),
@@ -122,7 +126,18 @@ function ProposalReview({
         },
         outputs: [...outputs].sort(),
         instruction,
-        horizon: '12–24 months'
+        horizon: '12–24 months',
+        ...(fullNote ? {
+          labFullNote: {
+            allowPdfText
+          }
+        } : {}),
+        ...(outputs.includes('meeting_prep') ? {
+          meeting: {
+            date: meetingDate,
+            type: meetingType
+          }
+        } : {})
       }
     };
     sessionStorage.setItem(key, JSON.stringify(body));
@@ -208,20 +223,46 @@ function ProposalReview({
     remaining: 1000 - selected.length
   }), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
-  }, assignmentOutputs.filter(([id]) => id !== 'meeting_prep' && (purpose !== 'event_note' || id === 'summary_note')).map(([id, label]) => /*#__PURE__*/React.createElement("label", {
+  }, assignmentOutputs.filter(([id]) => purpose !== 'event_note' || id === 'summary_note' || id === 'meeting_prep').map(([id, label]) => /*#__PURE__*/React.createElement("label", {
     className: "sa-check",
     key: id
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: outputs.includes(id),
     onChange: e => setOutputs(p => e.target.checked ? [...p, id] : p.filter(n => n !== id))
-  }), label))), /*#__PURE__*/React.createElement("label", null, "Focus and evidence gaps", /*#__PURE__*/React.createElement("textarea", {
+  }), label))), outputs.includes('meeting_prep') && /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, /*#__PURE__*/React.createElement("label", null, "Meeting date", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Processing meeting date",
+    type: "date",
+    value: meetingDate,
+    onChange: e => setMeetingDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("label", null, "Meeting type", /*#__PURE__*/React.createElement("select", {
+    "aria-label": "Processing meeting type",
+    value: meetingType,
+    onChange: e => setMeetingType(e.target.value)
+  }, ['management', 'expert', 'conference', 'other'].map(t => /*#__PURE__*/React.createElement("option", {
+    key: t,
+    value: t
+  }, t)))), /*#__PURE__*/React.createElement("p", null, "Meeting questions use the shared research report; no additional generation stage.")), /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: fullNote,
+    onChange: e => setFullNote(e.target.checked)
+  }), "Full versioned Lab note \xB7 additional research credits"), fullNote && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "The model and note instructions are frozen when you save this proposal. The full note uses up to eight additional model calls, capped at 32,000 output tokens per call. Large evidence packs are processed in bounded stages; omissions remain visible."), /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: allowPdfText,
+    onChange: e => setAllowPdfText(e.target.checked)
+  }), "Allow extracted PDF text when needed \xB7 charts and layout may be omitted")), /*#__PURE__*/React.createElement("label", null, "Focus and evidence gaps", /*#__PURE__*/React.createElement("textarea", {
     rows: 3,
     maxLength: 1800,
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !pending && (!selected.length || !outputs.length || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !pending && (!selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
   }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, "Loading saved proposals\u2026") : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,
@@ -229,7 +270,7 @@ function ProposalReview({
       borderTop: '1px solid var(--border-color,#d8dedd)',
       padding: '14px 0'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), p.plan.instruction && /*#__PURE__*/React.createElement("p", null, p.plan.instruction), p.sourceContext && Object.keys(p.sourceContext).length > 0 && /*#__PURE__*/React.createElement("p", null, Object.values(p.sourceContext).filter(s => s.role === 'collection').length, " from the collection \xB7 ", Object.values(p.sourceContext).filter(s => s.role === 'supplemental').length, " supplemental history. Collection coverage and thesis evidence coverage are different."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen sources and scope"), /*#__PURE__*/React.createElement("p", null, "Revision ", p.revision, ". Collection ", p.plan.since, "\u2013", p.plan.until, ". Sources and baseline will be checked again before dispatch."), /*#__PURE__*/React.createElement("ul", null, p.sources.map(s => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), p.plan.meeting && /*#__PURE__*/React.createElement("p", null, "Meeting preparation \xB7 ", p.plan.meeting.date, " \xB7 ", p.plan.meeting.type), p.fullNote && /*#__PURE__*/React.createElement("p", null, "Full versioned note \xB7 frozen model ", p.fullNote.modelKey, " \xB7 up to ", p.fullNote.maxCalls, " additional calls, ", p.fullNote.maxTokens.toLocaleString(), " output tokens per call \xB7 PDF text fallback ", p.fullNote.allowPdfText ? 'allowed' : 'off', ". Draft requires investor review."), p.plan.instruction && /*#__PURE__*/React.createElement("p", null, p.plan.instruction), p.sourceContext && Object.keys(p.sourceContext).length > 0 && /*#__PURE__*/React.createElement("p", null, Object.values(p.sourceContext).filter(s => s.role === 'collection').length, " from the collection \xB7 ", Object.values(p.sourceContext).filter(s => s.role === 'supplemental').length, " supplemental history. Collection coverage and thesis evidence coverage are different."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen sources and scope"), /*#__PURE__*/React.createElement("p", null, "Revision ", p.revision, ". Collection ", p.plan.since, "\u2013", p.plan.until, ". Sources and baseline will be checked again before dispatch."), p.fullNote && /*#__PURE__*/React.createElement("p", null, "Full-note configuration: ", p.fullNote.configDigest, /*#__PURE__*/React.createElement("br", null), "Note instructions: ", p.fullNote.promptSha256), /*#__PURE__*/React.createElement("ul", null, p.sources.map(s => /*#__PURE__*/React.createElement("li", {
     key: s.documentId
   }, /*#__PURE__*/React.createElement("a", {
     href: api + '/api/pipeline-lab/original/' + encodeURIComponent(p.ticker) + '/thesis_' + s.documentId,

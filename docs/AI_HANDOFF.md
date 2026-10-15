@@ -2,6 +2,31 @@
 
 Updated: October 14, 2026
 
+## T310 — Frozen full-note and meeting processing choices
+
+Collection-linked processing proposals now support the full versioned Lab note
+and meeting preparation. Save freezes note model, purpose-specific prompt, investor
+focus, PDF-text fallback choice and configuration digest; approval dispatches that
+snapshot without consulting changed defaults. Public review exposes model/hash,
+representation and up to eight additional calls capped at 32,000 output tokens.
+Meeting date/type are frozen and use the existing shared report, without another
+generation stage. Missing integration preserves the pending proposal. No changes
+to the original Pipeline, collection workers or automatic-synthesis pause.
+
+Next: prove one genuine completed collection → saved proposal → investor-approved
+processing → saved outputs journey. The last read-only archive check found no
+eligible completed source-only assignment; do not manufacture this proof through
+paid QA. Continue independent source/output readiness engineering while awaiting
+that evidence; shared-dashboard expansion follows connected proof. Full eight-
+priority acceptance and historical reference-schema work remain open.
+
+Validation: 19 focused proposal tests, 1,613 safe backend tests, 208 frontend
+tests, Python compilation and production build passed. Synthetic browser checks
+cover the 390/1280px proposal flow (all APIs intercepted; remote fonts blocked
+after a font-load timeout), frozen note disclosure,
+meeting requirements, reload and explicit approval. Release verification follows.
+No live processing, research acceptance or collection actions were performed.
+
 ## T309 — Foundational evidence in collection-linked processing proposals
 
 The handoff now allows explicit supplemental selections from the same company's
