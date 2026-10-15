@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T293 — Bind source checks to the saved selection
+
+Lab validates source-check responses before displaying success or making generation
+controls available: matching task/revision, checked-only state, unique selected
+original IDs, names, hashes, byte bounds and a complete pack when unblocked.
+Malformed or mismatched responses leave the check unavailable with a recoverable
+error. Valid blockers and older servers without generation support remain readable.
+The backend still performs byte hashing and rechecks originals before dispatch;
+this frontend validation is not independent byte verification or research approval.
+
+200 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks rejected an unselected original and then displayed the matching check.
+Only mocked check requests were issued; no research or approvals. Production
+verification pending. Backend/agent unchanged.
+Next: authorized real source-to-output acceptance and investor review remain open;
+historical valuation remains at its documented provider-schema checkpoint.
+
 ## T292 — Filter Lab sources by storage location
 
 Lab source review can now isolate Charlie originals, Research storage or iCloud

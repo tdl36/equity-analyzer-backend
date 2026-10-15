@@ -1,3 +1,4 @@
+import { checkedLabSourceCheck } from './lab-source-check.mjs';
 import { checkedResearchImport, checkedLabImportRequest } from './lab-import-receipts.mjs';
 import LabNote from './pipeline-lab-note';
 import LabICloudImport from './pipeline-lab-import';
@@ -346,6 +347,7 @@ function LabStock({
           task
         })
       });
+      checkedLabSourceCheck(d, task, saved.revision, saved.selection[task]);
       if (alive.current) setCheckResult(d);
     } catch (e) {
       if (alive.current) setError(e.message);
