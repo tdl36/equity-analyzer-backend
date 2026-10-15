@@ -61,4 +61,7 @@ def plan(data):
         if not isinstance(choice,dict) or set(choice)!={'allowPdfText'} or type(choice['allowPdfText']) is not bool:
             raise ValueError('Explicit full Lab note representation choice required.')
         result['labFullNote']=dict(choice)
+    if 'researchPurpose' in data:
+        from research_purpose import validate
+        result['researchPurpose']=validate(data['researchPurpose'],outputs,result.get('labSelection'))
     return result

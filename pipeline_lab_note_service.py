@@ -112,7 +112,7 @@ def assignment_note(get_db, ident, assignment, pack):
             raise ValueError('Full note originals differ from the assignment pack. Saved research is retained.')
         prepared=prepare(assignment['ticker'],checked['verified'],docs,allow_pdf_text=cfg['allowPdfText'])
         return enqueue(cur,{'noteId':note_id,'ticker':assignment['ticker'],
-            'title':assignment['ticker']+' — Equity research note',
+            'title':assignment['ticker']+(' — '+assignment['researchPurpose']['event']['title'] if assignment.get('researchPurpose',{}).get('kind')=='event_note' else ' — Equity research note'),
             'context':json.dumps(assignment['thesisBaseline'],default=str),
             'promptTemplate':cfg['promptTemplate'],'modelKey':cfg['modelKey'],'maxTokens':32000,
             'sourcePack':prepared['sourcePack'],'representationSha256':prepared['representationSha256'],

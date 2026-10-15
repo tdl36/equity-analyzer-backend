@@ -414,6 +414,25 @@ class AssignmentPostgresTests(unittest.TestCase):
         with self.db() as (_,cur):
             cur.execute('SELECT analysis FROM portfolio_analyses WHERE ticker=%s',(self.ticker,));self.assertEqual(cur.fetchone()['analysis'],old['analysis'])
 
+    def test_event_purpose_survives_collection_dispatch_and_replay(self):
+        purpose={'kind':'event_note','event':{'title':'Guidance update','date':'2026-09-30'}}
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['summary_note'],'researchPurpose':purpose,'labFullNote':{'allowPdfText':False}}
+        self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Holistic legacy prompt'}
+        self.co.lab_note_dispatch=lambda ident,p,pack:{'noteId':str(uuid.uuid4()),'status':'draft','revision':1}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        frozen=self.co.read(self.ident)['input']
+        self.assertIn('standalone professional event debrief',frozen['labNotePlan']['promptTemplate'])
+        self.assertNotIn('Holistic legacy prompt',frozen['labNotePlan']['promptTemplate'])
+        self.assertEqual(self.client.post('/api/research/assignments',json={**body,'researchPurpose':{'kind':'thesis_review'}}).status_code,409)
+        self.collected();row=self.advance()
+        self.assertEqual(row['status'],'complete')
+        self.assertNotIn('thesisDraftId',row['result'])
+        self.assertIn('Research purpose: event note',next(iter(self.submits.values()))['question'])
+        self.assertIn('does not update the thesis',row['result']['artifacts']['summary_note']['html'])
+        self.assertEqual(self.co.public(row)['input']['researchPurpose'],purpose)
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+        self.assertEqual(len(self.submits),1)
+
     def test_source_only_collection_never_dispatches_research(self):
         self.co.has_key=lambda:False
         body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}

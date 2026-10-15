@@ -1,68 +1,85 @@
-# Charlie agreed finish sequence — October 15, 2026
+# Charlie critical-path finish plan — October 15, 2026
 
-The user authorized continued implementation of this sequence and requested a
-progress update every 15 minutes. Existing continue-charlie-improvements heartbeat
-was updated to 15 minutes; report shipped work, current work, blockers and next
-step, including honestly when nothing new shipped. This is a cadence request,
-not permission to generate research or accept drafts during backfill.
+The user authorized this revised sequence after reviewing the actual architecture.
+Give status updates every 15 minutes: critical-path item advanced, local vs deployed
+work, verification, remaining blockers and next action. Do not count cosmetic
+releases as completion. Preserve original Research Pipeline and the backfill
+synthesis pause. Collection-only requests authorize no generation.
 
-## 1. Unified processing control — active engineering task
+## Priority 1 — Research purpose and durable processing handoff
 
-Extend Ready to process beyond event-folder proposals to expose Lab stock-source
-generation and analyst tasks. Show sources, intended output, readiness blockers,
-credit use and exact action. Keep processing approval separate from acceptance of
-finished research. Preserve the current event checklist and its atomic dispatch.
+Impact: closes the main gap between collecting documents and intentionally
+producing the right research. Reuse the assignment coordinator and existing note,
+thesis and collection workers; do not create a parallel orchestrator.
 
-Starting checkpoint: T306 is verified in production. ReadyProcessing lives in
-src/ready-processing.jsx and loads independently of the desk overview. Lab saved
-selections are in app_settings under pipeline_lab_v1:<ticker>, exposed individually
-by pipeline_lab.py. Inspect existing config/check/generation contracts before
-adding an aggregate readiness inventory; inventory alone is not byte verification.
+Two distinct purposes:
+- Thesis review: longitudinal investment case; discovery dates limit new-source
+  search, not historical analytical scope. Existing thesis, foundational evidence,
+  changes over time and contrary evidence remain relevant. Missing history stays
+  visible. Proposed changes require investor acceptance.
+- Event note: identified event/title/date; what happened, supported expectations,
+  implications, uncertainties and follow-up. Older evidence is contextual. A note
+  cannot write the thesis or mark it current. Assess implications for thesis is a
+  separately authorized proposal and may conclude no change warranted.
 
-Analyst activity /run dispatches earnings_recap or takeaway generation, whereas
-/approve accepts finished research and can file/sync it. Never wire the latter
-into bulk processing. Inspect _dispatch_activity_run identity/concurrency handling
-before exposing run actions. Treat uncertain outcomes as unresolved, not retryable.
-Do not label a saved selection or a missing output as ready without validation.
+First implementation (T307): frozen research purpose in new coordinated assignments,
+server enforcement of event output/source scope, purpose-specific instructions,
+event full-note prompt and saved-output labeling. Legacy frozen requests retain
+original behavior. This is the purpose foundation, not completion of the approval
+handoff or purpose classification of all legacy/standalone note paths.
 
-Acceptance: a single visible entry distinguishes event proposals, saved Lab packs,
-analyst work and completed drafts; failures stay explicit; actions preserve exact
-source/config identity and cannot duplicate paid work or accept outputs. Test with
-synthetic fixtures and existing read-only records; no paid QA.
+Next concrete implementation: a collection-only completion can create a linked,
+durable processing proposal with selected original identities/hashes, purpose,
+output choices, source/config revision, baseline references and explicit blockers.
+Do not mutate the completed request's authorization or silently select every file.
+Approval freezes the exact proposal revision and dispatches existing workers once.
+Protect concurrent changes, reloads, lost responses and ambiguous paid outcomes.
+A changed proposal needs fresh authorization. Merely viewing a proposal starts no
+research. A raw library or unverified selection is not ready to run.
 
-## 2. Source-to-output journey
+Acceptance: collect -> review sources/purpose/outputs -> authorize processing ->
+saved job/drafts works for one stock, retains provenance and never conflates
+processing approval with accepting finished research.
 
-Trace existing authorized collection requests through preservation, verified cloud
-imports, organized inventory, date coverage, frozen selections and saved output
-links. Operations owns browser collection. Correct defects found without creating
-another collector. Source-only requests remain generation-free.
+## Priority 2 — Prove one complete stock journey and repair delivery
 
-## 3. Historical valuation
+Impact: discovers broken handoffs early. Trace an existing genuinely authorized
+request from stock card through collection, original preservation, exact-byte
+imports, processing proposal, authorized generation and saved draft links. Record
+stage receipts; retain partial outputs and safe recovery. Operations owns browser
+collection. Do not run paid research solely for testing or enable automatic
+synthesis. Real generation waits for request-specific authorization.
 
-Resume docs/historical-security-mapping.md. Obtain a permitted retained reference
-schema and explicit currency/security semantics, implement normalization and
-assignment-bound storage, then connect valuation and one-pagers. Do not infer
-historical currency/share continuity from current profiles. Missing external
-evidence does not block independent work in this sequence.
+## Priority 3 — Coverage and task-specific source selection
 
-## 4. Home and company reconciliation
+Impact: makes catch-up work meaningful rather than simply recent. Distinguish last
+collection, dates searched and gaps, source evidence incorporated in the accepted
+thesis, and newly available evidence. Thesis save time is not a source cutoff.
+Propose catch-up windows with reasons and allow explicit changes. Older foundational
+sources remain eligible for thesis review. Event windows describe event coverage.
+Organize and deduplicate the larger library; metadata suggestions are not content
+analysis. Disclose selected/excluded/context-only evidence and size/context limits.
+Any model-assisted screening is explicit and budgeted, not automatic backfill work.
 
-Compare real saved jobs, failures, reviews and outputs with Home and company views.
-Exercise exact-object links, back/forward, mobile, long content, reloads, unsaved
-edits and service failures. T304-T306 are bounded fixes, not complete acceptance.
+## Priority 4 — Expand Ready to process as a shared view
 
-## 5. Genuine assignment proof
+Impact: makes the connected workflow discoverable without another execution layer.
+Expose actionable processing proposals plus supported event and analyst work.
+Show sources, outputs, scope, blockers and credit use. Analyst /run dispatches
+work; /approve accepts finished output and may file it. Never wire /approve into
+bulk processing. Keep existing event checklist and atomic dispatch protections.
 
-Observe a genuinely authorized ticker/window/output assignment from discovery
-through downloads, exact-byte imports, approved processing and saved drafts.
-Record receipts for each stage and recoverable interruption states. During the
-backfill pause, stop before generation unless the specific request authorizes it.
-Investor review remains separate. Do not manufacture a paid acceptance test.
+## Priority 5 — Output quality, historical valuation and wider acceptance
 
-## 6. Close evidence ledger
+Finish historical reference normalization/storage/integration only with permitted
+schema and explicit currency/security semantics; follow historical-security-mapping.
+Current profiles cannot prove historical currency/share continuity. Continue other
+engineering while this dependency is unresolved. Compare real one-pagers/notes to
+sources and reference standards. Reconcile Home/company views with real saved jobs,
+failures, reviews and outputs; test navigation, long content, mobile and errors.
 
-Update docs/eight-priority-acceptance.md with concrete evidence and remaining
-issues. Distinguish implementation, synthetic validation, real-run proof and
-investor acceptance. Resolve the legacy WELL outcome only from actual evidence.
-Preserve the original Pipeline, originals, active work and unrelated dirty files.
-Use the full AGENTS.md release procedure for implemented changes.
+Update eight-priority-acceptance with implementation, synthetic validation, live
+proof and investor acceptance separately. Resolve legacy WELL only from actual
+execution/provider evidence, never by replaying an ambiguous paid call. Investor
+approval remains separate. Preserve originals, active jobs and unrelated dirty
+files. Follow AGENTS.md release procedure; never pytest or paid QA.

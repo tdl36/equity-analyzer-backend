@@ -37,3 +37,11 @@ test('source-only receipts cannot silently authorize research or omit the plan',
  assert.equal(matchingReceipt(receipt,requested),true);
  for(const change of [{collectionOnly:false},{collectionOnly:null},{visualFundamentals:null},{outputs:['visual']},{labFullNote:{allowPdfText:false}}])assert.equal(matchingReceipt({...receipt,input:{...receipt.input,...change}},requested),false);
 });
+
+test('purpose and event identity must match the frozen receipt',()=>{
+ const p={...body,outputs:['summary_note'],researchPurpose:{kind:'event_note',event:{title:'Earnings',date:'2026-10-01'}}};
+ const receipt={id:p.requestId,ticker:p.ticker,input:{...p,horizon:'12–24 months',instruction:''}};
+ assert.equal(matchingReceipt(receipt,p),true);
+ assert.equal(matchingReceipt({...receipt,input:{...receipt.input,researchPurpose:{kind:'thesis_review'}}},p),false);
+ assert.equal(matchingReceipt({...receipt,input:{...receipt.input,researchPurpose:{...p.researchPurpose,event:{title:'Guidance',date:'2026-10-01'}}}},p),false);
+});

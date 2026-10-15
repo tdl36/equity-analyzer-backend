@@ -22,6 +22,9 @@ export function ResearchAssignment({
   labMode = false,
   onCollectionComplete = null
 }) {
+  var [purpose, setPurpose] = React.useState('thesis_review'),
+    [eventTitle, setEventTitle] = React.useState(''),
+    [eventDate, setEventDate] = React.useState('');
   var [collectionLimit, setCollectionLimit] = React.useState(40);
   var [collectionOnly, setCollectionOnly] = React.useState(false);
   var [fullNote, setFullNote] = React.useState(false),
@@ -207,6 +210,15 @@ export function ResearchAssignment({
       ticker,
       since,
       until,
+      researchPurpose: purpose === 'event_note' ? {
+        kind: purpose,
+        event: {
+          title: eventTitle.trim(),
+          date: eventDate
+        }
+      } : {
+        kind: purpose
+      },
       ...(!labSelection ? {
         collectionLimit
       } : {}),
@@ -267,7 +279,7 @@ export function ResearchAssignment({
     onClick: onClearFocus
   }, "All assignments for ", ticker, " / Start new research")), savedSubmission && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Recover assignment submission"
-  }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", outputNames(savedSubmission.outputs), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.researchPurpose?.kind === 'event_note' ? 'Event note' : savedSubmission.researchPurpose?.kind === 'thesis_review' ? 'Thesis review' : 'Legacy research', " \xB7 ", savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", outputNames(savedSubmission.outputs), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: reconcile
   }, "Check whether assignment was saved"), /*#__PURE__*/React.createElement("button", {
@@ -316,7 +328,7 @@ export function ResearchAssignment({
   }, "Open full Lab note & recovery")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved drafts remain available in Sources, progress & history below, even if another stage needs attention. Saved does not mean investor-approved. Missing receipts are not proof of delivery.")))), /*#__PURE__*/React.createElement("details", {
     className: "assignment-history",
     open: j.status !== 'complete'
-  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), !j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Frozen collection scope: up to ", j.input.collectionLimit ?? 8, " relevant originals. Actual coverage depends on available eligible sources."), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("p", null, j.input.researchPurpose?.kind === 'event_note' ? `Event note · ${j.input.researchPurpose.event.title} · ${j.input.researchPurpose.event.date}` : j.input.researchPurpose?.kind === 'thesis_review' ? 'Longitudinal thesis review' : 'Legacy request · purpose not separately recorded'), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), !j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Frozen collection scope: up to ", j.input.collectionLimit ?? 8, " relevant originals. Actual coverage depends on available eligible sources."), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', j.ticker, 'stock-analysis', 'assignment:' + j.input.origin.assignmentId)
   }, "saved one-pager"), " \xB7 ", j.input.origin.parentId ? 'accepted edition ' + j.input.origin.parentId.slice(0, 8) : 'original report ' + j.input.origin.runId.slice(0, 8), ". Outputs are separate drafts for review."), j.result.delayWarning && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -439,7 +451,34 @@ export function ResearchAssignment({
     role: "alert"
   }, defaultsWarning), /*#__PURE__*/React.createElement("fieldset", {
     disabled: !defaultsReady || disabled || busy || unfinished || !!error || !!focusId || !!savedSubmission || !loaded
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("label", null, "Research purpose", /*#__PURE__*/React.createElement("select", {
+    "aria-label": "Research purpose",
+    value: purpose,
+    disabled: !!origin || labSelection?.task === 'thesis',
+    onChange: e => {
+      var next = e.target.value;
+      setPurpose(next);
+      setChosen(next === 'event_note' ? ['summary_note'] : ['thesis']);
+      setVisualFundamentals(next !== 'event_note');
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "thesis_review"
+  }, "Thesis review \xB7 longitudinal stock view"), /*#__PURE__*/React.createElement("option", {
+    value: "event_note"
+  }, "Event note \xB7 specific catalyst"))), /*#__PURE__*/React.createElement("p", null, purpose === 'thesis_review' ? 'The date window governs new evidence discovery, not the full investment case. Retain relevant foundational sources; missing history remains a gap.' : 'A standalone event debrief. It does not update the thesis or mark it current. Older evidence is supporting context.'), purpose === 'event_note' && /*#__PURE__*/React.createElement("div", {
+    className: "sa-form-grid"
+  }, /*#__PURE__*/React.createElement("label", null, "Event", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Event title",
+    maxLength: 200,
+    value: eventTitle,
+    onChange: e => setEventTitle(e.target.value),
+    placeholder: "e.g. Q3 earnings and guidance"
+  })), /*#__PURE__*/React.createElement("label", null, "Event date", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Event date",
+    type: "date",
+    value: eventDate,
+    onChange: e => setEventDate(e.target.value)
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "From", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Research from",
@@ -480,7 +519,7 @@ export function ResearchAssignment({
     onChange: e => setNotePdfText(e.target.checked)
   }), "Allow text-only representation for oversized PDFs"))), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
-  }, outputs.filter(([id]) => !labSelection || labSelection.task === 'thesis' || id !== 'thesis').map(([id, title]) => /*#__PURE__*/React.createElement("label", {
+  }, outputs.filter(([id]) => (purpose !== 'event_note' || ['summary_note', 'meeting_prep'].includes(id)) && (!labSelection || labSelection.task === 'thesis' || id !== 'thesis')).map(([id, title]) => /*#__PURE__*/React.createElement("label", {
     className: "sa-check",
     key: id
   }, /*#__PURE__*/React.createElement("input", {
@@ -531,7 +570,7 @@ export function ResearchAssignment({
     })
   }, "Save my defaults")), /*#__PURE__*/React.createElement("button", {
     className: embedded ? "workspace-primary" : "sa-primary",
-    disabled: !labSelection && (!Number.isInteger(collectionLimit) || collectionLimit < 1 || collectionLimit > 1000) || !collectionOnly && !chosen.length || !since || !until || !horizon.trim() || !collectionOnly && chosen.includes('meeting_prep') && !meetingDate,
+    disabled: purpose === 'event_note' && (!eventTitle.trim() || !eventDate) || !labSelection && (!Number.isInteger(collectionLimit) || collectionLimit < 1 || collectionLimit > 1000) || !collectionOnly && !chosen.length || !since || !until || !horizon.trim() || !collectionOnly && chosen.includes('meeting_prep') && !meetingDate,
     onClick: start
   }, collectionOnly ? 'Collect latest sources for' : labSelection ? 'Generate selected drafts for' : origin ? 'Start source refresh for' : 'Start research for', " ", ticker))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, collectionOnly ? 'Source-only refresh collects up to your chosen scope through the existing browser worker. No model generation is authorized by this request.' : 'One shared research run: your selected originals and up to twelve model calls within your configured budget. Research context is bounded; large originals can require scoped selections and disclosed excerpts. Full Lab notes use size-aware batches. Starting authorizes these calls; explicitly resumed failed stages may add charges. Draft outputs need investor review; a thesis update is never applied automatically.')), !labSelection && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "How automatic collection works"), /*#__PURE__*/React.createElement("p", null, "Charlie queues collection \u2192 Codex searches AlphaSense \u2192 originals are saved in iCloud STOCKS \u2192 your Mac imports and verifies them \u2192 Charlie researches and prepares the selected drafts. Keep your Mac awake, online, the agent running, and Codex with signed-in Chrome available. Collection starts when the scheduled collection worker becomes available. Source restrictions, sign-in, source choices and uncertain paid-call outcomes can require your attention. The research uses the selected source pack; missing prices, consensus or financial periods remain gaps."))));
 }

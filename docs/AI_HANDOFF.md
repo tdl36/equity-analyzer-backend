@@ -2,6 +2,26 @@
 
 Updated: October 14, 2026
 
+## T307 — Distinct longitudinal thesis review and event-note intent
+
+New coordinated assignments freeze a researchPurpose: thesis_review or event_note
+with event title/date. Server validation rejects event requests for thesis/whole-
+stock outputs or a saved thesis-source selection. Explicit purpose enters research
+instructions; event full-note follow-through freezes an event-debrief prompt rather
+than the holistic note prompt. Summary output and saved history label purpose and
+state that event completion does not update or establish thesis freshness. Recovery
+receipts compare purpose/event identity. Legacy frozen requests remain unchanged.
+Standalone Lab full-note generation remains its existing holistic-note path; this
+release does not retrofit every note workflow or implement the pending-approval
+handoff. Next: linked processing proposals from completed source-only assignments,
+then exact-revision explicit approval using existing workers. See the revised
+charlie-finish-sequence.md; dashboard expansion follows the connected handoff.
+
+Validation: full safe backend suite, 35 focused assignment tests, 4 purpose tests,
+208 frontend tests, Python compile/build and synthetic full-app 390/1280px event
+form/submission checks pass. Fixtures exercised frozen event dispatch/replay and
+no thesis delivery; no paid research or production processing was submitted.
+
 ## Finish sequence and reporting cadence — October 15
 
 The user authorized the explicit sequence in docs/charlie-finish-sequence.md and
