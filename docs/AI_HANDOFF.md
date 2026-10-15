@@ -37,6 +37,25 @@ live collection-only processing/investor proof and historical-reference schema g
 open. Synthesis remains paused; no duplicate collector or orchestrator.
 Logs: /tmp/charlie-T333-{frontend,backend,build,ui,navigation,deploy,verify}.log.
 
+T333 production verified: Render 37464151f3801032da89254a53a5ece083d20c34;
+Cloudflare 171d2576-e0eb-4fe5-a797-7c4e5662c22c. Exact hosted JavaScript,
+service-worker bytes and HTML marker match. Read-only auth/identity checks passed;
+agent health ok (19 seconds). Activity has no unavailable dependencies, unchanged
+research/audio truncation, CVS running and zero full-note rows. Local fixture
+server stopped; no live work save, generation, original change or investor action.
+
+Additional browser test after the initial two-save recovery scenario sends one
+mocked definitive 409 per width: pending state clears while edits remain retained
+and editable. Final UI log therefore includes three mocked work POSTs per width,
+not live saves. No extra source changes were needed. All intentional files committed.
+
+Next concrete action: give restored/conflicted work drafts a read-only comparison
+against the latest saved work revision, so investors can preserve and reconcile
+edits before choosing a newer baseline. Current 409 handling retains the draft;
+never silently advance record.revision or overwrite newer saved work. Use existing
+workbench/history API; no duplicate workflow or automatic save. Preserve external
+live journey/investor proof and historical-schema gaps; synthesis remains paused.
+
 ## T332 — Saved meeting-follow-up links survive local recovery failure
 
 The follow-up-to-thesis handoff previously read browser submission recovery before
