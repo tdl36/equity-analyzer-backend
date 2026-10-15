@@ -27,6 +27,14 @@ reviewable by date/type/original as the supplemental library, without changing
 frozen requests or selecting evidence automatically. Shared Ready expansion and
 all-eight completion remain behind the documented acceptance evidence.
 
+T318 production verified: Render c0a28a26a48f9ad690e8cc7eba1623597a83c1b9;
+Cloudflare f52db857-27df-45aa-8101-2415f4584e32. Hosted JS/service-worker bytes
+and HTML marker match. Mac-agent health ok (55.9 seconds). Read-only checks passed
+for proposal authentication/invalid-parent refusal, original/library guards and
+existing exact saved proposal identities with wrong-company refusal. No real
+processing proposal was created, approved or cancelled. Logs:
+/tmp/charlie-T318-{frontend,backend,build,ui,deploy,verify}.log.
+
 ## T317 — Meeting-answer submission recovery across reloads
 
 Critical-path recovery increment: before dispatch, meeting-answer proposals now
