@@ -30,6 +30,24 @@ roles/dates (not just generic scope text), preserving existing saved research in
 Do not create another orchestrator or expand the shared dashboard before connected-
 journey proof. Historical schema and broader eight-priority acceptance remain open.
 
+T322 production verified: Render f286797abcadd5f1b058aa14613856f8af4bd223;
+Cloudflare 5c6b5966-3638-4d25-bcbc-4307fc4ef65f. Exact hosted JS/service-worker
+bytes and HTML release marker match. Read-only authentication/identity guards and
+agent health (75.5 seconds) passed. Logs: /tmp/charlie-T322-{focused,renderers,
+backend-final,frontend,build,ui,deploy,verify}.log. Focused CVS read at 19:56:00 UTC:
+assignment running, nested collection queued, zero receipts, no saved issue. This
+read used requestId and did not wake the coordinator. No new live-run acceptance.
+
+Next-action audit confirmed: research_assignments.py adds only generic mixed-pack
+scope to researchInput.question; it does not include per-source frozen roles/dates.
+company_research.py freezes originals without that metadata. The full-note adapter
+pipeline_lab_note_service.assignment_note supplies only thesisBaseline as context.
+Implement a bounded, versioned frozen source-context handoff using existing workers,
+matching exact identities/hashes. Include it in request/plan digests, preserve old
+saved researchInput and note plans on replay, and do not cram an unbounded library
+into the shared report's 12,000-character question. Test drift, purpose separation
+and replay without provider calls. Then inspect genuine authorized run evidence.
+
 ## T321 — Combined selected-evidence review before proposal save
 
 The collection-linked processing form now reviews collected and supplemental
