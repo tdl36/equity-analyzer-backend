@@ -14,7 +14,10 @@ remain enforced by the backend; the UI now refuses incomplete completion claims.
 checks refused a mismatched hash without refreshing inventory or reporting success;
 a subsequent valid receipt preserved unsaved source selections and respected a
 cancelled reload. No API writes or paid research were used in these UI checks.
-Production verification pending. Backend and Mac agent unchanged.
+Verified Render `d77ba2e021399999201e1ed483623db7f681a221`, Cloudflare
+`73048bdc-e4f7-4cc2-b6de-d2d6c64cd97d`, T288 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (67.5 seconds old); endpoint auth checks passed. Backend and
+Mac agent unchanged.
 Next: real source-to-output and investor acceptance remain outstanding; continue
 from the Lab acceptance sequence without launching paid research merely for QA.
 
