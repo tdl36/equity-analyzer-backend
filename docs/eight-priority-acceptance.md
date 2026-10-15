@@ -4,6 +4,12 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T323 carries versioned exact-identity source roles/dates through shared report
+author/reviewer prompts and full-note immutable context. Legacy replay is preserved.
+81 focused, 1,646 full backend and 231 frontend tests pass using synthetic providers.
+This closes a generation-context gap; genuine approved output and investor
+acceptance remain unverified.
+
 T322 carries exact-matched frozen source metadata and saved extraction limitations
 into derivative note/one-pager registers; scope dates now distinguish discovery
 from analytical history. Safe and synthetic layout tests pass; live source-to-output

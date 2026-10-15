@@ -259,6 +259,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                         if not studio and total>160000:raise ValueError('The selected pack exceeds the shared extraction bound. Use a smaller readable pack.')
                         from research_extraction import frozen_source
                         sources.append(frozen_source(d,sha,text,'src-'+digest([sha,d['filename']])))
+                    from research_source_context import attach
+                    sources=attach(sources,row['input'].get('sourceEvidence'),row['input'].get('expectedOriginals'))
                     if studio:
                         from research_source_budget import fit_sources
                         sources=fit_sources(sources)
@@ -312,6 +314,9 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             if data.get('confirmed') is not True:raise ValueError('Confirm the issuer and permitted source use before starting.')
             from lab_source_identity import validate
             expected_originals=validate(data.get('expectedOriginals'),names)
+            from research_source_context import validate as validate_context
+            source_context=validate_context(data.get('sourceEvidence'),expected_originals)
+            if source_context is not None and not studio:raise ValueError('Source context is supported for selected stock research only.')
             studio_options={}
             if studio:
                 from stock_analysis import options
@@ -319,7 +324,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             revision=data.get('revision')
             if type(revision)!=int or revision<0:raise ValueError('Load the current case baseline.')
         except (ValueError,TypeError,AttributeError) as exc:return jsonify(error=str(exc)),400
-        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision,**studio_options,**({'expectedOriginals':expected_originals} if expected_originals is not None else {})})
+        signature=digest({'ticker':ticker,'filenames':sorted(names),'revision':revision,**studio_options,**({'expectedOriginals':expected_originals} if expected_originals is not None else {}),**({'sourceEvidence':source_context} if source_context is not None else {})})
         key=get_key(data.get('apiKey',''))
         from command_thesis_bridge import file_hash
         with get_db(commit=True) as (_,cur):
@@ -349,6 +354,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             except ValueError as exc:return jsonify(error=str(exc)),409
             frozen_input={'filenames':sorted(names),'hashes':hashes}
             if expected_originals is not None:frozen_input['expectedOriginals']=expected_originals
+            if source_context is not None:frozen_input['sourceEvidence']=source_context
             if studio:
                 cur.execute('INSERT INTO mp_companies(ticker,name) VALUES(%s,%s) ON CONFLICT(ticker) DO UPDATE SET ticker=EXCLUDED.ticker RETURNING id,name',(ticker,ticker))
                 company=dict(cur.fetchone())

@@ -45,11 +45,11 @@ class StockPostgresTests(unittest.TestCase):
         subprocess.run([str(PG/'pg_ctl'),'-D',str(cls.root/'db'),'-m','immediate','-w','stop'],check=True,stdout=subprocess.DEVNULL);cls.temp.cleanup()
 
     def setUp(self):
-        self.ticker='T'+uuid.uuid4().hex[:10].upper();self.calls=[]
+        self.ticker='T'+uuid.uuid4().hex[:10].upper();self.calls=[];self.prompts=[]
         with self.db(True) as (_,cur):
             cur.execute('INSERT INTO document_files VALUES(%s,%s,%s,%s,%s::jsonb)',(self.ticker,SOURCE['filename'],base64.b64encode(SOURCE['text'].encode()).decode(),'txt','{}'))
         def ask(prompt,key,tokens,ident,stage):
-            self.calls.append(stage)
+            self.calls.append(stage);self.prompts.append((stage,prompt))
             if getattr(self,'simulate_receipts',False):
                 from research_response_receipts import preserve_response
                 preserve_response({'text':'Synthetic private return '+stage,'stop_reason':'end_turn'})
@@ -217,3 +217,31 @@ class StockPostgresTests(unittest.TestCase):
                 c.execute("SELECT COUNT(*) AS n FROM studio_outputs WHERE source_config->>'stockAnalysisId'=%s",(run['id'],));self.assertEqual(c.fetchone()['n'],0)
         finally:
             with self.db(True) as (_,c):c.execute('DELETE FROM mp_jobs WHERE id=%s',(assignment,))
+
+    def test_frozen_source_context_reaches_author_review_and_exact_replay(self):
+        import hashlib
+        from research_source_context import freeze, GUIDANCE
+        with self.db(True) as (_,cur):cur.execute('ALTER TABLE document_files ADD COLUMN id BIGSERIAL')
+        try:
+            with self.db() as (_,cur):
+                cur.execute('SELECT id::text AS id FROM document_files WHERE ticker=%s',(self.ticker,));ident=cur.fetchone()['id']
+            sha=hashlib.sha256(SOURCE['text'].encode()).hexdigest()
+            self.payload['expectedOriginals']=[{'id':ident,'filename':SOURCE['filename'],'sha256':sha}]
+            self.payload['sourceEvidence']=freeze([{'documentId':ident,'filename':SOURCE['filename'],'sha256':sha}],{ident:{'role':'supplemental','publishedDate':'2024-03-01','publisher':'Frozen publisher','sourceKind':'transcript','referencedBySavedThesis':False}})
+            r=self.client.post(self.url,json=self.payload);self.assertEqual(r.status_code,202,r.json)
+            with self.db(True) as (_,cur):cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE ticker=%s',(json.dumps({'publisher':'LIVE CHANGED METADATA','published':'2026-10-15'}),self.ticker))
+            self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
+            run=self.client.get('/api/research/stock-analysis-run/'+self.payload['requestId']).json
+            self.assertEqual(run['status'],'complete',run.get('error'))
+            self.assertEqual(run['sources'][0]['selectionContext']['publishedDate'],'2024-03-01')
+            self.assertTrue(self.prompts)
+            for stage,prompt in self.prompts:
+                self.assertIn('selectionContext',prompt,stage);self.assertIn('Frozen publisher',prompt,stage);self.assertIn(GUIDANCE,prompt,stage);self.assertNotIn('LIVE CHANGED METADATA',prompt)
+            calls=len(self.calls);self.assertTrue(self.client.post(self.url,json=self.payload).json['replayed'])
+            changed=json.loads(json.dumps(self.payload));changed['sourceEvidence']['sources'][0]['role']='collection'
+            self.assertEqual(self.client.post(self.url,json=changed).status_code,409)
+            self.assertEqual(len(self.calls),calls)
+            changed['requestId']=str(uuid.uuid4());changed['sourceEvidence']['sources'][0]['sha256']='0'*64
+            self.assertEqual(self.client.post(self.url,json=changed).status_code,400)
+        finally:
+            with self.db(True) as (_,cur):cur.execute('ALTER TABLE document_files DROP COLUMN id')

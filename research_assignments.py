@@ -147,6 +147,7 @@ class Coordinator:
                         q+=' Evaluate support and contrary evidence for this earlier thesis. Distinguish changed evidence from changed interpretation; flag items these originals cannot reassess.'
                     state['researchInput']={'requestId':report_id,'filenames':sorted(hashes),'revision':p['caseRevision'],'confirmed':True,'mode':'deep','horizon':p['horizon'],'question':q,'priorId':''}
                     if p.get('labSelection') or p.get('processingProposal'):state['researchInput']['expectedOriginals']=[{'id':r['documentId'],'filename':r['filename'],'sha256':r['sha256']} for r in pack]
+                    if p.get('processingEvidenceContext') is not None:state['researchInput']['sourceEvidence']=p['processingEvidenceContext']
                     state['step']='Starting source-linked research';self.store(ident,state,'running')
                 # Stable request ID: a lost submit response cannot create another paid report.
                 self.call('stock_analysis.submit','POST',state['researchInput'],ticker=ticker)

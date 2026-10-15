@@ -71,6 +71,7 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(len(self.submits), 1)
         research = next(iter(self.submits.values()))
         self.assertEqual(research['expectedOriginals'][0]['sha256'], self.sha)
+        self.assertNotIn('sourceEvidence',research)  # Legacy frozen proposal retains its old request contract.
         self.assertEqual(self.co.read(aid)['status'], 'complete')
         self.assertNotIn('thesisDraftId', self.co.read(aid)['result'])
 
@@ -168,6 +169,14 @@ class ProcessingProposalTests(unittest.TestCase):
         research=next(iter(self.submits.values()))
         self.assertEqual(len(research['expectedOriginals']),2)
         self.assertIn('supplemental stored history',research['question'])
+        evidence=research['sourceEvidence'];self.assertEqual(evidence['version'],1)
+        historical=next(s for s in evidence['sources'] if s['id']==extra)
+        self.assertEqual(historical['role'],'supplemental');self.assertEqual(historical['publishedDate'],'2024-03-01')
+        self.assertEqual(self.row(proposal['id'])['input']['sourceEvidence'],evidence)
+        before=copy.deepcopy(research)
+        with self.db(True) as (_,cur):cur.execute("UPDATE document_files SET metadata='{}'::jsonb WHERE id=%s",(extra,))
+        with self.app.app_context():self.co.advance(aid)
+        self.assertEqual(next(iter(self.submits.values())),before)
         self.assertEqual(self.co.read(aid)['input']['processingSourceContext'],proposal['sourceContext'])
         self.assertIsNone(self.row(child(aid,'collection')))
 

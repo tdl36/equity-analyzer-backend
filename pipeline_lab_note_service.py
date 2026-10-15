@@ -114,9 +114,13 @@ def assignment_note(get_db, ident, assignment, pack):
         if cfg.get('sourcePreparation') is not None:
             from pipeline_lab_note_plan import verify_preparation
             verify_preparation(cfg['sourcePreparation'],prepared)
+        from research_source_context import note_context
+        from lab_source_identity import validate as identity_pack
+        expected_ids=identity_pack([{'id':r['reference'][len('charlie:thesis_'):],'filename':r['filename'],'sha256':r['sha256']} for r in checked['verified']], names)
+        context=note_context(assignment,expected_ids)
         return enqueue(cur,{'noteId':note_id,'ticker':assignment['ticker'],
             'title':assignment['ticker']+(' — '+assignment['researchPurpose']['event']['title'] if assignment.get('researchPurpose',{}).get('kind')=='event_note' else ' — Equity research note'),
-            'context':json.dumps(assignment['thesisBaseline'],default=str),
+            'context':context,
             'promptTemplate':cfg['promptTemplate'],'modelKey':cfg['modelKey'],'maxTokens':32000,
             'sourcePack':prepared['sourcePack'],'representationSha256':prepared['representationSha256'],
             'batchCount':len(prepared['batches']),'warnings':prepared['warnings'],'allowPdfText':cfg['allowPdfText']})

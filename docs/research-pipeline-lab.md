@@ -1,3 +1,38 @@
+## T323 — Frozen per-source context reaches generation
+
+New processing proposals now freeze a versioned source-evidence manifest alongside
+the selected identities and include it in the proposal digest. It records each
+original's collection/supplemental role, publication date, publisher, recorded type
+and thesis-register reference status. The shared report request validates exact
+IDs/names/hashes and includes the manifest in its request fingerprint. Extraction
+attaches that frozen metadata to each source; author and reviewer prompts receive
+it with explicit uncertainty and untrusted-evidence guidance. Live library metadata
+cannot replace the approved dates/roles. Metadata is not placed in the bounded
+free-text investor question or duplicated in the author context.
+
+The full-note adapter uses the same manifest in its immutable context; existing
+plan and call-prompt hashes protect replay. Saved report inputs and existing note
+plans are reused unchanged. Legacy proposals without this versioned manifest keep
+their previous contract and prompts. Source metadata is bounded at 128 KB; full-note
+context is checked against its existing 500 KB bound at proposal save. These are
+processing bounds, not a collection-library limit. No new worker or paid stage.
+
+Validation: 81 focused tests cover exact identity/metadata mismatch, invalid dates,
+unknowns, bounds, metadata drift, proposal-to-coordinator handoff, prompt delivery to
+synthetic authors/reviewers, immutable full-note replay and legacy compatibility.
+Full safe backend suite (1,646), frontend suite (231), compilation and production
+build pass. All provider execution used injected fixtures; no real generation, approval,
+acceptance or collection commands were issued. Screen layout is unchanged.
+
+Next critical path: inspect genuine collection receipts when available, verify a
+new processing proposal carries the frozen manifest, and observe expressly approved
+generation/saved outputs. Before more dashboard work, audit new saved draft notes
+for clear event/thesis purpose and source-date/role visibility in their review view;
+metadata delivered to a model is not evidence that its final note retained it.
+Continue independent fixes while external collection/investor evidence is pending.
+Shared-dashboard expansion, historical schema and eight-priority acceptance remain
+open; automatic synthesis remains paused and original Pipeline is preserved.
+
 ## T322 — Frozen source provenance reaches derivative outputs
 
 New summary notes, stock summaries and both one-pager renderers now carry frozen

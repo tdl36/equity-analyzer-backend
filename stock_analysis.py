@@ -102,6 +102,8 @@ def generate(state,sources,baseline,ask,save,check,inputs):
     state=copy.deepcopy(state)
     if state.get('inFlight'):raise ValueError('Previous call outcome is unknown. Explicit retry acknowledgement is required.')
     mode=inputs['mode']
+    from research_source_context import GUIDANCE
+    source_guidance=GUIDANCE if inputs.get('sourceEvidence') is not None else ''
     for i,group in enumerate(GROUPS):
         key='report-'+str(i)
         if key not in state.get('completed',[]):
@@ -130,9 +132,9 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                          +('Snapshot: concise, at most two entries per array, one sentence per field. ' if mode=='snapshot' else
                            'Detailed research: at most four entries per array, six historical periods and ten diligence questions. ')
                          +'Investor focus and horizon are context, not source facts.\nSCHEMA: '+json.dumps({k:SCHEMA['properties'][k] for k in group})+
-                         '\nCONTEXT: '+json.dumps({k:v for k,v in inputs.items() if k not in ('hashes','filenames')})+
+                         '\nCONTEXT: '+json.dumps({k:v for k,v in inputs.items() if k not in ('hashes','filenames','sourceEvidence')})+
                          ' Source coverage metadata identifies omitted text and OCR limitations. Treat omissions as evidence gaps, never as proof of absence; do not claim full-document review. '
-                         '\nFROZEN CASE: '+json.dumps(baseline)+'\nORIGINALS: '+json.dumps(sources))
+                         +source_guidance+'\nFROZEN CASE: '+json.dumps(baseline)+'\nORIGINALS: '+json.dumps(sources))
             if i==0 and state.get('qualityRevisions'):
                 previous=state['qualityRevisions'][-1]
                 feedback=[{'field':p,'reason':c.get('reviewReason','Source match failed'),
@@ -165,7 +167,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                     'the field. Distinguish assumptions from reported facts. Flag unsupported arithmetic, consensus, peers '
                     'and any claim that a thesis breaker is triggered without evidence. Do not rewrite. '
                     'Return {"findings":[{"claimId":"exact field path","status":"supported|needs_review","reason":"specific reason"}]} '
-                    'with exactly one finding per field. Keep each reason under 180 characters.\nFIELDS: '+json.dumps(subset)+'\nORIGINALS: '+json.dumps(sources),7000,key)
+                    'with exactly one finding per field. Keep each reason under 180 characters.\nFIELDS: '+json.dumps(subset)+('\n'+source_guidance if source_guidance else '')+'\nORIGINALS: '+json.dumps(sources),7000,key)
                 state.setdefault('responses',{})[key]=review;state.pop('inFlight',None);save(state)
                 reviewed=apply_review([{'id':'fields','claims':subset}],review)[0]['claims']
                 state['citations'].update({c['id']:c for c in reviewed})

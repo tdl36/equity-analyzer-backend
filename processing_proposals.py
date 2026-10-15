@@ -60,6 +60,8 @@ def dispatch(cur, proposed_plan, ident):
         proposed_plan['labNotePlan'] = frozen['labNotePlan']
     if frozen.get('sourceContext'):
         proposed_plan['processingSourceContext'] = frozen['sourceContext']
+    if frozen.get('sourceEvidence') is not None:
+        proposed_plan['processingEvidenceContext'] = frozen['sourceEvidence']
     cur.execute("UPDATE mp_jobs SET status='dispatched',result=%s::jsonb,updated_at=NOW() WHERE id=%s", (json.dumps({'assignmentId': ident}), row['id']))
     return pack
 
@@ -178,7 +180,11 @@ def register(co):
                     if len({s['sha256'] for s in sources}) != len(sources):
                         raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
                     frozen['sourceContext'] = context(cur, parent['ticker'], sources, filenames, baseline_package)
+                    from research_source_context import freeze as freeze_source_context
+                    frozen['sourceEvidence'] = freeze_source_context(sources, frozen['sourceContext'])
                 if note_config is not None:
+                    from research_source_context import note_context
+                    note_context({'processingEvidenceContext':frozen.get('sourceEvidence'),'thesisBaseline':baseline_package}, [{'id':s['documentId'],'filename':s['filename'],'sha256':s['sha256']} for s in sorted(sources,key=lambda s:s['filename'])])
                     from processing_proposal_note import source_plan
                     note_config['sourcePreparation'] = source_plan(cur, parent['ticker'], sources, note_config)
                     frozen['labNotePlan'] = note_config
