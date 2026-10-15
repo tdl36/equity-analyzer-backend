@@ -17,6 +17,12 @@ that overview reads resume on navigation, and that returning isolates those erro
 No submission or API write was made. Earlier read-only live Home/Lab/Ready checks
 at both widths reported no request/page errors or document overflow; these are
 screen checks, not collection/generation or investor-quality acceptance.
+T306 verified in production: Render 7033b812e17f4f1ec719449a8276b0467f856258;
+Cloudflare 70c52ff2-1503-47e7-b591-a5587765ea03. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac agent healthy at 74.1 seconds. Original access
+checks pass. Read-only production-backed checklist loaded four proposals at both
+390/1280px with zero API/page errors, overflow or writes. Nothing was processed.
+
 Next: continue saved-object journeys and complete long-content/error-state
 acceptance; keep automatic synthesis paused and Operations collection separate.
 
