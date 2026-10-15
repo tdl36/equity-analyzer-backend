@@ -22,6 +22,12 @@ Validation: full safe backend suite, 35 focused assignment tests, 4 purpose test
 form/submission checks pass. Fixtures exercised frozen event dispatch/replay and
 no thesis delivery; no paid research or production processing was submitted.
 
+T307 production verified: Render e45e516271fd7b612f4efe3aedb46e5e5fd0fecb;
+Cloudflare 40451eec-1784-4060-922d-74394fdfb0fe. Hosted JS/service worker bytes
+and HTML marker match; agent healthy at 3.7 seconds. Original authentication and
+missing-identity refusal pass. Full suite passed 1,563 tests; final focused purpose
+and assignment checks passed 39 after the additional replay test/event-date guard.
+
 ## Finish sequence and reporting cadence — October 15
 
 The user authorized the explicit sequence in docs/charlie-finish-sequence.md and
