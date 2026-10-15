@@ -249,6 +249,7 @@ export function ResearchAssignment({
     var d = await request('assignments?requestId=' + encodeURIComponent(body.requestId));
     var found = assignmentRows(d, ticker).find(j => j.id === body.requestId && j.ticker === ticker);
     if (!found) throw Error('No saved assignment found yet. Retry the exact saved request below; its dates, origin and outputs remain frozen.');
+    if (!matchingReceipt(found, body)) throw Error('The saved assignment does not match the frozen request. Keep this recovery request and inspect its company, dates, sources and output choices before proceeding.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
     return 'Saved assignment found (' + found.status + '). Submission reconciled without starting research again.';

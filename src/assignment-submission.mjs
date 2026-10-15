@@ -19,4 +19,22 @@ export function clearSubmission(storage,key,body){
  if(saved&&saved.requestId!==body.requestId)throw Error('A different assignment request is pending. Reload before continuing.');
  storage.removeItem(key);
 }
-export function matchingReceipt(data,body){return data?.id===body.requestId;}
+// Compare frozen user choices, not server-added execution state. Keep an ambiguous
+// intent until both its identity and normalized plan are present in the receipt.
+const stable=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+function receiptPlan(value,receipt=false){
+ if(!value||typeof value!=='object'||!Array.isArray(value.outputs)||typeof value.ticker!=='string'||typeof value.since!=='string'||typeof value.until!=='string')return null;
+ if(receipt&&(typeof value.horizon!=='string'||typeof value.instruction!=='string'))return null;
+ if(value.outputs.some(x=>typeof x!=='string')||new Set(value.outputs).size!==value.outputs.length)return null;
+ if(['visualFundamentals','collectionOnly'].some(k=>value[k]!==undefined&&typeof value[k]!=='boolean'))return null;
+ const out={ticker:value.ticker.trim().toUpperCase(),since:value.since,until:value.until,outputs:[...value.outputs].sort(),horizon:(value.horizon??'12–24 months').trim(),instruction:(value.instruction??'').trim(),visualFundamentals:value.visualFundamentals??false,collectionOnly:value.collectionOnly??false};
+ for(const field of ['meeting','origin','labSelection','labFullNote'])if(value[field]!==undefined)out[field]=value[field];
+ return out;
+}
+export function matchingReceipt(data,body){
+ try{
+  if(data?.id!==body.requestId||data.ticker!==body.ticker.trim().toUpperCase())return false;
+  const saved=receiptPlan(data.input,true),requested=receiptPlan(body);
+  return !!saved&&!!requested&&stable(saved)===stable(requested);
+ }catch{return false;}
+}

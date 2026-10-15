@@ -2,6 +2,24 @@
 
 Updated: October 14, 2026
 
+## T287 — Bind submission recovery to the frozen assignment plan
+
+Assignment submission receipts and read-only reconciliation now require matching
+company, dates, output set, focus/horizon, public-data choice, source-only choice,
+Lab selection/version/digest, full-note representation choice, meeting settings
+and refresh origin. Matching just the request ID no longer clears pending intent.
+Server-generated execution fields are ignored; documented whitespace/output-order
+normalization and omitted false choices are supported. Missing or mismatched plans
+retain the exact request for inspection without dispatching replacement research.
+
+194 frontend tests, model policy and build passed. Synthetic desktop/390px checks
+verified that a same-ID/different-output receipt preserves recovery, then a matching
+receipt clears it through GET reconciliation with zero writes. Production
+verification pending. Backend/agent unchanged; no paid QA or approvals.
+Next: actual source-to-output acceptance still requires an authorized real request
+and investor review. Historical valuation stays at its documented provider-schema
+checkpoint. Continue independent recovery/receipt consistency review as needed.
+
 ## T286 — Open Lab directly from a ticker
 
 Lab now accepts a ticker directly even when it is absent from the stock cards.
