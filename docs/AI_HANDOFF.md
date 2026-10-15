@@ -28,6 +28,26 @@ processing authorization and investor acceptance remain unproven; historical
 reference schema remains unavailable. Original Pipeline and backfill pause remain.
 Logs: /tmp/charlie-T330-{frontend,backend,build,ui,deploy,verify}.log.
 
+T330 production verified: Render bf0aea6129fb46e0aea88b39fca0c16e77db28d8;
+Cloudflare 7a44dcff-8d5b-49ec-a875-48ee47113f6b. Exact hosted JavaScript,
+service-worker bytes and HTML marker match. Read-only auth/identity guards passed;
+agent health was ok (7.7 seconds). Activity had no unavailable dependencies, the
+same research/audio truncation, CVS running and zero full-note rows. No archive
+rescan, collection dispatch, paid generation or investor action occurred.
+
+Adjacent collected-inventory audit completed with actual components and fixture
+GETs at 390/1280px: service failure, incomplete receipt rows and mismatched hashes
+all retain choices, block saving and recover after a valid refresh. Existing guards
+work; do not rebuild this path. All intentional source/generated changes are committed.
+
+Next durable action: continue company-workspace acceptance for saved objects and
+navigation/unsaved edits, including transitions between longitudinal thesis and
+event-note proposal setup. Identify a demonstrated functional gap before editing;
+retain existing source, recovery and purpose machinery. The new single-stock
+collection-only -> authorized processing -> saved-output proof is still pending
+real completion/authorization; it cannot be fabricated with synthetic data or by
+replaying legacy ABT/UNH. Broader shared-dashboard expansion remains deferred.
+
 ## T329 — Server proposals stay readable when browser recovery fails
 
 Processing-proposal reads no longer depend on browser recovery storage. Verified
