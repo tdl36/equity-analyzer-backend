@@ -209,6 +209,32 @@ function LabStock({
       block: 'start'
     });
   };
+  var downloadOriginal = async row => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      var r = await fetch(api + `/api/pipeline-lab/original/${encodeURIComponent(ticker)}/${encodeURIComponent(row.id)}`, {
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!r.ok) {
+        var d = await r.json();
+        throw Error(d.error || 'Original unavailable.');
+      }
+      var url = URL.createObjectURL(await r.blob());
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = row.filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    } finally {
+      lock.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
   var compare = async () => {
     if (lock.current) return;
     lock.current = true;
@@ -512,7 +538,10 @@ function LabStock({
     }
   }, /*#__PURE__*/React.createElement("label", {
     htmlFor: `lab-source-${r.key}`
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, r.typeRecorded ? ' (recorded)' : ' (suggested)', " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : '', r.author ? ' · ' + r.author : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, r.typeRecorded ? ' (recorded)' : ' (suggested)', " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : '', r.author ? ' · ' + r.author : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), r.location === 'Charlie' && String(r.id).startsWith('thesis_') && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => downloadOriginal(r)
+  }, "Download original for review")), /*#__PURE__*/React.createElement("details", {
     style: {
       marginTop: 8
     }

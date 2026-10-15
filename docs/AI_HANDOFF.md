@@ -2,6 +2,21 @@
 
 Updated: October 14, 2026
 
+## T280 — Inspect originals from the Lab picker
+
+Stored thesis originals in Lab now have a download-for-review action, using the
+exact storage ID and company scope rather than filename matching. The read-only
+endpoint applies existing original eligibility/15 MB bounds, checks stored bytes,
+returns the unchanged attachment and its SHA-256, and uses no-store/nosniff/sandbox
+headers. Existing central authentication applies. Missing, malformed or excluded
+originals fail visibly. Research-storage and iCloud-only sources still need their
+existing explicit import before this action is available. No files move and no
+analysis, extraction or model call occurs from reviewing an original.
+
+Validation and deployment verification pending. Next: real source-quality and
+investor acceptance evidence; historical valuation remains at its documented
+security-mapping provider-schema/assignment-locked storage checkpoint.
+
 ## T279 — Collected-source follow-through
 
 While Lab assignment controls are open, a newly completed browser-source assignment

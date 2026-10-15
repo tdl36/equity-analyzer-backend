@@ -68,3 +68,33 @@ class OriginalChecks(unittest.TestCase):
         self.assertEqual(r.status_code,200);self.assertEqual(r.json['blockers'],[])
         self.assertTrue(r.json['generationAvailable']);self.assertEqual(calls[-1][1],('ABT',['5']))
         self.assertNotIn('file_data',r.get_data(as_text=True));self.assertIn('no-store',r.headers['Cache-Control'])
+
+class OriginalDownload(unittest.TestCase):
+    def test_exact_scoped_bytes_and_failures_without_writes(self):
+        import hashlib
+        calls=[]
+        rows={('ABT','1'):{'filename':'same.pdf','file_data':'YQ==','metadata':{}},
+              ('ABT','2'):{'filename':'same.pdf','file_data':'Yg==','metadata':{}},
+              ('ABT','3'):{'filename':'bad.pdf','file_data':'%%%','metadata':{}},
+              ('ABT','4'):{'filename':'restricted.pdf','file_data':'YQ==','metadata':{'usage':'reference_only'}}}
+        class Cursor:
+            def execute(self,sql,args):
+                self.args=args;calls.append(args)
+                assert 'id::text=%s' in sql and 'ticker=%s' in sql
+            def fetchone(self):return rows.get(self.args)
+        @contextmanager
+        def db(commit=False):
+            self.assertFalse(commit);yield None,Cursor()
+        app=Flask('original');app.register_blueprint(create_blueprint(db));client=app.test_client()
+        for ident,raw in [('1',b'a'),('2',b'b')]:
+            r=client.get('/api/pipeline-lab/original/ABT/thesis_'+ident)
+            self.assertEqual(r.status_code,200);self.assertEqual(r.data,raw)
+            self.assertEqual(r.headers['X-Original-SHA256'],hashlib.sha256(raw).hexdigest())
+            self.assertIn('attachment',r.headers['Content-Disposition']);self.assertIn('no-store',r.headers['Cache-Control'])
+            self.assertEqual(r.headers['X-Content-Type-Options'],'nosniff')
+        self.assertEqual(client.get('/api/pipeline-lab/original/UNH/thesis_1').status_code,404)
+        for ident in ('3','4'):self.assertEqual(client.get('/api/pipeline-lab/original/ABT/thesis_'+ident).status_code,409)
+        count=len(calls)
+        for path in ('/ABT/research_1','/ABT/thesis_0','/ABT/thesis_1?filename=same.pdf'):
+            self.assertEqual(client.get('/api/pipeline-lab/original'+path).status_code,400)
+        self.assertEqual(len(calls),count)

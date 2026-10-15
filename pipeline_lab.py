@@ -94,6 +94,33 @@ def create_blueprint(get_db):
         response.headers['Cache-Control'] = 'private, no-store'
         return response
 
+    @bp.get('/api/pipeline-lab/original/<ticker>/<source_id>')
+    def original(ticker, source_id):
+        # Exact storage identity and company scope; no filename fallback or model call.
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}', ticker) or not re.fullmatch(r'thesis_[1-9][0-9]{0,18}', source_id):
+            return jsonify(error='Choose a supported stored original identity.'), 400
+        if request.args:
+            return jsonify(error='Original downloads do not accept query options.'), 400
+        with get_db() as (_, cur):
+            cur.execute("SELECT filename,metadata,CASE WHEN octet_length(file_data)<=20000000 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND id::text=%s", (ticker, source_id[7:]))
+            document = cur.fetchone()
+        if not document:
+            return jsonify(error='Stored original not found for this company.'), 404
+        ref = 'charlie:' + source_id
+        checked = check_originals(ticker, 'note', 0, [ref], {ref: document})
+        if checked['blockers']:
+            return jsonify(error=' '.join(checked['blockers'])), 409
+        from flask import send_file
+        from io import BytesIO
+        from werkzeug.utils import secure_filename
+        raw = base64.b64decode(document['file_data'], validate=True)
+        response = send_file(BytesIO(raw), mimetype='application/octet-stream', as_attachment=True,
+                             download_name=secure_filename(document['filename']) or 'original', conditional=False, max_age=0)
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
+        response.headers['X-Original-SHA256'] = checked['verified'][0]['sha256']
+        return response
+
     @bp.route('/api/pipeline-lab/config/<ticker>', methods=['GET', 'PUT'])
     def settings(ticker):
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}', ticker):
