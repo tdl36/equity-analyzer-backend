@@ -1,0 +1,52 @@
+import * as React from 'react';
+import {routeHash} from './workspace-model.mjs';
+import {assignmentOutputs} from './assignment-defaults.mjs';
+
+export function ProcessingProposals({api,job}){
+ const [open,setOpen]=React.useState(false);
+ return <details onToggle={e=>setOpen(e.currentTarget.open)}><summary>Choose sources &amp; prepare processing approval</summary>{open&&<ProposalReview api={api} job={job}/>}</details>;
+}
+function ProposalReview({api,job}){
+ const [selected,setSelected]=React.useState([]),[purpose,setPurpose]=React.useState('thesis_review'),[title,setTitle]=React.useState(''),[eventDate,setEventDate]=React.useState(''),[outputs,setOutputs]=React.useState(['thesis']),[instruction,setInstruction]=React.useState('');
+ const [rows,setRows]=React.useState([]),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[loaded,setLoaded]=React.useState(false),[pending,setPending]=React.useState(null);
+ const lock=React.useRef(false),live=React.useRef(true);
+ const key='charlie-processing-proposal:'+api+':'+job.id;
+ const path='/api/research/assignments/'+job.id+'/processing-proposals';
+ const call=async(url,body)=>{const response=await fetch(api+url,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let data;try{data=await response.json();}catch{throw Error('Response unavailable. Refresh saved proposals before retrying.');}if(!response.ok){const e=Error(data.error||'Processing proposals unavailable');e.status=response.status;throw e;}return data;};
+ const refresh=async()=>{const data=await call(path);if(!Array.isArray(data.proposals))throw Error('Proposal list unavailable. No processing was requested.');if(live.current){setRows(data.proposals);setLoaded(true);}const raw=sessionStorage.getItem(key);if(raw){const saved=JSON.parse(raw);if(data.proposals.some(p=>p.id===saved.requestId)){sessionStorage.removeItem(key);if(live.current)setPending(null);}}};
+ React.useEffect(()=>{live.current=true;try{const raw=sessionStorage.getItem(key);if(raw)setPending(JSON.parse(raw));}catch{setError('Saved submission could not be read. Inspect saved proposals before creating another.');return;}refresh().catch(e=>live.current&&setError(e.message));return()=>{live.current=false;};},[key]);
+ const act=async fn=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();await refresh();}catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
+ const save=()=>act(async()=>{
+  const body=pending||{requestId:crypto.randomUUID(),filenames:[...selected].sort(),plan:{researchPurpose:purpose==='event_note'?{kind:purpose,event:{title:title.trim(),date:eventDate}}:{kind:purpose},outputs:[...outputs].sort(),instruction,horizon:'12–24 months'}};
+  sessionStorage.setItem(key,JSON.stringify(body));setPending(body);
+  try{const receipt=await call(path,body);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');sessionStorage.removeItem(key);setPending(null);}
+  catch(e){if(e.status===409){sessionStorage.removeItem(key);setPending(null);}throw e;}
+ });
+ return <section aria-label="Processing approval" style={{padding:'12px 0',overflowWrap:'anywhere'}}>
+  <p><strong>Collected library → selected evidence → your processing approval</strong></p>
+  <p>Collection searched {job.input.since} through {job.input.until}. This is collection coverage, not proof that the accepted thesis incorporates these documents. Saving a proposal spends no research credits.</p>
+  {error&&<p role="alert">{error}</p>}
+  <button disabled={busy} onClick={()=>act(async()=>{})}>Refresh saved proposals</button>
+  {pending&&<p role="status">A proposal submission is unresolved. Refresh to find its receipt, or retry the same saved submission below. Its choices are frozen.</p>}
+  <fieldset disabled={busy||!loaded||!!pending}>
+   <legend>Select evidence and purpose</legend>
+   <label>Processing purpose<select aria-label="Processing purpose" value={purpose} onChange={e=>{setPurpose(e.target.value);setOutputs(e.target.value==='event_note'?['summary_note']:['thesis']);}}><option value="thesis_review">Thesis review · longitudinal</option><option value="event_note">Event note · specific catalyst</option></select></label>
+   <p>{purpose==='thesis_review'?'Review the full investment case over time. This selection contains collected documents only; if foundational evidence is missing, use the wider Lab source library before requesting a holistic update.':'Debrief an identified event with contextual history. This does not change the thesis or mark it current. Thesis implications need a separate proposal.'}</p>
+   {purpose==='event_note'&&<div className="sa-form-grid"><label>Event title<input aria-label="Processing event title" maxLength={200} value={title} onChange={e=>setTitle(e.target.value)}/></label><label>Event date<input aria-label="Processing event date" type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)}/></label></div>}
+   <p>{selected.length} of {job.result.sources.length} originals selected · none selected automatically. Up to 15 MB per original and 60 MB per processing pack; collection itself can be larger.</p>
+   <div style={{maxHeight:280,overflow:'auto',border:'1px solid var(--border-color,#d8dedd)',padding:12}}>{job.result.sources.map(s=><label className="sa-check" key={s.filename} style={{display:'flex',alignItems:'start',gap:8,padding:'6px 0'}}><input type="checkbox" checked={selected.includes(s.filename)} onChange={e=>setSelected(p=>e.target.checked?[...p,s.filename]:p.filter(n=>n!==s.filename))}/><span>{s.filename}</span></label>)}</div>
+   <div className="sa-form-grid">{assignmentOutputs.filter(([id])=>id!=='meeting_prep'&&(purpose!=='event_note'||id==='summary_note')).map(([id,label])=><label className="sa-check" key={id}><input type="checkbox" checked={outputs.includes(id)} onChange={e=>setOutputs(p=>e.target.checked?[...p,id]:p.filter(n=>n!==id))}/>{label}</label>)}</div>
+   <label>Focus and evidence gaps<textarea rows={3} maxLength={1800} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label>
+  </fieldset>
+  <button disabled={busy||!loaded||(!pending&&(!selected.length||!outputs.length||(purpose==='event_note'&&(!title.trim()||!eventDate))))} onClick={save}>{pending?'Retry saved proposal submission':'Save proposal · no generation'}</button>
+  <p><small>Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.</small></p>
+  {!loaded?<p>Loading saved proposals…</p>:!rows.length?<p>No saved processing proposals for this collection.</p>:rows.map(p=><article key={p.id} style={{borderTop:'1px solid var(--border-color,#d8dedd)',padding:'14px 0'}}>
+   <strong>{p.plan.researchPurpose.kind==='event_note'?p.plan.researchPurpose.event.title:'Longitudinal thesis review'}</strong> · {p.status}
+   <p>{p.plan.researchPurpose.kind==='event_note'?`Event ${p.plan.researchPurpose.event.date} · `:''}{p.sources.length} verified originals at save · {p.plan.outputs.map(id=>assignmentOutputs.find(x=>x[0]===id)?.[1]||id).join(', ')}</p>
+   {p.plan.instruction&&<p>{p.plan.instruction}</p>}
+   <details><summary>Frozen sources and scope</summary><p>Revision {p.revision}. Collection {p.plan.since}–{p.plan.until}. Sources and baseline will be checked again before dispatch.</p><ul>{p.sources.map(s=><li key={s.documentId}><a href={api+'/api/pipeline-lab/original/'+encodeURIComponent(p.ticker)+'/thesis_'+s.documentId} target="_blank" rel="noreferrer">{s.filename}</a> · {(s.bytes/1000000).toFixed(2)} MB</li>)}</ul></details>
+   {p.status==='pending'&&<><button className="workspace-primary" disabled={busy} onClick={()=>act(async()=>{await call('/api/research/processing-proposals/'+p.id+'/approve',{revision:p.revision,digest:p.digest});})}>Approve processing · uses research credits</button> <button disabled={busy} onClick={()=>act(async()=>{await call('/api/research/processing-proposals/'+p.id+'/cancel',{revision:p.revision,digest:p.digest});})}>Cancel proposal</button></>}
+   {p.assignmentId&&<p><a href={routeHash('stockanalysis',p.ticker,'stock-analysis','assignment:'+p.assignmentId)}>Open saved processing job and outputs</a></p>}
+  </article>)}
+ </section>;
+}

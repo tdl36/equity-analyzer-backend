@@ -34,6 +34,8 @@ class Coordinator:
         self.lock=threading.Lock();self.bp=Blueprint('research_assignments',__name__)
         self.lab_note_defaults=None;self.lab_note_dispatch=None;self.lab_note_stop=None
         self.routes()
+        from processing_proposals import register
+        register(self)
     def read(self,ident):
         with self.db() as (_,cur):
             cur.execute('SELECT * FROM mp_jobs WHERE id=%s AND stage=%s',(ident,STAGE));r=cur.fetchone()
@@ -70,9 +72,9 @@ class Coordinator:
             p=obj(row['input']);state=obj(row['result']);ticker=row['ticker']
             state.pop('delayWarning',None)
             try:
-                if p.get('labSelection'):
+                if p.get('labSelection') or p.get('processingProposal'):
                     pack=p.get('labPack',[])
-                    state['sourceMode']='saved_lab_selection'
+                    state['sourceMode']='approved_collection_selection' if p.get('processingProposal') else 'saved_lab_selection'
                 else:
                     with self.db() as (_,cur):
                         cur.execute("SELECT status,result,error,created_at FROM mp_jobs WHERE id=%s AND stage='collection_control'",(child(ident,'collection'),));command=cur.fetchone()
@@ -130,7 +132,7 @@ class Coordinator:
                     self.store(ident,state,'complete');return
                 if not state.get('researchInput'):
                     state['sources']=pack
-                    q=('Research from explicitly selected stored originals; no new external collection was performed. Requested context window '+p['since']+' through '+p['until']+'. ' if p.get('labSelection') else 'Research evidence collected '+p['since']+' through '+p['until']+'. ')+p['instruction']+' Distinguish source dates, financial periods, forecasts and interpretation. Identify evidence gaps; do not infer current price or consensus.'
+                    q=('Research from explicitly selected stored originals; no new external collection was performed. Requested context window '+p['since']+' through '+p['until']+'. ' if (p.get('labSelection') or p.get('processingProposal')) else 'Research evidence collected '+p['since']+' through '+p['until']+'. ')+p['instruction']+' Distinguish source dates, financial periods, forecasts and interpretation. Identify evidence gaps; do not infer current price or consensus.'
                     from research_purpose import context
                     q+=context(p.get('researchPurpose'))
                     if p['thesisBaseline']['baseline']['mode']=='upgrade':
@@ -139,7 +141,7 @@ class Coordinator:
                         q+=' [Context truncated; consult the saved baseline for omitted items.]' if len(context)>8000 else ''
                         q+=' Evaluate support and contrary evidence for this earlier thesis. Distinguish changed evidence from changed interpretation; flag items these originals cannot reassess.'
                     state['researchInput']={'requestId':report_id,'filenames':sorted(hashes),'revision':p['caseRevision'],'confirmed':True,'mode':'deep','horizon':p['horizon'],'question':q,'priorId':''}
-                    if p.get('labSelection'):state['researchInput']['expectedOriginals']=[{'id':r['documentId'],'filename':r['filename'],'sha256':r['sha256']} for r in pack]
+                    if p.get('labSelection') or p.get('processingProposal'):state['researchInput']['expectedOriginals']=[{'id':r['documentId'],'filename':r['filename'],'sha256':r['sha256']} for r in pack]
                     state['step']='Starting source-linked research';self.store(ident,state,'running')
                 # Stable request ID: a lost submit response cannot create another paid report.
                 self.call('stock_analysis.submit','POST',state['researchInput'],ticker=ticker)
@@ -291,8 +293,12 @@ class Coordinator:
                         from pipeline_lab import resolve_selection
                         try:p['labPack']=resolve_selection(cur,p['ticker'],p['labSelection'])
                         except ValueError as exc:return jsonify(error=str(exc)),409
-                    cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,STAGE,p['ticker'],json.dumps(p),json.dumps({'step':'Preparing saved Lab originals' if p.get('labSelection') else 'Waiting for Mac collection'})))
-                    if not p.get('labSelection'):
+                    if p.get('processingProposal'):
+                        from processing_proposals import dispatch
+                        try:p['labPack']=dispatch(cur,p,ident)
+                        except ValueError as exc:return jsonify(error=str(exc)),409
+                    cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,STAGE,p['ticker'],json.dumps(p),json.dumps({'step':'Preparing approved originals' if (p.get('labSelection') or p.get('processingProposal')) else 'Waiting for Mac collection'})))
+                    if not (p.get('labSelection') or p.get('processingProposal')):
                         command={'action':'research_assignment','payload':{k:v for k,v in p.items() if k not in ('thesisBaseline','caseRevision','fingerprint')}}
                         command['payload']['assignmentId']=ident
                         cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb)",(child(ident,'collection'),p['ticker'],json.dumps(command)))
@@ -406,7 +412,7 @@ class Coordinator:
                         if obj(row['input']).get('labFullNote'):
                             self.lab_note_stop(cur,child(ident,'full-lab-note'))
                         cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s",(ident,))
-                        if not obj(row['input']).get('labSelection'):
+                        if not (obj(row['input']).get('labSelection') or obj(row['input']).get('processingProposal')):
                             cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s AND status='queued'",(child(ident,'collection'),))
                             cid=child(ident,'cancel-collection');payload={'action':'cancel_assignment','payload':{'ticker':row['ticker'],'assignmentId':ident}}
                             cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb) ON CONFLICT(id) DO NOTHING",(cid,row['ticker'],json.dumps(payload)))

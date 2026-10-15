@@ -64,4 +64,16 @@ def plan(data):
     if 'researchPurpose' in data:
         from research_purpose import validate
         result['researchPurpose']=validate(data['researchPurpose'],outputs,result.get('labSelection'))
+    if 'processingProposal' in data:
+        import uuid
+        ref=data['processingProposal']
+        if (not isinstance(ref,dict) or set(ref)!={'id','revision','digest'}
+                or type(ref['revision']) is not int or ref['revision']!=1
+                or not isinstance(ref['digest'],str) or not re.fullmatch(r'[0-9a-f]{64}',ref['digest'])):
+            raise ValueError('Choose an exact saved processing proposal.')
+        try:ident=str(uuid.UUID(ref['id']))
+        except (ValueError,TypeError,AttributeError):raise ValueError('Invalid processing proposal identity.')
+        if any(k in data for k in ('labSelection','collectionLimit','origin')) or collection_only or 'researchPurpose' not in result:
+            raise ValueError('A processing proposal uses its own purpose and frozen originals.')
+        result['processingProposal']={**ref,'id':ident}
     return result

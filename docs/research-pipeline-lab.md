@@ -1,3 +1,21 @@
+## T308 collection-to-processing handoff
+
+After a source-only assignment completes, open its coordinated assignment controls
+(or saved assignment) and “Choose sources & prepare processing approval.” Select
+originals explicitly, choose longitudinal thesis review or a dated event note, and
+save a proposal. This does not generate research. A separate approval starts the
+existing coordinator from the exact checked sources and baseline; cancelled/stale
+proposals cannot dispatch. Repeated approval returns the same job. Follow its saved
+job/output link; research acceptance remains separate. No new browser collection is
+created and automatic synthesis remains paused during backfill.
+
+This first form uses originals from that collection, not the entire library; review
+foundational history in the wider Lab before a holistic thesis update when needed.
+Collection dates are not accepted-thesis coverage. Full-note/meeting configuration
+in this approval form and integration into Ready to process remain open. Existing
+Lab note/meeting paths remain available. Synthetic checks establish mechanics, not
+live investment-quality acceptance.
+
 ## T304 source-selection recovery
 
 Unsaved thesis and note selections survive reload/navigation in the same browser

@@ -28,13 +28,16 @@ event full-note prompt and saved-output labeling. Legacy frozen requests retain
 original behavior. This is the purpose foundation, not completion of the approval
 handoff or purpose classification of all legacy/standalone note paths.
 
-Next concrete implementation: a collection-only completion can create a linked,
+T308 implements the first linked handoff: a collection-only completion can create a linked,
 durable processing proposal with selected original identities/hashes, purpose,
 output choices, source/config revision, baseline references and explicit blockers.
 Do not mutate the completed request's authorization or silently select every file.
 Approval freezes the exact proposal revision and dispatches existing workers once.
 Protect concurrent changes, reloads, lost responses and ambiguous paid outcomes.
-A changed proposal needs fresh authorization. Merely viewing a proposal starts no
+A changed proposal needs fresh authorization. The initial UI selects from the completed
+collection only; wider-library foundation selection and full-note/meeting choices
+in this handoff UI remain open. Next prove the connected journey with genuine
+request-specific processing authorization before shared-dashboard expansion. Merely viewing a proposal starts no
 research. A raw library or unverified selection is not ready to run.
 
 Acceptance: collect -> review sources/purpose/outputs -> authorize processing ->

@@ -28,7 +28,7 @@ function receiptPlan(value,receipt=false){
  if(value.outputs.some(x=>typeof x!=='string')||new Set(value.outputs).size!==value.outputs.length)return null;
  if(['visualFundamentals','collectionOnly'].some(k=>value[k]!==undefined&&typeof value[k]!=='boolean'))return null;
  const out={ticker:value.ticker.trim().toUpperCase(),since:value.since,until:value.until,outputs:[...value.outputs].sort(),horizon:(value.horizon??'12–24 months').trim(),instruction:(value.instruction??'').trim(),visualFundamentals:value.visualFundamentals??false,collectionOnly:value.collectionOnly??false};
- for(const field of ['meeting','origin','labSelection','labFullNote','collectionLimit','researchPurpose'])if(value[field]!==undefined)out[field]=value[field];
+ for(const field of ['meeting','origin','labSelection','labFullNote','collectionLimit','researchPurpose','processingProposal'])if(value[field]!==undefined)out[field]=value[field];
  return out;
 }
 export function matchingReceipt(data,body){

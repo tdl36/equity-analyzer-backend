@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T308 — Completed collection to explicit processing approval
+
+Completed source-only assignments now expose “Choose sources & prepare processing
+approval” above their history. No originals are preselected. The investor selects
+from that collection, distinguishes longitudinal thesis review from a dated event
+note, chooses draft outputs, and saves an immutable proposal without generation.
+The proposal freezes source identities/bytes/hashes, collection dates, research
+purpose, output choices and thesis/research baseline references. It does not alter
+the source-only parent's authorization. Saving and reading do not wake workers.
+
+Explicit approval checks the exact revision/digest, original permissions/bytes and
+current baselines, then atomically links one deterministic assignment using the
+existing coordinator. Changed evidence, stale baselines, another unfinished ticker
+job or missing credentials block dispatch. Cancellation, concurrent approvals and
+lost-response retries retain the same identities. Approved processing uses the
+frozen originals without another collection, and links to saved jobs/outputs.
+Approval authorizes generation only; finished research still needs investor review.
+
+Validation: 1,603 safe backend tests and 208 frontend tests passed; final focused
+handoff tests passed 10 after adding parent eligibility coverage. Compile/build and
+full-app synthetic 390/1280px selection, event scope, save, reload, approval and
+saved-job link checks passed. No production processing, paid QA, thesis acceptance
+or automatic-synthesis change was made. Script: check-processing-proposals-ui.py.
+
+Scope/next: this first handoff selects from one completed collection. Supplementing
+foundational originals from the wider library, full-note/meeting configuration in
+this handoff UI, and the shared Ready dashboard remain subsequent work. The normal
+Lab full-note/meeting paths remain available. First inspect a genuine completed
+collection through this UI, preserve missing-coverage/history gaps, and observe an
+investor-authorized processing run without creating paid QA. Only then expand the
+shared dashboard; historical schema and real-output/investor acceptance remain open.
+
 ## T307 — Distinct longitudinal thesis review and event-note intent
 
 New coordinated assignments freeze a researchPurpose: thesis_review or event_note
@@ -32,9 +64,9 @@ and assignment checks passed 39 after the additional replay test/event-date guar
 
 The user authorized the explicit sequence in docs/charlie-finish-sequence.md and
 requested status updates every 15 minutes. The existing development heartbeat is
-ACTIVE at that interval with explicit progress reporting. Next engineering task:
-unified processing visibility/approval across event proposals, saved Lab packs and
-analyst generation tasks. Analyst /approve accepts completed output; /run starts
+ACTIVE at that interval with explicit progress reporting. Revised critical path: finish the collection-to-processing handoff and prove one
+stock journey before expanding unified processing visibility. T308 adds the first
+durable handoff; see charlie-finish-sequence.md. Analyst /approve accepts completed output; /run starts
 generation. Keep those actions distinct and preserve the backfill synthesis pause.
 
 ## T306 — Ready checklist independent of unrelated desk loading
