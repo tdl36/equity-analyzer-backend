@@ -71,3 +71,14 @@ export function taskSourceGuide(type,task) {
     };
     return (task==='note'?note:thesis)[type] || (task==='note'?'Review the original and include it only if it helps answer this note’s event or question.':'Review the original for material changes, contrary evidence or a necessary baseline before including it.');
 }
+
+// Group presentation only; preserve sorted row order and exact source identities.
+export function groupLabDocuments(rows, grouped=true) {
+    if(!grouped)return [{label:'All matching sources',rows}];
+    const groups=new Map();
+    for(const row of rows){
+        if(!groups.has(row.type))groups.set(row.type,[]);
+        groups.get(row.type).push(row);
+    }
+    return [...groups].map(([label,rows])=>({label,rows}));
+}

@@ -2,6 +2,18 @@
 
 Updated: October 14, 2026
 
+## T277 — Source groups in Lab
+
+The source picker now presents matching documents in labeled document-type groups
+with counts, keeping the selected sort order within each group. Investors can
+switch back to a flat list. Grouping composes with search, publication-date filters
+and selected-only review; selection identities and saved settings do not change.
+This organizes the display without moving originals or treating folder names as
+relevance. Recorded versus filename-suggested types remain labeled per source.
+
+Validation and deployment verification pending. Next: source-review reconciliation
+and collection follow-through; real source-quality/investor acceptance remain open.
+
 ## T276 — Explicit uncertain-edit recovery
 
 Lab now restores an edit with an unconfirmed save response from the existing

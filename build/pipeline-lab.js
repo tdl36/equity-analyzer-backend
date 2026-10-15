@@ -3,7 +3,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -156,7 +156,8 @@ function LabStock({
     [checking, setChecking] = React.useState(false),
     [pendingImport, setPendingImport] = React.useState(false),
     [selectedOnly, setSelectedOnly] = React.useState(false),
-    [publishedOnly, setPublishedOnly] = React.useState(false);
+    [publishedOnly, setPublishedOnly] = React.useState(false),
+    [grouped, setGrouped] = React.useState(true);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -369,6 +370,10 @@ function LabStock({
     value: "name"
   }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types use recorded collection metadata when available; otherwise they are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
+    checked: grouped,
+    onChange: e => setGrouped(e.target.checked)
+  }), " Group sources by document type")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
     checked: publishedOnly,
     onChange: e => setPublishedOnly(e.target.checked)
   }), " Use recorded publication dates only"), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "Excludes added/modified dates, unknown dates and future dates from this view. Combine with Last 30 days to review recently published evidence. Hidden selections remain selected.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
@@ -407,7 +412,13 @@ function LabStock({
     style: {
       marginTop: 16
     }
-  }, shown.map(r => /*#__PURE__*/React.createElement("div", {
+  }, groupLabDocuments(shown, grouped).map(g => /*#__PURE__*/React.createElement("section", {
+    key: g.label,
+    "aria-label": g.label + ' sources',
+    style: {
+      marginBottom: 24
+    }
+  }, /*#__PURE__*/React.createElement("h3", null, g.label, " \xB7 ", g.rows.length), g.rows.map(r => /*#__PURE__*/React.createElement("div", {
     key: r.key,
     style: {
       display: 'flex',
@@ -444,7 +455,7 @@ function LabStock({
     target: "_blank",
     rel: "noopener noreferrer",
     onClick: e => e.stopPropagation()
-  }, "Open observed AlphaSense source \u2197")))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), (pendingImport || selection[task].some(r => r.startsWith('charlie:research_'))) && /*#__PURE__*/React.createElement("div", {
+  }, "Open observed AlphaSense source \u2197")))))))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No sources match this view."), (pendingImport || selection[task].some(r => r.startsWith('charlie:research_'))) && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
     }

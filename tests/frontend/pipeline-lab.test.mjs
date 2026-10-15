@@ -69,3 +69,12 @@ test('publication-only review excludes recent uploads and preserves the inventor
  assert.equal(recentLabDocuments(rows,'all',now).length,6);
  assert.equal(rows.length,6);
 });
+
+import {groupLabDocuments} from '../../src/pipeline-lab-model.mjs';
+test('source grouping preserves identities and ordering without changing selections',()=>{
+ const rows=[{key:'a',type:'Transcripts'},{key:'b',type:'Broker research'},{key:'c',type:'Transcripts'}];
+ assert.deepEqual(groupLabDocuments(rows).map(g=>[g.label,g.rows.map(r=>r.key)]),[['Transcripts',['a','c']],['Broker research',['b']]]);
+ assert.deepEqual(groupLabDocuments(rows,false)[0].rows,rows);
+ assert.deepEqual(rows.map(r=>r.key),['a','b','c']);
+ assert.deepEqual(groupLabDocuments([]),[]);
+});
