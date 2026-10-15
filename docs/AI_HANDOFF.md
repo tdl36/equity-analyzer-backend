@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T304 — Recover unsaved Lab source selections
+
+Lab retains unsaved thesis/note source choices in the same browser tab across
+reloads and navigation. Matching saved revisions restore the local draft; a newer
+central revision requires explicit recovery or discard. Nothing saves centrally
+or starts research automatically. Broken/unavailable browser storage is visible;
+this is session recovery, not cross-device backup. Collection/workbench links also
+warn before leaving unsaved selections. Initial hydration is gated so empty loading
+state cannot overwrite existing choices; persistence runs before the next paint.
+
+Validation: 207 frontend tests and production build pass. Synthetic full-app
+390/1280px browser checks cover reload recovery, undo clearing the draft, and
+explicit recovery after a central revision change, with no API writes. Original
+Pipeline, queued collection and automatic-synthesis settings are unchanged.
+Next: continue full-workspace acceptance and provider-evidence gaps; this bounded
+recovery improvement does not certify all eight priorities or real end-to-end runs.
+
 ## T303 — Recorded meeting answers to reviewable thesis proposals
 
 Saved follow-ups now offer explicit thesis comparison from their recorded answer.

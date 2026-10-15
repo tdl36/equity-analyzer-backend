@@ -1,3 +1,4 @@
+import { selectionRecoveryKey, readSelectionDraft, writeSelectionDraft } from './lab-selection-recovery.mjs';
 import { checkedLabSourceCheck } from './lab-source-check.mjs';
 import { checkedResearchImport, checkedLabImportRequest } from './lab-import-receipts.mjs';
 import LabNote from './pipeline-lab-note';
@@ -197,6 +198,10 @@ function LabStock({
     [grouped, setGrouped] = React.useState(true),
     [latest, setLatest] = React.useState(null);
   var [noteUnsaved, setNoteUnsaved] = React.useState(false);
+  var [selectionRecovery, setSelectionRecovery] = React.useState(null),
+    [recoveryError, setRecoveryError] = React.useState(''),
+    [recoveryReady, setRecoveryReady] = React.useState(false);
+  var selectionKey = selectionRecoveryKey(api, ticker);
   var lock = React.useRef(false),
     alive = React.useRef(true),
     sourceHeading = React.useRef(null);
@@ -208,6 +213,7 @@ function LabStock({
   }, []);
   React.useEffect(() => {
     var live = true;
+    setRecoveryReady(false);
     setSaved(null);
     setLatest(null);
     setError('');
@@ -218,6 +224,18 @@ function LabStock({
         setRows(list);
         setSaved(c);
         setSelection(c.selection);
+        try {
+          var draft = readSelectionDraft(sessionStorage, selectionKey, ticker);
+          setRecoveryError('');
+          setSelectionRecovery(draft && draft.revision !== c.revision ? draft : null);
+          if (draft && draft.revision === c.revision) {
+            setSelection(draft.selection);
+            setNotice('Restored unsaved source selections from this browser tab. Review and save them centrally when ready.');
+          }
+        } catch (e) {
+          setRecoveryError(e.message);
+        }
+        setRecoveryReady(true);
       }
     }).catch(e => {
       if (live) setError(e.message);
@@ -235,6 +253,34 @@ function LabStock({
     }
   }, [importKey]);
   var dirty = saved && !sameLabSelection(selection, saved.selection);
+  React.useLayoutEffect(() => {
+    if (!recoveryReady || !saved || selectionRecovery) return;
+    if (!dirty) {
+      if (!recoveryError) {
+        try {
+          sessionStorage.removeItem(selectionKey);
+        } catch {
+          setRecoveryError('Could not clear local source-selection recovery.');
+        }
+      }
+      return;
+    }
+    try {
+      writeSelectionDraft(sessionStorage, selectionKey, ticker, saved.revision, selection);
+      setRecoveryError('');
+    } catch (e) {
+      setRecoveryError(e.message + ' Keep this screen open until you save centrally.');
+    }
+  }, [selection, saved, selectionRecovery, selectionKey, ticker, recoveryReady]);
+  var discardRecovery = () => {
+    try {
+      sessionStorage.removeItem(selectionKey);
+      setSelectionRecovery(null);
+      setRecoveryError('');
+    } catch {
+      setRecoveryError('Could not remove local selection recovery.');
+    }
+  };
   var collected = explicit => {
     setCheckResult(null);
     if (dirty) {
@@ -322,6 +368,7 @@ function LabStock({
         setSelection(d.selection);
         setLatest(null);
         setNotice('Lab settings saved centrally for all devices. No research was started.');
+        discardRecovery();
       }
     } catch (e) {
       if (alive.current) setError(e.message + ' Your selections remain on this screen.');
@@ -422,7 +469,25 @@ function LabStock({
   }, "Thesis sources (", selection.thesis.length, ")"), /*#__PURE__*/React.createElement("button", {
     "aria-pressed": task === 'note',
     onClick: () => setTask('note')
-  }, "Note sources (", selection.note.length, ")")), /*#__PURE__*/React.createElement("p", null, task === 'thesis' ? 'Choose evidence that changes or tests the investment case, including relevant foundational work.' : 'Choose evidence for the specific event or question your research note should address.'), error && /*#__PURE__*/React.createElement("p", {
+  }, "Note sources (", selection.note.length, ")")), /*#__PURE__*/React.createElement("p", null, task === 'thesis' ? 'Choose evidence that changes or tests the investment case, including relevant foundational work.' : 'Choose evidence for the specific event or question your research note should address.'), recoveryError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, recoveryError, " ", /*#__PURE__*/React.createElement("button", {
+    onClick: discardRecovery
+  }, "Discard local selection recovery")), selectionRecovery && /*#__PURE__*/React.createElement("section", {
+    className: "workspace-panel",
+    "aria-label": "Recover source selections"
+  }, /*#__PURE__*/React.createElement("h3", null, "Unsaved selections from an older saved version"), /*#__PURE__*/React.createElement("p", null, "Local choices were based on revision ", selectionRecovery.revision, "; Charlie now has revision ", saved?.revision, ". Current saved selections remain in place. Review before replacing them."), /*#__PURE__*/React.createElement("p", null, selectionRecovery.selection.thesis.length, " thesis sources \xB7 ", selectionRecovery.selection.note.length, " note sources retained locally."), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => {
+      setSelection(selectionRecovery.selection);
+      setSelectionRecovery(null);
+      setCheckResult(null);
+      setNotice('Recovered choices are an unsaved draft against the current version. Review missing sources and save explicitly.');
+    }
+  }, "Use recovered choices as an unsaved draft"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: discardRecovery
+  }, "Discard recovered choices")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert",
     className: "workspace-error"
   }, error), notice && /*#__PURE__*/React.createElement("p", {
@@ -431,6 +496,7 @@ function LabStock({
     disabled: busy,
     onClick: () => {
       if (!dirty || window.confirm('Reload and discard unsaved Lab selections?')) {
+        discardRecovery();
         setNotice('');
         setGeneration(n => n + 1);
       }
@@ -695,7 +761,7 @@ function LabStock({
       digest: checkResult.digest
     },
     onReport: () => {
-      if (!noteUnsaved || window.confirm('Leave unsaved note edits?')) onNavigate('stockanalysis', ticker);
+      if (!dirty && !noteUnsaved || window.confirm('Leave unsaved Lab source selections or note edits?')) onNavigate('stockanalysis', ticker);
     }
   })), /*#__PURE__*/React.createElement(LabNote, {
     onUnsavedChange: setNoteUnsaved,
@@ -711,12 +777,12 @@ function LabStock({
     } : null
   }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     onClick: e => {
-      if (noteUnsaved && !window.confirm('Leave unsaved note edits?')) e.preventDefault();
+      if ((dirty || noteUnsaved) && !window.confirm('Leave unsaved Lab source selections or note edits?')) e.preventDefault();
     },
     href: `#view=desk&ticker=${encodeURIComponent(ticker)}&section=collection`
   }, "Open this stock\u2019s browser collection schedule, history & recovery \u2192")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     onClick: e => {
-      if (noteUnsaved && !window.confirm('Leave unsaved note edits?')) e.preventDefault();
+      if ((dirty || noteUnsaved) && !window.confirm('Leave unsaved Lab source selections or note edits?')) e.preventDefault();
     },
     href: `#view=stockanalysis&ticker=${encodeURIComponent(ticker)}&section=reviews`
   }, "Connect meeting answers to thesis proposals in the research workbench \u2192")), /*#__PURE__*/React.createElement("hr", {
@@ -732,7 +798,7 @@ function LabStock({
     api: api,
     ticker: ticker,
     onReport: () => {
-      if (!noteUnsaved || window.confirm('Leave unsaved note edits?')) onNavigate('stockanalysis', ticker);
+      if (!dirty && !noteUnsaved || window.confirm('Leave unsaved Lab source selections or note edits?')) onNavigate('stockanalysis', ticker);
     }
   }), /*#__PURE__*/React.createElement("p", null, "For the current direct-update and Generate Note workflow, ", /*#__PURE__*/React.createElement("button", {
     onClick: () => {

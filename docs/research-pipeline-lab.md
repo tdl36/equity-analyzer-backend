@@ -1,3 +1,10 @@
+## T304 source-selection recovery
+
+Unsaved thesis and note selections survive reload/navigation in the same browser
+tab. Newer central revisions require explicit recovery; recovered choices remain
+unsaved until Save Lab settings. Storage failure is visible. This does not preserve
+choices across devices or guarantee recovery after the browser session ends.
+
 ## T297 collection breadth and research selection
 
 New collection controls default to 40 relevant originals and allow a chosen scope
