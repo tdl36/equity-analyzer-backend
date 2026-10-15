@@ -14,7 +14,8 @@ export default function LabNote({
   ticker,
   selection,
   read,
-  renderHtml
+  renderHtml,
+  focusId = ''
 }) {
   var [jobs, setJobs] = React.useState([]),
     [draft, setDraft] = React.useState(null),
@@ -26,6 +27,7 @@ export default function LabNote({
     [editing, setEditing] = React.useState(false),
     [allowPdfText, setAllowPdfText] = React.useState(false),
     [pending, setPending] = React.useState(false);
+  var review = React.useRef(null);
   var lock = React.useRef(false),
     key = 'charlie-lab-full-note:' + api + ':' + ticker;
   var load = () => read(api, `/api/pipeline-lab/note-jobs/${ticker}`).then(d => setJobs(d.jobs));
@@ -71,6 +73,7 @@ export default function LabNote({
   });
   var open = async (id, revision) => {
     var d = await read(api, `/api/pipeline-lab/notes/${id}${revision ? '?revision=' + revision : ''}`);
+    if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
     setDraft(d);
     setText(d.markdown);
     setTitle(d.title);
@@ -78,6 +81,35 @@ export default function LabNote({
     var h = await read(api, `/api/pipeline-lab/notes/${id}/history?limit=50`);
     setHistory(h.versions);
   };
+  React.useEffect(() => {
+    if (!focusId) return;
+    var live = true;
+    setDraft(null);
+    setError('');
+    var inspect = async () => {
+      try {
+        var d = await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(focusId)}`);
+        if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
+        var h = await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(focusId)}/history?limit=50`);
+        if (live) {
+          setDraft(d);
+          setText(d.markdown);
+          setTitle(d.title);
+          setHistory(h.versions);
+          setEditing(false);
+          requestAnimationFrame(() => review.current?.scrollIntoView({
+            block: 'start'
+          }));
+        }
+      } catch (e) {
+        if (live) setError(e.status === 404 ? 'The linked note has no saved draft yet, or is unavailable. Check its assignment progress; no other note was substituted.' : e.message);
+      }
+    };
+    inspect();
+    return () => {
+      live = false;
+    };
+  }, [api, ticker, focusId]);
   var start = () => action(async () => {
     var body = JSON.parse(sessionStorage.getItem(key) || 'null');
     if (!body) {
@@ -198,12 +230,13 @@ export default function LabNote({
       await post(`/api/pipeline-lab/note-job/${job.noteId}/recover`, {});
       await load();
     })
-  }, "Reconcile saved progress")))), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No saved full Lab notes yet."), draft && /*#__PURE__*/React.createElement("div", {
+  }, "Reconcile saved progress")))), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No recent full-note jobs in this list."), draft && /*#__PURE__*/React.createElement("div", {
+    ref: review,
     style: {
       borderTop: '2px solid #8885',
       paddingTop: 20
     }
-  }, /*#__PURE__*/React.createElement("h3", null, draft.title), /*#__PURE__*/React.createElement("p", null, "Revision ", draft.revision, " \xB7 ", jobs.find(j => j.noteId === draft.noteId)?.acceptedRevision === draft.revision ? 'Investor accepted' : 'Draft — investor review required'), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h3", null, draft.title), /*#__PURE__*/React.createElement("p", null, "Revision ", draft.revision, " \xB7 ", !jobs.some(j => j.noteId === draft.noteId) ? 'Acceptance status unavailable in the recent-job list' : jobs.find(j => j.noteId === draft.noteId)?.acceptedRevision === draft.revision ? 'Investor accepted' : 'Draft — investor review required'), /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions"
   }, /*#__PURE__*/React.createElement("select", {
     "aria-label": "Note revision",

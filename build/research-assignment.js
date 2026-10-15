@@ -340,7 +340,7 @@ export function ResearchAssignment({
       return 'Draft exported as printable HTML.';
     })
   }, "Export ", j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.labNoteId && /*#__PURE__*/React.createElement("a", {
-    href: routeHash('pipelinelab', ticker)
+    href: routeHash('pipelinelab', ticker, '', 'labnote:' + j.result.labNoteId)
   }, "Review full Lab note \xB7 ", j.result.labNoteStatus), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
   }, "Open meeting questions from this pack"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {

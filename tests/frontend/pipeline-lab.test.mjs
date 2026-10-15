@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {labDocuments,visibleLabDocuments} from '../../src/pipeline-lab-model.mjs';
-import {readRoute,viewLabel} from '../../src/workspace-model.mjs';
+import {readRoute,routeHash,viewLabel} from '../../src/workspace-model.mjs';
 test('Lab preserves original route and has a distinct route',()=>{
  assert.equal(readRoute('#view=pipeline').view,'pipeline');
  assert.equal(readRoute('#view=pipelinelab').view,'pipelinelab');
@@ -45,4 +45,11 @@ test('task source guidance separates thesis challenge from event notes without s
 test('recorded collection kind takes precedence over filename hints without inventing an author',()=>{
  const rows=labDocuments([{id:'thesis_99',filename:'presentation.pdf',sourceKind:'broker-report',author:'Observed analyst'}],[]);
  assert.equal(rows[0].type,'Broker research');assert.equal(rows[0].typeRecorded,true);
+});
+
+test('Lab output route retains the exact note identity across reloads',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ assert.deepEqual(readRoute(routeHash('pipelinelab','ABT','','labnote:'+id)),{view:'pipelinelab',ticker:'ABT',work:'labnote:'+id});
+ assert.equal(readRoute('#view=pipelinelab&ticker=ABT&work=labnote:bad').work,undefined);
+ assert.equal(readRoute(routeHash('pipeline','ABT','','labnote:'+id)).work,undefined);
 });

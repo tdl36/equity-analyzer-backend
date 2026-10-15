@@ -2,6 +2,21 @@
 
 Updated: October 14, 2026
 
+## T271 — Exact full-note navigation
+
+Assignment output links now open the matching stock settings and exact saved Lab
+note, including after reload and when the note is outside the 30 recent jobs.
+Cross-stock note links fail closed; unavailable drafts explain the gap without
+substituting another note. Opening a link only reads saved data. Older notes whose
+acceptance receipt is outside the recent list display an explicit unknown status.
+
+Validation: 181 frontend tests, model-policy gate and production build passed.
+Synthetic 390px and 1280px browser checks verified direct older-note access, reload,
+cross-stock refusal, readable layout and zero write requests. No paid QA or investor
+approval. Backend code and original Pipeline were unchanged. Deployment verification
+pending. Next: continue source-review usability and exact acceptance receipts for
+older drafts; real collection/source-quality and investor acceptance remain open.
+
 ## T270 — Stop the full-note child with its assignment
 
 Stopping an opted-in assignment now fences the deterministic full-note child in

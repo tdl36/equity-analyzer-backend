@@ -1,7 +1,7 @@
 import LabNote from './pipeline-lab-note';
 import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
-import { parseTimestamp } from './workspace-model.mjs';
+import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
 import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
@@ -23,16 +23,21 @@ async function read(api, path, options = {}) {
 export function PipelineLab({
   api,
   onNavigate,
-  renderHtml
+  renderHtml,
+  initialTicker = '',
+  routeWork = ''
 }) {
   var [stocks, setStocks] = React.useState([]),
     [error, setError] = React.useState(''),
     [loaded, setLoaded] = React.useState(false),
     [query, setQuery] = React.useState(''),
-    [ticker, setTicker] = React.useState(''),
+    [ticker, setTicker] = React.useState(initialTicker),
     [refresh, setRefresh] = React.useState(0),
     [collection, setCollection] = React.useState(null),
     [collectionError, setCollectionError] = React.useState('');
+  React.useEffect(() => {
+    setTicker(initialTicker);
+  }, [initialTicker, routeWork]);
   React.useEffect(() => {
     var live = true;
     read(api, '/api/pipeline/universe?sort=alpha').then(d => {
@@ -114,6 +119,7 @@ export function PipelineLab({
       overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement(LabStock, {
+    focusId: ticker === initialTicker ? workId(routeWork, 'labnote') : '',
     renderHtml: renderHtml,
     key: ticker,
     api: api,
@@ -127,7 +133,8 @@ function LabStock({
   ticker,
   onNavigate,
   onClose,
-  renderHtml
+  renderHtml,
+  focusId
 }) {
   var [rows, setRows] = React.useState([]),
     [saved, setSaved] = React.useState(null),
@@ -480,6 +487,8 @@ function LabStock({
     },
     onReport: () => onNavigate('stockanalysis', ticker)
   })), /*#__PURE__*/React.createElement(LabNote, {
+    key: focusId || ticker,
+    focusId: focusId,
     api: api,
     ticker: ticker,
     read: read,
