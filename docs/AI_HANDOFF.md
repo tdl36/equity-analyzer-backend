@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T318 — Collection-linked processing approval status guards
+
+Critical-path handoff increment: saved processing proposals and save receipts now
+validate company, parent collection, collection dates, purpose/output compatibility,
+revision/digest, original identities/hashes and the displayed full-note contract.
+Partial, duplicate or mismatched lists cannot replace valid saved rows or enable
+action. Failed status refreshes preserve the previous proposal for inspection but
+block saving, approving and cancelling until a valid scoped read succeeds. Read
+failures remain separate from mutation errors. No new worker or automatic dispatch.
+
+Validation: 221 frontend tests, 54 disposable-Postgres processing-handoff tests,
+Python compilation and production build pass. Full-app synthetic 390/1280px checks
+cover failed reads, wrong company/collection, duplicate rows, retained proposal
+content, blocked actions and recovery on a valid refresh. Existing local-draft,
+lost-save-receipt, source-selection, coverage and mock approval/output-link journeys
+also pass. All UI POSTs are intercepted fixtures; no real processing was approved.
+
+Live checkpoint at 18:59 UTC: CVS collection-only assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105 remains running; nested result.collection.status
+is queued, Mac report 18:59:17 UTC, no collection issue, no verified-source receipt.
+Earlier top-level collectionStatus reads were not the collection status field;
+use result.collection.status. Collection is owned by Operations; no retry/new
+worker was launched. Next inspect verified receipts and processing readiness when
+this authorized collection completes, then obtain genuine investor processing
+approval. Independent next work: make the larger collected evidence list as
+reviewable by date/type/original as the supplemental library, without changing
+frozen requests or selecting evidence automatically. Shared Ready expansion and
+all-eight completion remain behind the documented acceptance evidence.
+
 ## T317 — Meeting-answer submission recovery across reloads
 
 Critical-path recovery increment: before dispatch, meeting-answer proposals now

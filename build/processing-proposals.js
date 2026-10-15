@@ -1,3 +1,4 @@
+import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
 import { emptyDraft, draftKey, readDraft, writeDraft } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
 import { ProcessingSourceLibrary } from './processing-source-library';
@@ -51,6 +52,7 @@ function ProposalReview({
   var [rows, setRows] = React.useState([]),
     [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState(''),
+    [readIssue, setReadIssue] = React.useState(''),
     [loaded, setLoaded] = React.useState(false),
     [pending, setPending] = React.useState(null);
   var lock = React.useRef(false),
@@ -125,22 +127,28 @@ function ProposalReview({
     return data;
   };
   var refresh = async () => {
-    var data = await call(path);
-    if (!Array.isArray(data.proposals)) throw Error('Proposal list unavailable. No processing was requested.');
-    if (live.current) {
-      setRows(data.proposals);
-      setLoaded(true);
-    }
-    var raw = sessionStorage.getItem(key);
-    if (raw) {
-      var saved = JSON.parse(raw);
-      if (data.proposals.some(p => p.id === saved.requestId)) {
-        sessionStorage.removeItem(key);
-        if (live.current) {
-          setPending(null);
-          resetForm();
+    try {
+      var data = await call(path),
+        proposals = processingProposalList(data, job);
+      var raw = sessionStorage.getItem(key);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (proposals.some(p => p.id === saved.requestId)) {
+          sessionStorage.removeItem(key);
+          if (live.current) {
+            setPending(null);
+            resetForm();
+          }
         }
       }
+      if (live.current) {
+        setRows(proposals);
+        setLoaded(true);
+        setReadIssue('');
+      }
+    } catch (e) {
+      if (live.current) setReadIssue(e.message);
+      throw e;
     }
   };
   React.useEffect(() => {
@@ -206,7 +214,7 @@ function ProposalReview({
     sessionStorage.setItem(key, JSON.stringify(body));
     setPending(body);
     try {
-      var receipt = await call(path, body);
+      var receipt = processingProposal(await call(path, body), job);
       if (receipt.id !== body.requestId) throw Error('Proposal receipt mismatch. Refresh saved proposals.');
       sessionStorage.removeItem(key);
       setPending(null);
@@ -225,7 +233,9 @@ function ProposalReview({
       padding: '12px 0',
       overflowWrap: 'anywhere'
     }
-  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Collected library \u2192 selected evidence \u2192 your processing approval")), /*#__PURE__*/React.createElement("p", null, "Collection searched ", job.input.since, " through ", job.input.until, ". This is collection coverage, not proof that the accepted thesis incorporates these documents. Saving a proposal spends no research credits."), error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Collected library \u2192 selected evidence \u2192 your processing approval")), /*#__PURE__*/React.createElement("p", null, "Collection searched ", job.input.since, " through ", job.input.until, ". This is collection coverage, not proof that the accepted thesis incorporates these documents. Saving a proposal spends no research credits."), readIssue && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, readIssue), error && error !== readIssue && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error), restoredNotice && /*#__PURE__*/React.createElement("p", {
     role: "status"
@@ -240,7 +250,7 @@ function ProposalReview({
   }, "Refresh saved proposals"), pending && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "A proposal submission is unresolved. Refresh to find its receipt, or retry the same saved submission below. Its choices are frozen."), /*#__PURE__*/React.createElement("fieldset", {
-    disabled: busy || !loaded || !!pending
+    disabled: busy || !loaded || !!pending || !!readIssue
   }, /*#__PURE__*/React.createElement("legend", null, "Select evidence and purpose"), /*#__PURE__*/React.createElement("label", null, "Processing purpose", /*#__PURE__*/React.createElement("select", {
     "aria-label": "Processing purpose",
     value: purpose,
@@ -333,9 +343,9 @@ function ProposalReview({
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !pending && (!selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !!readIssue || !pending && (!selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
-  }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, "Loading saved proposals\u2026") : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
+  }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, readIssue ? 'Saved proposals unavailable. Refresh to check their status.' : 'Loading saved proposals…') : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,
     style: {
       borderTop: '1px solid var(--border-color,#d8dedd)',
@@ -353,7 +363,7 @@ function ProposalReview({
     rel: "noreferrer"
   }, s.filename), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
-    disabled: busy,
+    disabled: busy || !!readIssue || !loaded,
     onClick: () => act(async () => {
       await call('/api/research/processing-proposals/' + p.id + '/approve', {
         revision: p.revision,
@@ -361,7 +371,7 @@ function ProposalReview({
       });
     })
   }, "Approve processing \xB7 uses research credits"), " ", /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: busy || !!readIssue || !loaded,
     onClick: () => act(async () => {
       await call('/api/research/processing-proposals/' + p.id + '/cancel', {
         revision: p.revision,

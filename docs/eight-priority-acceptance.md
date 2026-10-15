@@ -25,6 +25,10 @@ T317 adds per-tab meeting-answer submission recovery and exact saved-receipt
 reconciliation across reloads. Changed revisions retain the original request;
 synthetic lost-response checks do not constitute real paid-run acceptance.
 
+T318 verifies collection-linked proposal status before enabling processing actions;
+failed/mismatched reads retain prior rows without authorizing dispatch. Synthetic
+checks passed; CVS collection is still queued and genuine end-to-end proof is open.
+
 ## 1. Job recovery
 
 Implemented: durable reservations, ownership/leases, retained checkpoints,
