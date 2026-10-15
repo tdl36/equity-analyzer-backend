@@ -145,3 +145,17 @@ requested bounded research automatically. **Do not separately start any report,
 recap, note or thesis generation**: the assignment owns that dispatch. A stopped
 assignment cancels its managed collection, including delayed/out-of-order delivery.
 Thesis output is a pending investor-review proposal, never approval or application.
+
+## Scheduled event original receipts (T296)
+
+Scheduled recap requests without `researchCommand` now use the durable original
+import queue for their registered CATALYSTS topic. Handoff enqueues eligible PDFs;
+completion also enqueues only this request's previously handed-off/duplicate
+originals and requires matching cloud hashes before recap dispatch. No relocation
+of originals or command conversion is needed. Standalone event runs remain excluded
+and managed research commands retain their own public-source import path.
+For the previously blocked CVS scheduled event requests, resume the same request
+after this release. Verify the frozen event and search filters normally; the old
+missing-import-path issue no longer applies. Import failures remain attention and
+must not be reported as successful collection. The eight-original assignment bound
+is unchanged. This is infrastructure support, not evidence of a completed CVS run.

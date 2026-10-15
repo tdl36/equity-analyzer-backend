@@ -353,9 +353,15 @@ class RefreshManager:
         result = {'newDocuments':len(delivered),'heldDocuments':sum(d['usage']=='reference_only' for d in collection['documents']),
                   'verification':verification, 'research':'existing Charlie intake' if delivered else 'no new eligible documents'}
         cfg = json.loads(row['config'])
-        if cfg.get('assignment'):
-            from collection_original_sync import sync
-            sync(self.c,limit=8,only_run=row['run'])
+        event_import = cfg['workflow']=='recap' and bool(cfg.get('topic')) and not cfg.get('researchCommand')
+        if cfg.get('assignment') or event_import:
+            from collection_original_sync import sync, enqueue
+            if event_import:
+                with self.c.lock():
+                    self._require_active(request_id, owner)
+                    for d in collection['documents']:
+                        enqueue(self.c, d['id'])
+            sync(self.c,limit=10 if event_import else 8,only_run=row['run'])
             pack={}
             for d in collection['documents']:
                 if d['usage']!='research' or d['status'] not in ('handed_off','duplicate'):continue
@@ -364,9 +370,13 @@ class RefreshManager:
                 if not q or q['status']!='imported' or receipt.get('sha256')!=d['sha256']:
                     raise ValueError('Original cloud import is pending or needs attention. Keep this collection unfinished; inspect Originals arriving from AlphaSense and retry after exact-byte verification.')
                 pack[receipt['filename']]={'filename':receipt['filename'],'sha256':receipt['sha256'],'sourceUrl':d['source_url']}
-            if len(pack)>8:raise ValueError('Assignment source pack exceeds eight originals; inspect selection before dispatch.')
-            result['assignmentSources']=list(pack.values())
-            result['research']='Coordinating assignment will generate requested drafts after cloud verification'
+            if cfg.get('assignment') and len(pack)>8:raise ValueError('Assignment source pack exceeds eight originals; inspect selection before dispatch.')
+            if event_import:
+                result['eventSources']=list(pack.values())
+                result['importedOriginals']=len(pack)
+            else:
+                result['assignmentSources']=list(pack.values())
+                result['research']='Coordinating assignment will generate requested drafts after cloud verification'
         public_count=0
         if cfg.get('researchCommand') or (cfg.get('sourcePolicy') and cfg.get('topic')):
             from catalyst_sources import inventory, fingerprint, record_dispatch

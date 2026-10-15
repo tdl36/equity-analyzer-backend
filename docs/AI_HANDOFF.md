@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T296 — Scheduled event originals can reach Charlie
+
+Registered scheduled recap requests now enqueue eligible event-folder PDFs into
+exact-byte cloud original sync; standalone event runs and managed command imports
+remain separate. Completion requires matching receipts before recap dispatch and
+retains eventSources. Topic metadata accompanies new imports; existing bytes and
+metadata are preserved. Eight-original research assignment bounds are unchanged.
+Synthetic tests cover event handoff, preserved destination, exact replay and blocked
+dispatch without a receipt. Full backend/frontend suites and build passed.
+Deployment verification pending. CVS has two untouched scheduled event requests
+blocked by this missing path; resume these after deployment. Its separate older
+stock request remains blocked on AlphaSense date-filter verification.
+
 ## T295 — Eight-priority audit and connected Home/company navigation
 
 The user renewed completion of all eight priorities. Use

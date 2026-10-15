@@ -55,6 +55,22 @@ class QueueTests(unittest.TestCase):
         run=self.c.create(['SYK'],'2026-08-01','2026-10-09',topic)['id']
         d=self.c.stage(run,'SYK','transcript',self.f,'https://research.alpha-sense.com/doc/event')['documents'][0]
         self.c.handoff(d['id']);self.assertEqual(snapshot(self.c),[])
+    def test_registered_event_import_retains_folder_and_topic(self):
+        from collection_refresh import RefreshManager
+        m=RefreshManager(self.c)
+        (self.c.catalysts/'SYK').mkdir(parents=True)
+        m.save(dict(ticker='SYK',workflow='recap',topic='Q3',hours=0,
+                           enabled=True,createFolder=True,lookbackDays=7))
+        rid=m.trigger('SYK')
+        row=self.c.db.execute('SELECT * FROM refresh_requests WHERE id=?',(rid,)).fetchone()
+        d=self.c.stage(row['run'],'SYK','transcript',self.f,'https://research.alpha-sense.com/doc/event')['documents'][0]
+        handed=self.c.handoff(d['id'])
+        post=Mock(side_effect=self.receipt)
+        self.assertEqual(sync(self.c,post)[0]['status'],'imported')
+        self.assertEqual(post.call_args.args[0]['topic'],'Q3')
+        self.assertEqual(Path(handed['destination']).parent,self.c.catalysts/'SYK'/'Q3')
+        self.assertEqual(sync(self.c,post),[])
+
     def test_duplicate_local_original_is_importable(self):
         (self.c.stocks/'SYK'/'prior.pdf').write_bytes(self.f.read_bytes())
         self.assertEqual(self.c.handoff(self.doc['id'])['status'],'duplicate')

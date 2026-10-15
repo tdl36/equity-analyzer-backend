@@ -151,6 +151,22 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(state['requests'][0]['status'], 'collecting')
         self.assertIsNone(state['policies'][0]['lastSuccess'])
 
+    def test_scheduled_recap_requires_cloud_receipt_before_dispatch(self):
+        from unittest.mock import patch
+        self.cfg={**self.cfg,'workflow':'recap','topic':'Q3'}
+        claim=self.scheduled_claim()
+        collection={'tasks':[{'status':'complete'}], 'until_date':'2026-09-07',
+                    'documents':[{'id':'missing','sha256':'expected','source_url':'https://research.alpha-sense.com/doc/event',
+                                  'usage':'research','status':'handed_off'}]}
+        with patch.object(self.c,'status',return_value=collection), \
+             patch.object(self.c,'verify',return_value={'verifications':[]}), \
+             patch('collection_original_sync.sync'), \
+             patch.object(self.m,'dispatch') as dispatch:
+            with self.assertRaisesRegex(ValueError,'cloud import'):
+                self.m.complete(claim['id'],claim['owner'])
+            dispatch.assert_not_called()
+        self.assertIsNone(self.db_row(claim['id'])['result'])
+
     def test_pause_during_verification_prevents_paid_dispatch(self):
         from unittest.mock import patch
         self.cfg = {**self.cfg, 'workflow': 'note'}

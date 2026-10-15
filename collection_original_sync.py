@@ -1,4 +1,4 @@
-"""Durable, bounded import of collector-approved STOCKS originals into Charlie."""
+"""Durable import of stock and registered scheduled-event originals into Charlie."""
 import base64
 import hashlib
 import json
@@ -17,10 +17,22 @@ def initialize(db):
         owner TEXT, lease_until REAL, issue TEXT, receipt TEXT, updated REAL NOT NULL)''')
 
 
+def scheduled_event(db, row):
+    """Only frozen recap requests qualify; standalone and command events stay separate."""
+    if not row['topic']:
+        return False
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='refresh_requests'").fetchone():
+        return False
+    request = db.execute('SELECT config FROM refresh_requests WHERE run=?', (row['run'],)).fetchone()
+    cfg = json.loads(request['config']) if request else {}
+    return (cfg.get('workflow') == 'recap' and not cfg.get('researchCommand')
+            and cfg.get('ticker') == row['ticker'] and cfg.get('topic') == row['topic'])
+
+
 def enqueue(collector, document):
     """Caller holds collector transaction. No historic scan or model calls."""
     row = collector.db.execute('SELECT d.*,r.topic FROM documents d JOIN runs r ON r.id=d.run WHERE d.id=?', (document,)).fetchone()
-    if not row or row['topic'] or row['usage'] != 'research' or row['status'] not in ('handed_off','duplicate'):
+    if not row or (row['topic'] and not scheduled_event(collector.db, row)) or row['usage'] != 'research' or row['status'] not in ('handed_off','duplicate'):
         return False
     collector.db.execute('INSERT OR IGNORE INTO original_imports(document,updated) VALUES(?,?)', (document,time.time()))
     return True
@@ -33,7 +45,7 @@ def snapshot(collector):
 
 
 def payload(collector, row):
-    if row['topic'] or row['usage'] != 'research' or row['status'] not in ('handed_off','duplicate'):
+    if (row['topic'] and not scheduled_event(collector.db, row)) or row['usage'] != 'research' or row['status'] not in ('handed_off','duplicate'):
         raise ValueError('Original is no longer eligible for automatic import.')
     db=collector.db
     if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='refresh_requests'").fetchone():
@@ -46,9 +58,12 @@ def payload(collector, row):
                 raise ValueError('Collection policy is paused; resume it to import originals.')
     from source_selection_gate import check
     check(db,row['run'],row['ticker'],row['kind'],row['publisher'],row['source_url'],analyst=row['analyst'],author_evidence=row['author_evidence'])
-    root=collector.stocks/row['ticker'];path=Path(row['destination'] or '')
+    base=collector.catalysts if row['topic'] else collector.stocks
+    root=base/row['ticker']
+    if row['topic']:root=root/row['topic']
+    path=Path(row['destination'] or '')
     if (root.is_symlink() or path.is_symlink() or not path.is_file()
-            or not path.resolve().is_relative_to(root.resolve()) or not root.resolve().is_relative_to(collector.stocks.resolve())):
+            or not path.resolve().is_relative_to(root.resolve()) or not root.resolve().is_relative_to(base.resolve())):
         raise ValueError('Original is missing or outside its confirmed company folder.')
     if path.stat().st_size>MAX_BYTES:raise ValueError('Original exceeds the 60 MB cloud import limit.')
     raw=path.read_bytes();digest=hashlib.sha256(raw).hexdigest()
@@ -56,7 +71,7 @@ def payload(collector, row):
     return dict(ticker=row['ticker'],collectionRun=row['run'],documentId=row['id'],filename=path.name,
         fileData=base64.b64encode(raw).decode('ascii'),sha256=digest,usage='research',
         sourceUrl=row['source_url'],publisher=row['publisher'],published=row['published'],
-        sourceKind=row['kind'],author=row['analyst'] or '',authorEvidence=row['author_evidence'] or '')
+        topic=row['topic'] or '',sourceKind=row['kind'],author=row['analyst'] or '',authorEvidence=row['author_evidence'] or '')
 
 
 def sync(collector=None, post=None, limit=3, clock=time.time, only_run=None):
@@ -109,6 +124,9 @@ def validate(data):
     from charlie_collector import source_url
     source_url(data.get('sourceUrl',''))
     if not str(data.get('filename','')).lower().endswith('.pdf'):raise ValueError('Expected an original PDF')
+    topic=data.get('topic','')
+    if not isinstance(topic,str) or (topic and (len(topic)>255 or Path(topic).name!=topic or topic.startswith('.') or '\\' in topic)):
+        raise ValueError('Invalid event topic')
     if 'sourceKind' in data and data['sourceKind'] not in ('transcript','broker-report','press-release','presentation'):
         raise ValueError('Invalid recorded source kind')
     for field,bound in (('author',200),('authorEvidence',2000)):
@@ -154,7 +172,7 @@ def create_blueprint(get_db,is_agent):
                 if data.get('restoreEmptyMetadata'):
                     return jsonify(error='Original missing; metadata recovery cannot create a document.'),409
                 meta={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
-                meta.update({k:data[k] for k in ('sourceKind','author','authorEvidence') if k in data})
+                meta.update({k:data[k] for k in ('sourceKind','author','authorEvidence','topic') if k in data})
                 meta.update(source='alphasense_collection',sha256=digest,usage='research')
                 cur.execute('''INSERT INTO document_files(ticker,filename,file_data,file_type,mime_type,file_size,metadata)
                     VALUES(%s,%s,%s,'pdf','application/pdf',%s,%s::jsonb)
