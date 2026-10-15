@@ -22,6 +22,8 @@ class Review(unittest.TestCase):
         app=Flask('review')
         app.register_blueprint(create_blueprint(self.db,lambda:bool(request.headers.get('X-Auth')),
             lambda:'investor' if request.headers.get('X-Auth')=='investor' else None,lambda *args:''))
+        from pipeline_lab_notes_api import create_blueprint as drafts
+        app.register_blueprint(drafts(self.db,lambda:bool(request.headers.get('X-Auth'))))
         self.client=app.test_client();self.path='/api/pipeline-lab/notes/'+self.note
     def test_acceptance_requires_investor_and_exact_revision_and_replays(self):
         for headers,expected in [({},401),({'X-Auth':'machine'},403)]:
@@ -49,3 +51,18 @@ class Review(unittest.TestCase):
         result=Document(black_calibri(base64.b64encode(buf.getvalue())))
         for p in [*result.paragraphs,*result.sections[0].header.paragraphs,result.tables[0].cell(0,0).paragraphs[0]]:
             for run in p.runs:self.assertEqual(run.font.name,'Calibri');self.assertEqual(str(run.font.color.rgb),'000000')
+
+    def test_direct_draft_receipts_are_exact_revision_not_latest_acceptance(self):
+        headers={'X-Auth':'investor'}
+        self.assertIsNone(self.client.get(self.path,headers=headers).json['acceptance'])
+        self.client.post(self.path+'/accept',headers=headers,json={'revision':1})
+        with self.db(True) as (_,c):append(c,self.note,'ABT',str(uuid.uuid4()),1,{**self.payload,'markdown':'Edited'})
+        self.assertIsNone(self.client.get(self.path,headers=headers).json['acceptance'])
+        self.client.post(self.path+'/accept',headers=headers,json={'revision':2})
+        for revision in (1,2):
+            r=self.client.get(self.path+'?revision='+str(revision),headers={'X-Auth':'machine'})
+            self.assertEqual(r.status_code,200)
+            self.assertEqual(r.json['acceptance']['revision'],revision)
+            self.assertTrue(r.json['acceptance']['acceptedAt'])
+            self.assertNotIn('investor',r.json['acceptance'])
+            self.assertIn('no-store',r.headers['Cache-Control'])

@@ -236,7 +236,7 @@ export default function LabNote({
       borderTop: '2px solid #8885',
       paddingTop: 20
     }
-  }, /*#__PURE__*/React.createElement("h3", null, draft.title), /*#__PURE__*/React.createElement("p", null, "Revision ", draft.revision, " \xB7 ", !jobs.some(j => j.noteId === draft.noteId) ? 'Acceptance status unavailable in the recent-job list' : jobs.find(j => j.noteId === draft.noteId)?.acceptedRevision === draft.revision ? 'Investor accepted' : 'Draft — investor review required'), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h3", null, draft.title), /*#__PURE__*/React.createElement("p", null, "Revision ", draft.revision, " \xB7 ", draft.acceptance === undefined ? 'Acceptance status unavailable' : draft.acceptance?.revision === draft.revision ? 'Investor accepted · ' + new Date(draft.acceptance.acceptedAt).toLocaleString() : 'Draft — investor review required'), /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions"
   }, /*#__PURE__*/React.createElement("select", {
     "aria-label": "Note revision",
@@ -295,12 +295,13 @@ export default function LabNote({
   }, /*#__PURE__*/React.createElement("summary", null, c.period, " \xB7 ", c.kind, " segment figures"), /*#__PURE__*/React.createElement("p", null, "Model-produced values; verify units and source figures before use."), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Segment"), /*#__PURE__*/React.createElement("th", null, "Value"))), /*#__PURE__*/React.createElement("tbody", null, c.data.map(r => /*#__PURE__*/React.createElement("tr", {
     key: r.segment
   }, /*#__PURE__*/React.createElement("td", null, r.segment), /*#__PURE__*/React.createElement("td", null, r.value.toLocaleString()))))))), /*#__PURE__*/React.createElement("p", null, "Acceptance records this exact Lab revision. It does not change the current thesis or original Pipeline notes. Source caveats remain in the history and exports."), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || editing || jobs.find(j => j.noteId === draft.noteId)?.acceptedRevision === draft.revision,
+    disabled: busy || editing || draft.acceptance?.revision === draft.revision,
     onClick: () => {
       if (window.confirm(`Accept revision ${draft.revision} as your reviewed Lab research note?`)) action(async () => {
         await post(`/api/pipeline-lab/notes/${draft.noteId}/accept`, {
           revision: draft.revision
         });
+        await open(draft.noteId, draft.revision);
         await load();
       });
     }

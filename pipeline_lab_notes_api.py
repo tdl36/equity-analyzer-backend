@@ -1,4 +1,4 @@
-"""Pending Lab draft review adapter; deliberately not registered in production.
+"""Authenticated Lab draft review adapter.
 
 No generation, publication, legacy-note writes or automatic schema creation.
 The caller must provide the application's authenticated-user predicate.
@@ -39,6 +39,14 @@ def create_blueprint(get_db, authenticated):
             revision = integer('revision')
             with get_db() as (_, cur):
                 result = read(cur, note_id, revision)
+                if result is not None:
+                    cur.execute('''SELECT accepted_at FROM pipeline_lab_note_acceptances
+                        WHERE note_id=%s AND revision=%s''',
+                                (result['noteId'], result['revision']))
+                    receipt = cur.fetchone()
+                    result['acceptance'] = ({'revision': result['revision'],
+                                             'acceptedAt': receipt['accepted_at'].isoformat()}
+                                            if receipt else None)
             if result is None:
                 return jsonify(error='Draft revision not found.'), 404
             return jsonify(result)

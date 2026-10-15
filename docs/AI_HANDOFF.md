@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T272 — Revision-specific review receipts
+
+Direct Lab draft reads now include the exact revision's acceptance timestamp (or
+an explicit unaccepted result), independent of the latest 30 jobs. Previously an
+older accepted revision could be mislabeled after a newer revision was accepted.
+The review screen uses that receipt, disables repeat acceptance for that revision
+and reloads its receipt after an investor action. No approval is performed by the
+worker; investor identity is not exposed by this read response. Original Pipeline
+and stored research are unchanged.
+
+Validation and production verification pending. Next: source-review usability;
+real-run collection/source quality and investor acceptance still need evidence.
+
 ## T271 — Exact full-note navigation
 
 Assignment output links now open the matching stock settings and exact saved Lab

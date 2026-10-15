@@ -13,6 +13,8 @@ class DraftHTTP(unittest.TestCase):
 
     def setUp(self):
         fixtures.DraftVersions.setUp(self)
+        from pipeline_lab_note_service import initialize
+        with self.db(True) as (_, cur):initialize(cur)
         fixtures.DraftVersions.save(self)
         app = Flask('lab-draft-review')
         app.register_blueprint(create_blueprint(
