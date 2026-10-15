@@ -12,8 +12,10 @@ storage location as evidence of byte verification. Original Pipeline is unchange
 
 198 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
 checks isolated each storage location and reset filters, preserving both selected
-originals and an unselected iCloud file with zero writes. Production verification
-pending. Backend/agent unchanged; no paid research or approval actions.
+originals and an unselected iCloud file with zero writes. Verified Render
+`738ce27a16f094c468319c4557e7b1b6072f5a5e`, Cloudflare
+`5c3cd956-1ced-4648-911f-137e42c127d4`, T292 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (5.7 seconds old); endpoint authentication checks passed. Backend/agent unchanged; no paid research or approval actions.
 Next: real source-to-output and investor acceptance remain open; preserve the
 historical valuation provider-schema checkpoint.
 
