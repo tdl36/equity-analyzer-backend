@@ -12,8 +12,14 @@ Deselect visible removes only the displayed task selections, preserving hidden
 and missing selections; neither filter nor selection edits start research or save
 automatically. Original Pipeline and source files are unchanged.
 
-Validation and deployment verification pending. Next: continue source-review and
-collection follow-through usability; real source-quality acceptance remains open.
+Verified Render revision `e3b96dfd394c36eb425950a41cea0d4935fa3d3f`, Cloudflare
+`c8372f70-f7a7-4909-9d7b-377ea3652635`, hosted T273 HTML and exact JS/service-worker
+bytes. Agent heartbeat healthy (81.3 seconds old). 182 frontend tests, model-policy
+gate and production build passed. Synthetic 390px/1280px browser checks verified
+publication filtering and deselection preserve hidden selections with zero writes.
+Backend code was unchanged; no paid QA or live research changes.
+Next: continue source-review and collection follow-through usability; real source
+quality and investor acceptance remain open.
 
 ## T272 — Revision-specific review receipts
 
