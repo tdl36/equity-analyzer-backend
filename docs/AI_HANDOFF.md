@@ -34,6 +34,20 @@ collection through this UI, preserve missing-coverage/history gaps, and observe 
 investor-authorized processing run without creating paid QA. Only then expand the
 shared dashboard; historical schema and real-output/investor acceptance remain open.
 
+T308 production verified: Render cf6511b8b03794e28ad37d8f1f656adce739914c;
+Cloudflare 8477f2b5-56bc-4dd7-941d-9ea1af208915. Exact hosted JS/service-worker
+bytes and HTML marker match. Final agent health was ok at 4.7 seconds. Initial
+rollout checks saw transient 502/500 responses; the complete final read-only check
+passed, including original authentication/missing-identity refusal. The new proposal
+endpoint returned 401 unauthenticated and 409 for the still-running CVS collection.
+CVS 6cdf8f71-0e5c-49c4-838a-525c0731a105 remains source-only/running with no
+completed source receipt in its assignment yet. No completed source-only parent was
+found in the latest 30-row archive page; this is not an exhaustive historical audit.
+No live processing proposal was created or approved for QA. Genuine end-to-end and
+investor acceptance remain open. Continue independent wider-library foundational
+source selection/coverage work while awaiting an eligible real collection and
+request-specific processing authorization; do not expand the dashboard first.
+
 ## T307 — Distinct longitudinal thesis review and event-note intent
 
 New coordinated assignments freeze a researchPurpose: thesis_review or event_note
