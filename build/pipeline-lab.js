@@ -3,7 +3,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection, labSourceDate } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -538,14 +538,14 @@ function LabStock({
     }
   }, /*#__PURE__*/React.createElement("label", {
     htmlFor: `lab-source-${r.key}`
-  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, r.typeRecorded ? ' (recorded)' : ' (suggested)', " \xB7 ", r.dateLabel, ": ", stamp(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : '', r.author ? ' · ' + r.author : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), r.location === 'Charlie' && String(r.id).startsWith('thesis_') && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, r.filename)), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.type, r.typeRecorded ? ' (recorded)' : ' (suggested)', " \xB7 ", r.dateLabel, ": ", labSourceDate(r.date), " \xB7 ", r.location, " / ", r.folder, r.publisher ? ' · ' + r.publisher : '', r.author ? ' · ' + r.author : ''), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, r.ready ? 'Stored in Charlie — exact-byte verification not shown by this inventory' : 'Listed in iCloud — import readiness not established', r.repeated ? ' · Same filename exists elsewhere; kept separate' : ''), r.location === 'Charlie' && String(r.id).startsWith('thesis_') && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => downloadOriginal(r)
   }, "Download original for review")), /*#__PURE__*/React.createElement("details", {
     style: {
       marginTop: 8
     }
-  }, /*#__PURE__*/React.createElement("summary", null, "How to use for ", task === 'note' ? 'a note' : 'the thesis'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, taskSourceGuide(r.type, task))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Guidance based on the suggested document type, not a review of its contents. Recency alone does not establish relevance; selection remains yours."))), r.originalReceiptRecorded && /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("summary", null, "How to use for ", task === 'note' ? 'a note' : 'the thesis'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, taskSourceGuide(r.type, task))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Guidance based on the displayed document type, not a review of its contents. Recency alone does not establish relevance; selection remains yours."))), r.originalReceiptRecorded && /*#__PURE__*/React.createElement("details", {
     onClick: e => e.stopPropagation(),
     style: {
       marginTop: 8

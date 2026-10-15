@@ -1,4 +1,18 @@
 import {parseTimestamp} from './workspace-model.mjs';
+// Publication dates are calendar dates, not midnight instants in New York.
+export function labSourceTime(value) {
+    if(typeof value!=='string'||!value)return NaN;
+    const calendar=/^\d{4}-\d{2}-\d{2}$/.test(value);
+    const time=calendar?Date.parse(value):(parseTimestamp(value)?.getTime()??NaN);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)!==value)return NaN;
+    return time;
+}
+export function labSourceDate(value) {
+    const time=labSourceTime(value);
+    if(!Number.isFinite(time))return 'Unknown';
+    return new Date(time).toLocaleDateString('en-US',{timeZone:/^\d{4}-\d{2}-\d{2}$/.test(value)?'UTC':'America/New_York'});
+}
+const sourceTypes=new Map([['transcript','Transcripts'],['broker-report','Broker research'],['press-release','Releases'],['presentation','Presentations']]);
 // Never collapse a source into another source merely because filenames match.
 export function labDocuments(documents, files) {
     if (!Array.isArray(documents) || !Array.isArray(files)) throw Error('Source inventory unavailable.');
@@ -13,7 +27,7 @@ export function labDocuments(documents, files) {
         seen.add(row.key);
     }
     const names=new Map();for(const r of rows)names.set(r.filename,(names.get(r.filename)||0)+1);
-    return rows.map(r=>({...r,repeated:names.get(r.filename)>1,type:({'transcript':'Transcripts','broker-report':'Broker research','press-release':'Releases','presentation':'Presentations'}[r.sourceKind]||suggestType(r.filename)),typeRecorded:!!r.sourceKind}));
+    return rows.map(r=>({...r,repeated:names.get(r.filename)>1,type:(sourceTypes.get(r.sourceKind)||suggestType(r.filename)),typeRecorded:sourceTypes.has(r.sourceKind)}));
 }
 export function suggestType(name) {
     const s=name.toLowerCase();
@@ -27,7 +41,7 @@ export function suggestType(name) {
 export function visibleLabDocuments(rows,query,group,sort) {
     return rows.filter(r=>(group==='All'||r.type===group)&&`${r.filename} ${r.folder} ${r.publisher||''} ${r.author||''}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
         if(sort==='date'){
-            const stamp=r=>Number.isFinite(Date.parse(r.date))?Date.parse(r.date):-Infinity;
+            const stamp=r=>Number.isFinite(labSourceTime(r.date))?labSourceTime(r.date):-Infinity;
             if(stamp(a)!==stamp(b))return stamp(a)>stamp(b)?-1:1;
         }
         return a.filename.localeCompare(b.filename)||a.key.localeCompare(b.key);
@@ -35,10 +49,10 @@ export function visibleLabDocuments(rows,query,group,sort) {
 }
 
 export function recentLabDocuments(rows, days, now=Date.now(), publishedOnly=false) {
-    if(publishedOnly)rows=rows.filter(r=>r.dateLabel==='Published'&&Number.isFinite(Date.parse(r.date))&&Date.parse(r.date)<=now);
+    if(publishedOnly)rows=rows.filter(r=>r.dateLabel==='Published'&&Number.isFinite(labSourceTime(r.date))&&labSourceTime(r.date)<=now);
     if(days==='all')return rows;
     const cutoff=now-Number(days)*86400000;
-    return rows.filter(r=>Number.isFinite(Date.parse(r.date))&&Date.parse(r.date)>=cutoff&&Date.parse(r.date)<=now);
+    return rows.filter(r=>Number.isFinite(labSourceTime(r.date))&&labSourceTime(r.date)>=cutoff&&labSourceTime(r.date)<=now);
 }
 export function labCollectionStatus(data,ticker,now=Date.now()) {
     const snapshot=data?.snapshot;

@@ -2,6 +2,24 @@
 
 Updated: October 14, 2026
 
+## T281 — Consistent source dates and metadata labels
+
+Lab source sorting, recency filters and date display now share timestamp parsing:
+naive database timestamps are UTC regardless of the browser's time zone. Calendar
+publication dates retain their day; impossible dates such as February 30 are unknown
+and excluded from publication-only/recency views instead of rolling into March.
+Unknown document kinds fall back to filename suggestions without a recorded-type
+label. Original Pipeline, stored metadata, selections and research are unchanged.
+
+186 frontend tests, model policy and production build passed; focused date tests
+also passed in Pacific/Honolulu. Synthetic 390px/1280px checks verified displayed
+publication dates, source selection and exact fixture downloads with zero writes.
+Production verification pending. Backend unchanged; no paid QA or approvals.
+Next: real source-quality/investor acceptance remains unverified. Independent
+historical valuation work remains at the provider-schema/assignment-locked storage
+checkpoint in docs/historical-security-mapping.md; do not enable ingestion from
+synthetic evidence alone.
+
 ## T280 — Inspect originals from the Lab picker
 
 Stored thesis originals in Lab now have a download-for-review action, using the

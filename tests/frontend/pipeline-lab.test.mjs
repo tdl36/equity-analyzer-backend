@@ -84,3 +84,25 @@ test('restoring the same selected identities clears dirty state regardless of or
  assert.equal(sameLabSelection({thesis:['b','a'],note:[]},{thesis:['a','b'],note:[]}),true);
  assert.equal(sameLabSelection({thesis:['b'],note:['a']},{thesis:['a','b'],note:[]}),false);
 });
+
+import {labSourceDate,labSourceTime} from '../../src/pipeline-lab-model.mjs';
+test('publication calendar dates do not shift back a day in New York',()=>{
+ for(const value of ['2026-01-01','2026-07-01','2026-11-01','2024-02-29']){
+  const [year,month,day]=value.split('-').map(Number);
+  assert.equal(labSourceDate(value),`${month}/${day}/${year}`);
+ }
+ assert.equal(labSourceDate('2026-10-15T01:00:00Z'),'10/14/2026');
+ assert.equal(labSourceTime('2026-10-15 01:00:00'),Date.parse('2026-10-15T01:00:00Z'));
+ assert.equal(labSourceDate('2026-10-15 01:00:00'),'10/14/2026');
+ for(const value of ['2026-02-30','2025-02-29','invalid',null]){
+  assert.equal(labSourceDate(value),'Unknown');assert.ok(Number.isNaN(labSourceTime(value)));
+ }
+ const rows=labDocuments([{id:'thesis_1',filename:'bad.pdf',publishedDate:'2026-02-30'}],[]);
+ assert.equal(recentLabDocuments(rows,'all',Date.parse('2026-03-04'),true).length,0);
+});
+test('unknown source kinds remain suggested rather than recorded',()=>{
+ for(const sourceKind of ['future-kind','__proto__','constructor','']){
+  const row=labDocuments([{id:'thesis_1',filename:'transcript.pdf',sourceKind}],[])[0];
+  assert.equal(row.type,'Transcripts');assert.equal(row.typeRecorded,false);
+ }
+});
