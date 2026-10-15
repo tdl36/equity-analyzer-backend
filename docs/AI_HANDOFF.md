@@ -32,6 +32,24 @@ completed collection. Preserve pending investor decisions and unavailable extern
 proof while continuing confirmed engineering gaps. Collection-only requests still
 authorize no synthesis; original Pipeline and backfill pause remain unchanged.
 
+T328 production verified: Render c23f78089c973b064ee875768dccc596cad1f774;
+Cloudflare 6001ba8a-5532-4d3e-bfe4-d7eb314dc104. Exact hosted JS/service-worker
+bytes and HTML marker match. Read-only auth/identity guards and Mac health
+(13.8 seconds) passed. Activity returned no unavailable dependencies, unchanged
+background research/audio truncation, CVS running, and zero full-note rows.
+Read-only assignment archive remains four entries/no next page; completed ABT/UNH
+are legacy non-collection-only requests with no processing-proposal/full-note receipt.
+No new usable collection-only completion was found; no coordinator was awakened.
+
+Next durable action: inspect the existing integrated processing-proposal tests and
+exercise any uncovered source-selection/read-failure -> immutable proposal-save
+recovery boundary with disposable fixtures and provider stubs. Reuse existing
+coordinator paths, do not add another worker or repeat the unchanged archive audit
+without new completion evidence. Real processing authorization/acceptance and the
+historical-reference schema remain external gaps; synthetic checks cannot close them.
+Logs: /tmp/charlie-T328-{frontend,backend-focused,build,ui,real-review-audit,
+real-ui,deploy,verify,journey-audit}.log. No paid generation or investor decisions.
+
 ## T327 — Assignment visibility survives background backfill
 
 Home/Activity gives coordinating research assignments separate attention, active
