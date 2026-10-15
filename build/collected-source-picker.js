@@ -1,3 +1,4 @@
+import { OriginalDownload } from './original-download';
 import * as React from 'react';
 import { collectedSources, duplicateSelections } from './collected-source-model.mjs';
 import { visibleLabDocuments, groupLabDocuments, labSourceDate, taskSourceGuide } from './pipeline-lab-model.mjs';
@@ -58,7 +59,7 @@ export function CollectedSourcePicker({
       border: '1px solid var(--border-color,#d8dedd)',
       overflowWrap: 'anywhere'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "Choose collected evidence"), /*#__PURE__*/React.createElement("p", null, selected.length, " selected from ", job.result.sources.length, " collection receipts \xB7 no sources selected automatically."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Newest recorded publication dates first; unknown dates last. Metadata helps organize evidence and is not a content review. Stored-file links open the current Charlie original. Its bytes and permissions are checked against the collection receipt when saving and approving.")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("strong", null, "Choose collected evidence"), /*#__PURE__*/React.createElement("p", null, selected.length, " selected from ", job.result.sources.length, " collection receipts \xB7 no sources selected automatically."), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Newest recorded publication dates first; unknown dates last. Metadata helps organize evidence and is not a content review. Downloads use your signed-in session and must match the collection receipt. Its bytes and permissions are checked against the collection receipt when saving and approving.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "Find collected sources", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Find collected sources",
@@ -116,14 +117,11 @@ export function CollectedSourcePicker({
       missing: 'Stored original missing',
       ambiguous: 'Stored identity ambiguous',
       restricted: 'Excluded or reference-only'
-    }[r.availability] : '', duplicate ? ' · Same receipt bytes as a selected source; keep one copy' : ''), r.id && r.availability === 'available' && /*#__PURE__*/React.createElement("a", {
-      style: {
-        marginLeft: 24
-      },
-      href: api + '/api/pipeline-lab/original/' + encodeURIComponent(job.ticker) + '/' + r.id,
-      target: "_blank",
-      rel: "noreferrer"
-    }, "Open stored original"));
+    }[r.availability] : '', duplicate ? ' · Same receipt bytes as a selected source; keep one copy' : ''), r.id && r.availability === 'available' && /*#__PURE__*/React.createElement(OriginalDownload, {
+      url: api + '/api/pipeline-lab/original/' + encodeURIComponent(job.ticker) + '/' + r.id,
+      filename: r.filename,
+      sha256: r.receiptSha256
+    }));
   }))), loaded && !shown.length && /*#__PURE__*/React.createElement("p", null, "No collected sources match these filters.")), busy && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading collected source metadata\u2026"), error && /*#__PURE__*/React.createElement("p", {

@@ -1,3 +1,4 @@
+import { OriginalDownload } from './original-download';
 import * as React from 'react';
 import { labDocuments, visibleLabDocuments, groupLabDocuments, labSourceDate, taskSourceGuide } from './pipeline-lab-model.mjs';
 export function ProcessingSourceLibrary({
@@ -102,14 +103,11 @@ export function ProcessingSourceLibrary({
       style: {
         display: 'block'
       }
-    }, "Published: ", labSourceDate(r.publishedDate), r.publisher ? ' · ' + r.publisher : '', " \xB7 ", r.typeRecorded ? 'Recorded type' : 'Suggested type from filename', !r.eligible ? ' · Excluded or reference-only' : ''))), r.eligible && /*#__PURE__*/React.createElement("a", {
-      style: {
-        marginLeft: 24
-      },
-      href: api + '/api/pipeline-lab/original/' + encodeURIComponent(ticker) + '/' + r.id,
-      target: "_blank",
-      rel: "noreferrer"
-    }, "Open stored original"));
+    }, "Published: ", labSourceDate(r.publishedDate), r.publisher ? ' · ' + r.publisher : '', " \xB7 ", r.typeRecorded ? 'Recorded type' : 'Suggested type from filename', !r.eligible ? ' · Excluded or reference-only' : ''))), r.eligible && /*#__PURE__*/React.createElement(OriginalDownload, {
+      url: api + '/api/pipeline-lab/original/' + encodeURIComponent(ticker) + '/' + r.id,
+      filename: r.filename,
+      sha256: r.recordedSha256 || undefined
+    }));
   }))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No matching entries in the loaded library.")), cursor && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => load(cursor)

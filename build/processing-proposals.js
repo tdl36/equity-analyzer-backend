@@ -1,3 +1,4 @@
+import { OriginalDownload } from './original-download';
 import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
 import { emptyDraft, draftKey, readDraft, writeDraft } from './processing-proposal-draft.mjs';
@@ -349,11 +350,11 @@ function ProposalReview({
     coverage: p.coverage
   }), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen sources and scope"), /*#__PURE__*/React.createElement("p", null, "Revision ", p.revision, ". Collection ", p.plan.since, "\u2013", p.plan.until, ". Sources and baseline will be checked again before dispatch."), p.fullNote && /*#__PURE__*/React.createElement("p", null, "Full-note configuration: ", p.fullNote.configDigest, /*#__PURE__*/React.createElement("br", null), "Note instructions: ", p.fullNote.promptSha256), /*#__PURE__*/React.createElement("ul", null, p.sources.map(s => /*#__PURE__*/React.createElement("li", {
     key: s.documentId
-  }, /*#__PURE__*/React.createElement("a", {
-    href: api + '/api/pipeline-lab/original/' + encodeURIComponent(p.ticker) + '/thesis_' + s.documentId,
-    target: "_blank",
-    rel: "noreferrer"
-  }, s.filename), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, s.filename, " ", /*#__PURE__*/React.createElement(OriginalDownload, {
+    url: api + '/api/pipeline-lab/original/' + encodeURIComponent(p.ticker) + '/thesis_' + s.documentId,
+    filename: s.filename,
+    sha256: s.sha256
+  }), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: busy || !!readIssue || !loaded,
     onClick: () => act(async () => {

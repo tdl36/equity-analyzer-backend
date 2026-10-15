@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T320 — Authenticated original downloads and receipt-byte verification
+
+Follow-up to T319 in the same build session: review found that ordinary browser
+links cannot carry Charlie's required Authorization header. The collected picker,
+supplemental library and frozen proposal sources now download through the existing
+authenticated fetch path. Credentials are never placed in URLs. Where a collection
+or frozen-source hash exists, browser SHA-256 must match before the file is saved.
+Changed, empty, oversized and failed responses surface an error; no misleading
+original is downloaded. Supplemental originals without a recorded hash retain the
+existing current-file semantics and are verified at proposal save/approval.
+
+Validation: 226 frontend tests and production build pass. Full-app synthetic
+390/1280px tests assert the Bearer header, compare actual downloaded fixture bytes,
+block changed bytes without another download, and exercise both collected and
+supplemental controls. Earlier picker, draft-recovery and approval-guard checks
+also pass. The unchanged backend code passed 1,635 safe tests for T319;
+no backend code changed for this authenticated-download correction. No real source
+file or research output was generated or accepted during UI testing.
+
+T319 deployment evidence: Render 0fb84dbc4d3c8eccff9dfdbd8f151d66df3fed1d,
+Cloudflare f249ae77-c9fa-40d1-8fe9-debfe65cfc48; exact hosted artifacts and read-only
+endpoint guards passed. The latest 30 assignments contained no completed source-
+only collection, so the positive inventory path remains synthetic-tested. CVS
+remained queued, zero verified sources, no saved issue, fresh Mac report at
+19:22:56 UTC. Processing-sources correctly refused that unfinished parent.
+Do not treat T319's href-only browser test as authenticated download evidence;
+T320's actual download assertions replace it.
+
+Next: continue the T319 selected-pack review work while genuine collection waits;
+then verify real receipts/proposal readiness and observe expressly approved
+processing. No shared-dashboard expansion or eight-priority completion claim
+without the connected-journey and investor acceptance evidence.
+
 ## T319 — Organized collected evidence before processing approval
 
 Completed collection receipts now have a read-only metadata inventory scoped to

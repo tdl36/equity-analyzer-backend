@@ -1,12 +1,15 @@
 """Full-app synthetic handoff at 390/1280px; serve .worker-assets on port 3012. All API calls are intercepted."""
-import json,copy,re
+import json,copy,re,hashlib
 from playwright.sync_api import sync_playwright, expect
+SOURCE=b'Synthetic original for download verification'
+HASH=hashlib.sha256(SOURCE).hexdigest()
 NOTE='11111111-1111-4111-8111-111111111111'
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  for width in [390,1280]:
   page=b.new_page(viewport={'width':width,'height':1000},service_workers='block');page.add_init_script("localStorage.setItem('charlie_auth_token','synthetic')")
-  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok'
+  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok';download_mode='good';downloads=[]
+  page.on('download',lambda d:downloads.append(d.suggested_filename))
   def api(route):
    u=route.request.url;d={};code=200
    if route.request.method!='GET':writes.append(u)
@@ -14,11 +17,15 @@ with sync_playwright() as p:
    elif '/api/collection/control' in u:d={'snapshot':{'policies':[],'requests':[]}}
    elif '/api/provider-credentials' in u:d={'providers':{k:{'configured':True} for k in ['anthropic','gemini','openai']}}
    elif '/api/research/assignment-defaults' in u:d={'outputs':['thesis'],'horizon':'12–24 months'}
+   elif '/api/pipeline-lab/original/ABT/' in u:
+    assert route.request.method=='GET'
+    assert route.request.headers.get('authorization')=='Bearer synthetic'
+    route.fulfill(status=200,content_type='application/octet-stream',body=SOURCE if download_mode=='good' else b'Changed original');return
    elif '/processing-sources' in u:
     d={'collectionId':NOTE,'ticker':'ABT','documents':[
-     {'id':'thesis_1','filename':'recent.pdf','receiptSha256':'a'*64,'availability':'available','publishedDate':'2026-10-01','sourceKind':'press-release','publisher':'Company'},
+     {'id':'thesis_1','filename':'recent.pdf','receiptSha256':HASH,'availability':'available','publishedDate':'2026-10-01','sourceKind':'press-release','publisher':'Company'},
      {'id':'thesis_5','filename':'older.pdf','receiptSha256':'b'*64,'availability':'available','publishedDate':'2023-07-01','sourceKind':'transcript'},
-     {'id':'thesis_6','filename':'copy.pdf','receiptSha256':'a'*64,'availability':'available','publishedDate':'2026-10-01'},
+     {'id':'thesis_6','filename':'copy.pdf','receiptSha256':HASH,'availability':'available','publishedDate':'2026-10-01'},
      {'id':None,'filename':'missing.pdf','receiptSha256':'d'*64,'availability':'missing','publishedDate':None}]}
     if collection_mode=='mismatch':d['ticker']='CVS'
    elif '/processing-library' in u:
@@ -27,12 +34,12 @@ with sync_playwright() as p:
     if route.request.method=='POST':
      body=route.request.post_data_json
      if u.endswith('/approve'):
-      assert body=={'revision':1,'digest':'a'*64}
+      assert body=={'revision':1,'digest':HASH}
       proposals[0]['status']='dispatched';proposals[0]['assignmentId']=NOTE;d={'id':NOTE,'status':'queued'}
      else:
       assert body['filenames']==['recent.pdf'];assert body['supplementalIds']==['3'];assert body['plan']['researchPurpose']=={'kind':'event_note','event':{'title':'Guidance update','date':'2026-10-01'}}
       assert body['plan']['labFullNote']=={'allowPdfText':True};assert body['plan']['meeting']=={'date':'2026-10-20','type':'expert'};assert body['plan']['outputs']==['meeting_prep','summary_note']
-      d={'id':body['requestId'],'ticker':'ABT','collectionId':NOTE,'revision':1,'digest':'a'*64,'status':'pending','coverage':{'version':1,'total':2,'metadataRecorded':2,'collectionWindow':{'since':'2026-07-01','until':'2026-10-14'},'roles':{'collection':1,'supplemental':1,'unknown':0},'publication':{'known':2,'unknown':0,'earliest':'2024-03-01','latest':'2026-10-01','beforeWindow':1,'withinWindow':1,'afterWindow':0},'kinds':{'unknown':2},'thesisReferences':{'referenced':1,'noReference':1,'unknown':0}},'fullNote':{'modelKey':'fixture-v1','maxCalls':8,'maxTokens':32000,'allowPdfText':True,'configDigest':'c'*64,'promptSha256':'d'*64,'sourcePreparation':{'sourcePack':[{'reference':'charlie:thesis_1'},{'reference':'charlie:thesis_3'}],'batchCount':2,'representationSha256':'e'*64,'warnings':[{'reference':'charlie:thesis_3','issue':'Extracted text representation; embedded images and layout are not verified.'}]}},'sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','reference':'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':10},{'documentId':'3','reference':'charlie:thesis_3','filename':'annual-2024-10-K.pdf','sha256':'b'*64,'bytes':20}],'plan':{**body['plan'],'ticker':'ABT','since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
+      d={'id':body['requestId'],'ticker':'ABT','collectionId':NOTE,'revision':1,'digest':HASH,'status':'pending','coverage':{'version':1,'total':2,'metadataRecorded':2,'collectionWindow':{'since':'2026-07-01','until':'2026-10-14'},'roles':{'collection':1,'supplemental':1,'unknown':0},'publication':{'known':2,'unknown':0,'earliest':'2024-03-01','latest':'2026-10-01','beforeWindow':1,'withinWindow':1,'afterWindow':0},'kinds':{'unknown':2},'thesisReferences':{'referenced':1,'noReference':1,'unknown':0}},'fullNote':{'modelKey':'fixture-v1','maxCalls':8,'maxTokens':32000,'allowPdfText':True,'configDigest':'c'*64,'promptSha256':'d'*64,'sourcePreparation':{'sourcePack':[{'reference':'charlie:thesis_1'},{'reference':'charlie:thesis_3'}],'batchCount':2,'representationSha256':'e'*64,'warnings':[{'reference':'charlie:thesis_3','issue':'Extracted text representation; embedded images and layout are not verified.'}]}},'sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','reference':'charlie:thesis_1','filename':'recent.pdf','sha256':HASH,'bytes':10},{'documentId':'3','reference':'charlie:thesis_3','filename':'annual-2024-10-K.pdf','sha256':'b'*64,'bytes':20}],'plan':{**body['plan'],'ticker':'ABT','since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
       if width==1280:
        route.abort();return  # Saved server-side, lost response: reconcile without another submission.
     else:
@@ -41,8 +48,8 @@ with sync_playwright() as p:
      if read_mode=='company':d['proposals'][0]['ticker']='CVS'
      if read_mode=='collection':d['proposals'][0]['collectionId']='22222222-2222-4222-8222-222222222222'
      if read_mode=='duplicate':d['proposals'].append(d['proposals'][0])
-   elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64},{'filename':'copy.pdf','sha256':'a'*64},{'filename':'missing.pdf','sha256':'d'*64}]}}]}
-   elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
+   elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':HASH},{'filename':'older.pdf','sha256':'b'*64},{'filename':'copy.pdf','sha256':HASH},{'filename':'missing.pdf','sha256':'d'*64}]}}]}
+   elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':HASH,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
    elif '/api/pipeline/universe' in u:d={'universe':[{'ticker':'ABT','company':'Abbott','docCount':1}]}
    elif '/api/pipeline/documents/ABT' in u:inventory_reads.append(u);d={'documents':[{'id':'thesis_1','filename':'recent.pdf','publishedDate':'2026-10-01'},{'id':'thesis_2','filename':'upload.pdf','createdAt':'2026-10-13'}]}
    elif '/api/agent/local-files/ABT' in u:d={'files':[]}
@@ -73,7 +80,15 @@ with sync_playwright() as p:
   collected=review.get_by_role('region',name='Collected evidence',exact=True)
   expect(collected.get_by_role('checkbox',name='copy.pdf',exact=True)).to_be_disabled()
   expect(collected.get_by_role('checkbox',name='missing.pdf',exact=True)).to_be_disabled()
-  expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True).locator('xpath=../..').get_by_role('link',name='Open stored original')).to_have_attribute('href', re.compile(r'/api/pipeline-lab/original/ABT/thesis_1$'))
+  original=collected.get_by_role('checkbox',name='recent.pdf',exact=True).locator('xpath=../..')
+  with page.expect_download() as downloaded:original.get_by_role('button',name='Download original',exact=True).click()
+  assert downloaded.value.suggested_filename=='recent.pdf'
+  assert open(downloaded.value.path(),'rb').read()==SOURCE
+  download_mode='changed';original.get_by_role('button',name='Download original',exact=True).click()
+  expect(original.get_by_role('alert')).to_contain_text('bytes differ')
+  assert downloads==['recent.pdf']
+  download_mode='good'
+
   collected.get_by_label('Collected source type',exact=True).select_option('Transcripts')
   expect(collected.get_by_role('checkbox',name='older.pdf',exact=True)).to_be_visible()
   expect(collected.get_by_text('1 selections hidden',exact=False)).to_be_visible()
@@ -88,12 +103,12 @@ with sync_playwright() as p:
   review.get_by_label('Processing event date').fill('2026-10-01')
   expect(save).to_be_enabled()
   collection_mode='mismatch';collected.get_by_role('button',name='Refresh collected source metadata',exact=True).click()
-  expect(collected.get_by_role('alert')).to_contain_text('does not match')
+  expect(collected.get_by_role('alert').filter(has_text='does not match')).to_be_visible()
   expect(save).to_be_disabled()
   expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
   collection_mode='ok';collected.get_by_role('button',name='Refresh collected source metadata',exact=True).click()
   expect(save).to_be_enabled()
-  collected.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T319-'+str(width)+'-sources.png')
+  collected.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T320-'+str(width)+'-sources.png')
 
   review.get_by_role('checkbox',name='Meeting questions',exact=True).check()
   expect(save).to_be_disabled()
@@ -110,7 +125,10 @@ with sync_playwright() as p:
   expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).to_be_visible()
   library.get_by_label('Find library sources').fill('annual')
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
-  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).locator('xpath=../..').get_by_role('link',name='Open stored original')).to_have_attribute('href',re.compile(r'/api/pipeline-lab/original/ABT/thesis_3$'))
+  with page.expect_download() as downloaded:library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).locator('xpath=../..').get_by_role('button',name='Download original',exact=True).click()
+  assert downloaded.value.suggested_filename=='annual-2024-10-K.pdf'
+  assert open(downloaded.value.path(),'rb').read()==SOURCE
+
   assert not library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False).count()
   page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
   page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
@@ -162,7 +180,7 @@ with sync_playwright() as p:
   expect(coverage.get_by_text('A reference does not prove that evidence was incorporated',exact=False)).to_be_visible()
   expect(coverage.get_by_text('1 exact-byte references found',exact=False)).to_be_visible()
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T319-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T320-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   for read_mode in ['error','company','collection','duplicate']:
    review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
