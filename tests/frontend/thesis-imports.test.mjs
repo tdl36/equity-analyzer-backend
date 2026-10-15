@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseDraft,canApprove} from '../../src/thesis-import-model.mjs';
+import {parseDraft,canApprove,validateReviewDraft} from '../../src/thesis-import-model.mjs';
 import {readRoute,routeHash} from '../../src/workspace-model.mjs';
 
 test('accepts JSON and fenced JSON but identifies wrong files and excessive uploads',()=>{
@@ -24,4 +24,11 @@ test('specific draft links accept only UUIDs and coexist with company routes', a
   assert.equal(requestedDraft('?release=T124&thesisDraft='+id),id);
   assert.equal(requestedDraft(''),null);
   assert.throws(()=>requestedDraft('?thesisDraft=../../approve'));
+});
+
+test('review requires exact identity and a usable confirmed payload before approval',()=>{
+ const d={id:'saved',ticker:'ABT',status:'pending',stale:false,fingerprint:'saved-fingerprint',package:{companyName:'Example',sourceRegister:[]},warnings:[],sections:[{key:'thesis',name:'Thesis',changed:true}]};
+ assert.equal(validateReviewDraft(d,'saved'),d);
+ for(const value of [null,{...d,id:'other'},{...d,stale:undefined},{...d,stale:'false'},{...d,fingerprint:''},{...d,package:{}},{...d,sections:[{}]},{...d,status:'running'}])assert.throws(()=>validateReviewDraft(value,'saved'));
+ assert.equal(canApprove({...d,stale:undefined},true,'ABT',false),false);
 });

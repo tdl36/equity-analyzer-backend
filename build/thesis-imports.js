@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft } from './thesis-import-model.mjs';
+import React, { useState, useEffect, useRef } from 'react';
+import { parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft, validateReviewDraft } from './thesis-import-model.mjs';
 var labels = {
   pdfPages: 'PDF pages',
   sourceId: 'Source',
@@ -60,8 +60,18 @@ export function ThesisImports({
     [confirmation, setConfirmation] = useState('');
   var [loaded, setLoaded] = useState(false),
     [filter, setFilter] = useState('');
-  async function call(path, body) {
-    var r = await fetch(`${api}/api/thesis-imports${path}`, body === undefined ? {} : {
+  var [reviewLoading, setReviewLoading] = useState(false),
+    [reviewError, setReviewError] = useState(''),
+    [reviewId, setReviewId] = useState('');
+  var reviewRequest = useRef(0),
+    reviewController = useRef(null),
+    listRequest = useRef(0),
+    mounted = useRef(false);
+  var locked = busy || reviewLoading;
+  async function call(path, body, signal) {
+    var r = await fetch(`${api}/api/thesis-imports${path}`, body === undefined ? {
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000)
+    } : {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -73,19 +83,41 @@ export function ThesisImports({
     return d;
   }
   async function list() {
+    var token = ++listRequest.current;
     var data = await call(filter ? `?ticker=${encodeURIComponent(filter)}` : '');
-    setDrafts(data.drafts);
-    setLoaded(true);
+    if (mounted.current && token === listRequest.current) {
+      setDrafts(data.drafts);
+      setLoaded(true);
+    }
   }
   async function select(id) {
-    var d = await call(`/${id}`);
-    setDraft(d);
-    setTicker(d.ticker);
+    var token = ++reviewRequest.current;
+    reviewController.current?.abort();
+    var controller = new AbortController();
+    reviewController.current = controller;
+    setNotice('');
+    setReviewId(id);
+    setReviewLoading(true);
+    setReviewError('');
+    setDraft(null);
     setChecked(false);
     setConfirmation('');
     var url = new URL(window.location.href);
     url.searchParams.set('thesisDraft', id);
     window.history.replaceState(null, '', url);
+    try {
+      requestedDraft('?thesisDraft=' + encodeURIComponent(id));
+      var d = validateReviewDraft(await call(`/${id}`, undefined, controller.signal), id);
+      if (mounted.current && token === reviewRequest.current) {
+        setDraft(d);
+        setTicker(d.ticker);
+      }
+    } catch (e) {
+      if (mounted.current && token === reviewRequest.current) setReviewError('This exact saved draft could not be verified. Retry loading it; no research or approval will be started.');
+      throw e;
+    } finally {
+      if (mounted.current && token === reviewRequest.current) setReviewLoading(false);
+    }
   }
   async function act(fn) {
     setBusy(true);
@@ -100,30 +132,24 @@ export function ThesisImports({
     }
   }
   useEffect(() => {
+    mounted.current = true;
     var active = true;
-    (async () => {
-      try {
-        var id = requestedDraft(window.location.search);
-        var data = await call('');
-        if (active) {
-          setDrafts(data.drafts);
-          setLoaded(true);
-        }
-        if (id) {
-          var d = await call(`/${id}`);
-          if (active) {
-            setDraft(d);
-            setTicker(d.ticker);
-            setChecked(false);
-            setConfirmation('');
-          }
-        }
-      } catch (e) {
-        if (active) setError(e.message);
-      }
-    })();
+    // The exact saved draft remains accessible even when the inbox is unavailable.
+    list().catch(e => {
+      if (active) setError('The draft inbox is unavailable. Your selected draft can still load independently.');
+    });
+    try {
+      var id = requestedDraft(window.location.search);
+      if (id) select(id).catch(() => {});
+    } catch (e) {
+      setError(e.message);
+    }
     return () => {
       active = false;
+      mounted.current = false;
+      reviewRequest.current++;
+      listRequest.current++;
+      reviewController.current?.abort();
     };
   }, [api]);
   async function prepare() {
@@ -183,9 +209,9 @@ export function ThesisImports({
     value: ticker,
     maxLength: 20,
     onChange: e => setTicker(e.target.value.toUpperCase().trim()),
-    disabled: busy
+    disabled: locked
   })), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: locked,
     onClick: () => act(prepare)
   }, "Prepare for ChatGPT"), /*#__PURE__*/React.createElement("label", {
     className: "ti-upload"
@@ -193,14 +219,14 @@ export function ThesisImports({
     "aria-label": "Import draft file",
     type: "file",
     accept: ".json,application/json",
-    disabled: busy,
+    disabled: locked,
     onChange: e => {
       var file = e.target.files[0];
       e.target.value = '';
       act(() => upload(file));
     }
   })), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: locked,
     onClick: () => act(async () => {
       await list();
       if (draft) await select(draft.id);
@@ -228,10 +254,10 @@ export function ThesisImports({
     placeholder: "All companies",
     maxLength: 20,
     value: filter,
-    disabled: busy,
+    disabled: locked,
     onChange: e => setFilter(e.target.value.toUpperCase().trim())
   })), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: locked,
     onClick: () => act(list)
   }, "Find drafts")), loaded && !drafts.length && /*#__PURE__*/React.createElement("p", null, "No drafts yet for this view. Import a structured draft or prepare a company above."), /*#__PURE__*/React.createElement("div", {
     className: "ti-inbox"
@@ -239,12 +265,26 @@ export function ThesisImports({
     disabled: busy,
     key: d.id,
     "aria-pressed": draft?.id === d.id,
-    onClick: () => act(() => select(d.id))
+    onClick: () => {
+      setError('');
+      select(d.id).catch(() => {});
+    }
   }, /*#__PURE__*/React.createElement("strong", null, d.ticker, " \xB7 ", d.company), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
     className: "ti-status"
   }, d.status), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
     className: "ti-muted"
-  }, new Date(d.created_at).toLocaleString()))))), draft && /*#__PURE__*/React.createElement("section", {
+  }, new Date(d.created_at).toLocaleString()))))), reviewLoading && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Opening the selected saved draft\u2026 Approval is unavailable until it loads."), reviewError && /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    className: "ti-message ti-error"
+  }, reviewError, " ", /*#__PURE__*/React.createElement("button", {
+    disabled: locked,
+    onClick: () => {
+      setError('');
+      select(reviewId).catch(() => {});
+    }
+  }, "Retry selected draft")), draft && /*#__PURE__*/React.createElement("section", {
     className: "ti-panel",
     "aria-label": "Draft review"
   }, /*#__PURE__*/React.createElement("div", {
@@ -259,7 +299,7 @@ export function ThesisImports({
   }, "The live thesis has changed. Approval is blocked. Download a fresh preparation file, reconcile this draft in ChatGPT, and import the revised result."), /*#__PURE__*/React.createElement("div", {
     className: "ti-actions"
   }, /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: locked,
     onClick: () => downloadFile(`${draft.ticker}-draft.json`, draft.package)
   }, "Download this draft"), draft.status === 'approved' && /*#__PURE__*/React.createElement("button", {
     onClick: () => onNavigate('portfolio', draft.ticker)
@@ -293,7 +333,7 @@ export function ThesisImports({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: checked,
-    disabled: busy || draft.stale,
+    disabled: locked || draft.stale,
     onChange: e => setChecked(e.target.checked)
   }), /*#__PURE__*/React.createElement("span", null, "I reviewed the proposed thesis, signposts, risks and source limitations, and approve saving this version.")), /*#__PURE__*/React.createElement("div", {
     className: "ti-actions"
@@ -301,14 +341,14 @@ export function ThesisImports({
     "aria-label": "Confirm ticker",
     type: "text",
     value: confirmation,
-    disabled: busy || draft.stale,
+    disabled: locked || draft.stale,
     onChange: e => setConfirmation(e.target.value.toUpperCase().trim())
   })), /*#__PURE__*/React.createElement("button", {
     className: "ti-primary",
-    disabled: !canApprove(draft, checked, confirmation, busy),
+    disabled: !canApprove(draft, checked, confirmation, locked),
     onClick: () => act(approve)
   }, "Approve & save thesis"), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+    disabled: locked,
     onClick: () => act(async () => {
       await call(`/${draft.id}/dismiss`, {});
       await select(draft.id);

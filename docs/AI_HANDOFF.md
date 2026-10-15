@@ -2,6 +2,36 @@
 
 Updated: October 14, 2026
 
+## T328 — Exact thesis-review loading and recovery
+
+An exact thesis draft now loads independently of the inbox. Inbox failure no
+longer blocks a direct saved-output link. Bounded reads, cancellation and selection
+ownership prevent a late initial/previous response from replacing a newer choice.
+The response must match the selected draft ID and include a usable review payload;
+unknown baseline freshness cannot enable approval. Selecting/reloading clears the
+previous review and consent, and loading/errors expose no approval controls.
+A failed or mismatched read offers an explicit retry of that exact draft only.
+Mutations and backend approval/baseline rules are unchanged; no automatic retries.
+
+Validation: 236 frontend tests, 11 focused existing backend thesis-import tests
+and production build pass. Browser checks at 390/1280px cover failed inbox with
+successful deep link, ignored late response, mismatched identity, exact retry,
+consent reset, and actual 15-second read timeout. Only synthetic GETs were allowed;
+no approval was submitted. Full backend suite last passed 1,672 in T327; unchanged
+backend was not rerun wholesale for this frontend-only increment.
+
+Read-only real payload checks: ABT pending/non-stale and UNH previously approved
+still load with exact identity and source-register matches (8/6 sources). Local
+replay of those saved payloads in the actual review component passed at 390/1280px
+without page overflow or script errors. This is saved-state/render evidence, not
+a new investor decision or proof of the collection-only processing path. Private
+payloads and screenshots remain outside the repo in restricted /tmp/charlie-output-audit.
+
+Next: verify exact release, then inspect source-readiness/recovery for any existing
+completed collection. Preserve pending investor decisions and unavailable external
+proof while continuing confirmed engineering gaps. Collection-only requests still
+authorize no synthesis; original Pipeline and backfill pause remain unchanged.
+
 ## T327 — Assignment visibility survives background backfill
 
 Home/Activity gives coordinating research assignments separate attention, active

@@ -1,5 +1,5 @@
-import React, {useState, useEffect} from 'react';
-import {parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft} from './thesis-import-model.mjs';
+import React, {useState, useEffect, useRef} from 'react';
+import {parseDraft, canApprove, downloadFile, MAX_DRAFT_BYTES, requestedDraft, validateReviewDraft} from './thesis-import-model.mjs';
 
 const labels = {pdfPages:'PDF pages', sourceId:'Source', sha256:'File hash', claimBasis:'Basis',
   thresholdBasis:'Threshold basis', reviewTrigger:'Review trigger', triggerPoints:'Trigger points',
@@ -20,21 +20,43 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
   const [busy,setBusy] = useState(false), [error,setError] = useState(''), [notice,setNotice] = useState('');
   const [checked,setChecked] = useState(false), [confirmation,setConfirmation] = useState('');
   const [loaded,setLoaded] = useState(false), [filter,setFilter] = useState('');
-  async function call(path, body) {
-    const r = await fetch(`${api}/api/thesis-imports${path}`, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const [reviewLoading,setReviewLoading]=useState(false),[reviewError,setReviewError]=useState(''),[reviewId,setReviewId]=useState('');
+  const reviewRequest=useRef(0),reviewController=useRef(null),listRequest=useRef(0),mounted=useRef(false);
+  const locked=busy||reviewLoading;
+  async function call(path, body, signal) {
+    const r = await fetch(`${api}/api/thesis-imports${path}`, body === undefined ? {signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || `Request failed (${r.status}). Your draft has not been discarded; refresh to check its status before retrying.`);
     return d;
   }
-  async function list() { const data = await call(filter ? `?ticker=${encodeURIComponent(filter)}` : ''); setDrafts(data.drafts); setLoaded(true); }
-  async function select(id) { const d = await call(`/${id}`); setDraft(d); setTicker(d.ticker); setChecked(false); setConfirmation(''); const url = new URL(window.location.href); url.searchParams.set('thesisDraft', id); window.history.replaceState(null, '', url); }
+  async function list() {
+    const token=++listRequest.current;
+    const data=await call(filter ? `?ticker=${encodeURIComponent(filter)}` : '');
+    if(mounted.current&&token===listRequest.current){setDrafts(data.drafts);setLoaded(true);}
+  }
+  async function select(id) {
+    const token=++reviewRequest.current;
+    reviewController.current?.abort();const controller=new AbortController();reviewController.current=controller;
+    setNotice('');setReviewId(id);setReviewLoading(true);setReviewError('');setDraft(null);setChecked(false);setConfirmation('');
+    const url=new URL(window.location.href);url.searchParams.set('thesisDraft',id);window.history.replaceState(null,'',url);
+    try {
+      requestedDraft('?thesisDraft='+encodeURIComponent(id));
+      const d=validateReviewDraft(await call(`/${id}`,undefined,controller.signal),id);
+      if(mounted.current&&token===reviewRequest.current){setDraft(d);setTicker(d.ticker);}
+    } catch(e) {
+      if(mounted.current&&token===reviewRequest.current)setReviewError('This exact saved draft could not be verified. Retry loading it; no research or approval will be started.');
+      throw e;
+    } finally {if(mounted.current&&token===reviewRequest.current)setReviewLoading(false);}
+  }
   async function act(fn) { setBusy(true); setError(''); setNotice(''); try { await fn(); } catch(e) { setError(e.message); } finally { setBusy(false); } }
-  useEffect(() => { let active=true; (async()=>{try {
-    const id = requestedDraft(window.location.search);
-    const data = await call('');
-    if(active){setDrafts(data.drafts);setLoaded(true);}
-    if(id){const d=await call(`/${id}`);if(active){setDraft(d);setTicker(d.ticker);setChecked(false);setConfirmation('');}}
-  } catch(e){if(active)setError(e.message);}})(); return ()=>{active=false;}; }, [api]);
+  useEffect(() => {
+    mounted.current=true;let active=true;
+    // The exact saved draft remains accessible even when the inbox is unavailable.
+    list().catch(e=>{if(active)setError('The draft inbox is unavailable. Your selected draft can still load independently.');});
+    try {const id=requestedDraft(window.location.search);if(id)select(id).catch(()=>{});}
+    catch(e){setError(e.message);}
+    return ()=>{active=false;mounted.current=false;reviewRequest.current++;listRequest.current++;reviewController.current?.abort();};
+  }, [api]);
 
   async function prepare() {
     if (!/^[A-Z0-9][A-Z0-9.-]{0,19}$/.test(ticker)) throw new Error('Enter a ticker before preparing a thesis.');
@@ -76,10 +98,10 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
         <div><strong>03 · Review changes</strong><span>Compare every section and source reference, then approve the new thesis or upgrade.</span></div>
       </div>
       <div className="ti-actions">
-        <label>Ticker <input aria-label="Preparation ticker" type="text" value={ticker} maxLength={20} onChange={e=>setTicker(e.target.value.toUpperCase().trim())} disabled={busy}/></label>
-        <button disabled={busy} onClick={()=>act(prepare)}>Prepare for ChatGPT</button>
-        <label className="ti-upload">Import draft<input aria-label="Import draft file" type="file" accept=".json,application/json" disabled={busy} onChange={e=>{const file=e.target.files[0];e.target.value='';act(()=>upload(file));}}/></label>
-        <button disabled={busy} onClick={()=>act(async()=>{await list(); if(draft)await select(draft.id);})}>Refresh inbox</button>
+        <label>Ticker <input aria-label="Preparation ticker" type="text" value={ticker} maxLength={20} onChange={e=>setTicker(e.target.value.toUpperCase().trim())} disabled={locked}/></label>
+        <button disabled={locked} onClick={()=>act(prepare)}>Prepare for ChatGPT</button>
+        <label className="ti-upload">Import draft<input aria-label="Import draft file" type="file" accept=".json,application/json" disabled={locked} onChange={e=>{const file=e.target.files[0];e.target.value='';act(()=>upload(file));}}/></label>
+        <button disabled={locked} onClick={()=>act(async()=>{await list(); if(draft)await select(draft.id);})}>Refresh inbox</button>
       </div>
       <p className="ti-muted">Preparation, import and approval make no paid model calls. Original documents stay where you keep them; references do not upload or verify the originals.</p>
       {busy && <p className="ti-busy" role="status">Working…</p>}
@@ -87,17 +109,19 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
       {notice && <div role="status" className="ti-message">{notice}</div>}
       <section className="ti-panel"><h2>Draft inbox</h2>
         <p className="ti-muted">Most recent 100 matching drafts. Reimporting the same file opens its existing review.</p>
-        <div className="ti-actions"><label>Filter by ticker <input type="text" aria-label="Inbox ticker filter" placeholder="All companies" maxLength={20} value={filter} disabled={busy} onChange={e=>setFilter(e.target.value.toUpperCase().trim())}/></label><button disabled={busy} onClick={()=>act(list)}>Find drafts</button></div>
+        <div className="ti-actions"><label>Filter by ticker <input type="text" aria-label="Inbox ticker filter" placeholder="All companies" maxLength={20} value={filter} disabled={locked} onChange={e=>setFilter(e.target.value.toUpperCase().trim())}/></label><button disabled={locked} onClick={()=>act(list)}>Find drafts</button></div>
         {loaded && !drafts.length && <p>No drafts yet for this view. Import a structured draft or prepare a company above.</p>}
-        <div className="ti-inbox">{drafts.map(d=><button disabled={busy} key={d.id} aria-pressed={draft?.id===d.id} onClick={()=>act(()=>select(d.id))}><strong>{d.ticker} · {d.company}</strong><br/><span className="ti-status">{d.status}</span><br/><span className="ti-muted">{new Date(d.created_at).toLocaleString()}</span></button>)}</div>
+        <div className="ti-inbox">{drafts.map(d=><button disabled={busy} key={d.id} aria-pressed={draft?.id===d.id} onClick={()=>{setError('');select(d.id).catch(()=>{});}}><strong>{d.ticker} · {d.company}</strong><br/><span className="ti-status">{d.status}</span><br/><span className="ti-muted">{new Date(d.created_at).toLocaleString()}</span></button>)}</div>
       </section>
+      {reviewLoading&&<p role="status">Opening the selected saved draft… Approval is unavailable until it loads.</p>}
+      {reviewError&&<div role="alert" className="ti-message ti-error">{reviewError} <button disabled={locked} onClick={()=>{setError('');select(reviewId).catch(()=>{});}}>Retry selected draft</button></div>}
       {draft && <section className="ti-panel" aria-label="Draft review">
         <div className="ti-kicker">{draft.baseline ? 'Thesis upgrade' : 'Initial thesis'} · {draft.status}</div>
         <h2>{draft.ticker} — {draft.package.companyName}</h2>
         <p>{draft.sections.filter(s=>s.changed).length} of 4 sections changed. Read both versions, including removed items.</p>
         <div className="ti-message"><ul>{draft.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>
         {draft.stale && <div className="ti-message ti-error" role="alert">The live thesis has changed. Approval is blocked. Download a fresh preparation file, reconcile this draft in ChatGPT, and import the revised result.</div>}
-        <div className="ti-actions"><button disabled={busy} onClick={()=>downloadFile(`${draft.ticker}-draft.json`, draft.package)}>Download this draft</button>
+        <div className="ti-actions"><button disabled={locked} onClick={()=>downloadFile(`${draft.ticker}-draft.json`, draft.package)}>Download this draft</button>
           {draft.status==='approved' && <button onClick={()=>onNavigate('portfolio',draft.ticker)}>Open saved thesis</button>}
         </div>
         {draft.sections.map(s=><section key={s.key} className="ti-section"><div className="ti-section-head"><h3>{s.name}</h3><span>{s.changed?'Changed':'Unchanged'}</span></div><div className="ti-comparison">
@@ -108,10 +132,10 @@ export function ThesisImports({api='', initialTicker='', onNavigate, onSaved}) {
         <details><summary>Authorship and preparation details · author supplied</summary><Content value={draft.package.provenance}/></details>
         {draft.status==='pending' && <section className="ti-panel ti-approval"><h2>Your approval</h2>
           <p>This will {draft.baseline?'replace the current detailed thesis':'create the initial thesis'} for {draft.ticker}. The reviewed draft is preserved, and upgrades retain the previous thesis for restoration.</p>
-          <label className="ti-check"><input type="checkbox" checked={checked} disabled={busy||draft.stale} onChange={e=>setChecked(e.target.checked)}/><span>I reviewed the proposed thesis, signposts, risks and source limitations, and approve saving this version.</span></label>
-          <div className="ti-actions"><label>Type {draft.ticker} to confirm <input aria-label="Confirm ticker" type="text" value={confirmation} disabled={busy||draft.stale} onChange={e=>setConfirmation(e.target.value.toUpperCase().trim())}/></label>
-            <button className="ti-primary" disabled={!canApprove(draft,checked,confirmation,busy)} onClick={()=>act(approve)}>Approve & save thesis</button>
-            <button disabled={busy} onClick={()=>act(async()=>{await call(`/${draft.id}/dismiss`,{});await select(draft.id);await list();})}>Dismiss draft</button>
+          <label className="ti-check"><input type="checkbox" checked={checked} disabled={locked||draft.stale} onChange={e=>setChecked(e.target.checked)}/><span>I reviewed the proposed thesis, signposts, risks and source limitations, and approve saving this version.</span></label>
+          <div className="ti-actions"><label>Type {draft.ticker} to confirm <input aria-label="Confirm ticker" type="text" value={confirmation} disabled={locked||draft.stale} onChange={e=>setConfirmation(e.target.value.toUpperCase().trim())}/></label>
+            <button className="ti-primary" disabled={!canApprove(draft,checked,confirmation,locked)} onClick={()=>act(approve)}>Approve & save thesis</button>
+            <button disabled={locked} onClick={()=>act(async()=>{await call(`/${draft.id}/dismiss`,{});await select(draft.id);await list();})}>Dismiss draft</button>
           </div><p className="ti-muted">For edits, download this draft, revise it in ChatGPT, then import the new file. Paid research and report generation remain separate choices.</p>
         </section>}
       </section>}

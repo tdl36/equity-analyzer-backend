@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T328 makes exact thesis-review reads independent of inbox availability and guards
+selection identity, late responses and review consent on reload. Synthetic failure
+checks and local replay of real ABT/UNH saved payloads pass. This is delivery/recovery
+evidence, not new investor acceptance or collection-to-processing proof.
+
 T327 isolates assignment inventory from background backfill budgets and reports
 recent truncation. Existing ABT/UNH saved previews returned HTTP 200 and rendered
 at phone/desktop widths. This is delivery/layout evidence, not investor or new
