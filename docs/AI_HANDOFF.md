@@ -14,8 +14,10 @@ this frontend validation is not independent byte verification or research approv
 
 200 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
 checks rejected an unselected original and then displayed the matching check.
-Only mocked check requests were issued; no research or approvals. Production
-verification pending. Backend/agent unchanged.
+Only mocked check requests were issued; no research or approvals. Verified Render
+`2eef477733e2f8e4b3bd5687a3912761b35dfd5b`, Cloudflare
+`1c61fff0-2f26-482a-9b51-4c37c584d32f`, T293 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (64.4 seconds old); endpoint auth checks passed. Backend/agent unchanged.
 Next: authorized real source-to-output acceptance and investor review remain open;
 historical valuation remains at its documented provider-schema checkpoint.
 
