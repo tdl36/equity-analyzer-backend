@@ -3,7 +3,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection, labSourceDate } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection, labSourceDate, labTicker } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -27,6 +27,8 @@ export function PipelineLab({
   initialTicker = '',
   routeWork = ''
 }) {
+  var [openSymbol, setOpenSymbol] = React.useState(''),
+    [symbolError, setSymbolError] = React.useState('');
   var [stocks, setStocks] = React.useState([]),
     [error, setError] = React.useState(''),
     [loaded, setLoaded] = React.useState(false),
@@ -90,7 +92,39 @@ export function PipelineLab({
     value: query,
     onChange: e => setQuery(e.target.value),
     placeholder: "Ticker or company"
-  })), !loaded && !error && /*#__PURE__*/React.createElement("p", {
+  })), /*#__PURE__*/React.createElement("form", {
+    "aria-label": "Open a stock in Lab",
+    onSubmit: e => {
+      e.preventDefault();
+      try {
+        var symbol = labTicker(openSymbol);
+        setSymbolError('');
+        onNavigate('pipelinelab', symbol);
+      } catch (e) {
+        setSymbolError(e.message);
+      }
+    },
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Open a ticker directly", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Ticker to open in Lab",
+    value: openSymbol,
+    maxLength: 20,
+    autoCapitalize: "characters",
+    autoCorrect: "off",
+    spellCheck: false,
+    placeholder: "e.g. ABT",
+    onChange: e => {
+      setOpenSymbol(e.target.value);
+      setSymbolError('');
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "submit",
+    disabled: !openSymbol.trim()
+  }, "Open ticker in Lab"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Works even when a stock is not in these cards. Opening shows its source settings and collection controls; it does not add a thesis, search AlphaSense or start paid research. Confirm the company and collection choices before starting.")), symbolError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, symbolError)), !loaded && !error && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Loading stocks\u2026"), /*#__PURE__*/React.createElement("div", {
     className: "workspace-create-grid",
@@ -105,7 +139,7 @@ export function PipelineLab({
   }, s.sector || 'Coverage'), /*#__PURE__*/React.createElement("h2", null, s.ticker), /*#__PURE__*/React.createElement("p", null, s.company), /*#__PURE__*/React.createElement("p", null, "Thesis updated: ", stamp(s.lastAnalysisDate)), /*#__PURE__*/React.createElement("p", null, s.docCount || 0, " stored documents"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, labCollectionStatus(collection, s.ticker))), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     onClick: () => setTicker(s.ticker)
-  }, "Sources & settings")))), loaded && !stocks.length && /*#__PURE__*/React.createElement("p", null, "No stocks are in the Pipeline universe yet. Add one in the original Pipeline."), ticker && /*#__PURE__*/React.createElement("div", {
+  }, "Sources & settings")))), loaded && !stocks.length && /*#__PURE__*/React.createElement("p", null, "No stocks are in the Pipeline universe yet. Open a ticker directly above to inspect its Lab workspace."), ticker && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-6"
   }, /*#__PURE__*/React.createElement("section", {
     role: "dialog",

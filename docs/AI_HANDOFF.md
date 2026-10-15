@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T286 — Open Lab directly from a ticker
+
+Lab now accepts a ticker directly even when it is absent from the stock cards.
+The action opens source settings/collection controls and updates the company route
+so reload/bookmark restores the chosen ticker. It performs no ticker-add write,
+creates no thesis, and starts no collection or research. Syntax validation matches
+the Lab API; it does not verify the company's identity. Original Pipeline remains
+unchanged. Lab navigation now uses the existing company-aware routing callback.
+
+192 frontend tests, model policy and build passed. Synthetic desktop/390px checks
+verified invalid/multiple-symbol rejection, normalized new-stock entry and reload
+without server writes or generation. Mobile form inspected; no horizontal overflow.
+Production verification pending. Backend/agent unchanged; no paid QA or approvals.
+Next: follow an actual authorized request through collection and saved drafts for
+real source-quality/investor acceptance. Historical valuation retains the documented
+provider-schema checkpoint; ticker entry alone is not completed automation.
+
 ## T285 — Visible partial delivery and downstream failures in Lab
 
 Coordinated Lab runs now show each requested output's saved-receipt status above

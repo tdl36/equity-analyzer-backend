@@ -100,3 +100,10 @@ export function groupLabDocuments(rows, grouped=true) {
 export function sameLabSelection(a,b) {
     return ['thesis','note'].every(task=>a[task].length===b[task].length&&a[task].every(key=>b[task].includes(key)));
 }
+
+// Match the Lab API's ticker syntax; this is not company identity verification.
+export function labTicker(value) {
+ const ticker=typeof value==='string'?value.trim().toUpperCase():'';
+ if(!/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(ticker))throw Error('Enter one ticker using letters, numbers, dots or hyphens (up to 20 characters).');
+ return ticker;
+}

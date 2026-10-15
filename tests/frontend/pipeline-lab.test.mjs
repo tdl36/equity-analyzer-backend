@@ -106,3 +106,9 @@ test('unknown source kinds remain suggested rather than recorded',()=>{
   assert.equal(row.type,'Transcripts');assert.equal(row.typeRecorded,false);
  }
 });
+
+import {labTicker} from '../../src/pipeline-lab-model.mjs';
+test('direct Lab entry normalizes one ticker without accepting paths or multiple symbols',()=>{
+ assert.equal(labTicker(' abt '),'ABT');assert.equal(labTicker('brk.b'),'BRK.B');assert.equal(labTicker('ABC-L'),'ABC-L');
+ for(const value of ['',null,'ABT MSFT','ABT/MSFT','../ABT','A'.repeat(21),'ABT?x=1','<ABT>'])assert.throws(()=>labTicker(value));
+});

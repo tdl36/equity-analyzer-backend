@@ -74,6 +74,14 @@ failures are visible. This is not server autosave or cross-device backup; save a
 draft revision in Charlie for durable retention. Pending submitted edits continue
 to use the existing exact-request reconciliation path.
 
+### Direct ticker entry
+
+Use Open a ticker directly to reach a stock's Lab workspace even if it is absent
+from the cards. The ticker is saved in the URL for reload/bookmark. Opening performs
+only reads: it does not add a portfolio thesis, discover sources or authorize paid
+research. Confirm company identity and source/output choices before explicitly
+submitting the coordinated assignment. Ticker syntax alone is not identity proof.
+
 ## Remaining acceptance and limits
 
 1. Verify a real user-authorized selection through collection, iCloud preservation,
