@@ -33,6 +33,10 @@ T319 adds organized collected-source selection and original links before proposa
 save, with missing/duplicate/unknown-date states. Synthetic and safe backend
 checks passed; this does not certify source incorporation or real-run acceptance.
 
+T320 replaces plain original links with authenticated downloads and verifies
+receipt hashes before saving files. Browser tests use synthetic originals; live
+positive inventory and genuine processing acceptance remain outstanding.
+
 ## 1. Job recovery
 
 Implemented: durable reservations, ownership/leases, retained checkpoints,

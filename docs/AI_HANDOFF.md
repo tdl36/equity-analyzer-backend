@@ -35,6 +35,15 @@ then verify real receipts/proposal readiness and observe expressly approved
 processing. No shared-dashboard expansion or eight-priority completion claim
 without the connected-journey and investor acceptance evidence.
 
+T320 production verified: Render bc6ac1297035cbffa29ec052ccc82afcdd7b4649;
+Cloudflare 284d4b45-6bdb-40a0-b025-b4972e065283. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac-agent health ok (102.3 seconds). Authenticated
+read-only original/library/inventory guards passed. Actual browser download proof
+uses synthetic originals with asserted Bearer authentication and SHA-256 bytes,
+not licensed production downloads or investor acceptance. Logs:
+/tmp/charlie-T320-{frontend,build,ui,deploy,verify}.log; backend evidence remains
+/tmp/charlie-T319-backend.log. No real paid generation or research decisions.
+
 ## T319 — Organized collected evidence before processing approval
 
 Completed collection receipts now have a read-only metadata inventory scoped to
