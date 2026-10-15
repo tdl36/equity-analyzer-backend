@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T334 — Compare unfinished work with newer saved revisions
+
+Existing/restored work drafts now offer a read-only comparison with the latest
+saved row from the existing workbench API. Exact work identity, kind, non-regressing
+revision and bounded editable fields are checked. Differences include reasoning,
+original/answer identities and hashes, model inputs and reconsideration conditions;
+server-owned snapshots/calculations are not copied into the editor. Work/case
+baselines and read time stay explicit. Reading never rebases, merges or saves work.
+
+Unavailable, missing, duplicate or malformed saved rows remain errors. Refresh
+clears stale comparison actions; close/company changes invalidate late responses.
+Opening the exact compared saved revision uses the existing draft-replacement
+confirmation, and is blocked during uncertain saves or browser recovery failure.
+The ordinary saved-work list may be older; the comparison action carries the exact
+revision actually inspected. Subsequent saves still face existing server guards.
+
+Validation: 247 frontend tests, 16 focused safe backend lifecycle/meeting-answer
+checks, production build and actual-component synthetic checks at 390/1280px pass.
+UI checks cover unchanged recovery bytes/baseline, changed answer hashes, failed/
+missing/late reads, pending-save replacement blocking, cancellation and confirmed
+replacement, and company isolation. One simulated lost work save per width; no
+live writes or generation. T333 draft/retry/quota/conflict regression also passes
+at both widths. Phone screenshot inspected; no overflow or browser errors. Full
+backend last passed 1,672 in T327; this increment changes frontend only.
+Logs: /tmp/charlie-T334-{frontend,backend,build,ui,recovery-regression,deploy,verify}.log.
+
+Next: verify exact hosted release, then reconcile the critical-path finish ledger
+against current implementation before further workspace polish. Prioritize any
+remaining collection-to-processing/output gap. Genuine collection-only completion,
+request-specific processing authorization and investor acceptance remain necessary
+for live proof; historical valuation still needs permitted schema/security semantics.
+No paid QA, automatic synthesis, investor action or duplicate collection worker.
+
 ## T333 — Recoverable unfinished research-workbench edits
 
 The existing workbench now retains a bounded company/API-scoped browser-session

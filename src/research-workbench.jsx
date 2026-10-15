@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {MeetingAnswerProposal} from './meeting-answer-proposal';
 import {ResearchChat} from './research-chat';
+import {WorkComparison} from './work-comparison';
 import {emptyWorkDraft,workDraft,workRecoveryKey,readWorkRecovery,writeWorkRecovery,clearWorkRecovery} from './research-workbench-recovery.mjs';
 const blank=emptyWorkDraft;
 async function json(api,path,options={}){const r=await fetch(api+path,{...options,signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok){const e=Error(d.error||'Work unavailable');e.status=r.status;throw e;}return d;}
@@ -50,6 +51,7 @@ function Workbench({api,ticker,caseRevision,assumptions=[],disabled=false,initia
  }catch(e){setRecoveryError(e.message);}}}>Retry browser recovery</button></p>}
  {submission&&<p role="alert">A work save is unresolved. Its original request and revision are frozen; retrying saves that same work only. No research generation is involved. <button disabled={busy||!!recoveryError} onClick={save}>Retry original work save</button></p>}
  {dirty&&baseline!==caseRevision&&!submission&&<p role="alert">This draft was based on case revision {baseline}; the current case is revision {caseRevision}. Review the current assumptions, sources and answers before rebasing. <button disabled={busy||!!recoveryError} onClick={()=>setBaseline(caseRevision)}>I reviewed the current case · rebase draft</button></p>}
+ {record&&<WorkComparison key={record.id+':'+record.revision} api={api} ticker={ticker} record={record} draft={draft} baseline={baseline} onOpen={replaceDraft} replaceDisabled={busy||disabled||!!submission||!!recoveryError}/>}
  {(!caseRevision||!assumptions.length)&&<p>Save an investment case with at least one assumption to start connected work.</p>}<fieldset disabled={busy||disabled||!!submission||!!recoveryError||!caseRevision||!assumptions.length}><label>Work type<select aria-label="Work type" disabled={!!record} value={draft.kind} onChange={e=>edit('kind',e.target.value)}><option value="model">Source → model sensitivity</option><option value="followup">Meeting answer → follow-up</option><option value="underweight">Underweight / nonownership review</option></select></label>
  {input('title','Research question / title')}{input('owner','Owner')}{input('dueDate','Next action due','date')}
  <label>Investment assumption<select aria-label="Investment assumption" value={draft.assumptionId} onChange={e=>edit('assumptionId',e.target.value)}><option value="">Choose a saved assumption</option>{assumptions.map(a=><option value={a.id} key={a.id}>{a.claim}</option>)}</select></label>

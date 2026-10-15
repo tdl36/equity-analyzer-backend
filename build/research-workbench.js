@@ -2,6 +2,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 import * as React from 'react';
 import { MeetingAnswerProposal } from './meeting-answer-proposal';
 import { ResearchChat } from './research-chat';
+import { WorkComparison } from './work-comparison';
 import { emptyWorkDraft, workDraft, workRecoveryKey, readWorkRecovery, writeWorkRecovery, clearWorkRecovery } from './research-workbench-recovery.mjs';
 var blank = emptyWorkDraft;
 async function json(api, path, options = {}) {
@@ -242,7 +243,16 @@ function Workbench({
   }, "This draft was based on case revision ", baseline, "; the current case is revision ", caseRevision, ". Review the current assumptions, sources and answers before rebasing. ", /*#__PURE__*/React.createElement("button", {
     disabled: busy || !!recoveryError,
     onClick: () => setBaseline(caseRevision)
-  }, "I reviewed the current case \xB7 rebase draft")), (!caseRevision || !assumptions.length) && /*#__PURE__*/React.createElement("p", null, "Save an investment case with at least one assumption to start connected work."), /*#__PURE__*/React.createElement("fieldset", {
+  }, "I reviewed the current case \xB7 rebase draft")), record && /*#__PURE__*/React.createElement(WorkComparison, {
+    key: record.id + ':' + record.revision,
+    api: api,
+    ticker: ticker,
+    record: record,
+    draft: draft,
+    baseline: baseline,
+    onOpen: replaceDraft,
+    replaceDisabled: busy || disabled || !!submission || !!recoveryError
+  }), (!caseRevision || !assumptions.length) && /*#__PURE__*/React.createElement("p", null, "Save an investment case with at least one assumption to start connected work."), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || disabled || !!submission || !!recoveryError || !caseRevision || !assumptions.length
   }, /*#__PURE__*/React.createElement("label", null, "Work type", /*#__PURE__*/React.createElement("select", {
     "aria-label": "Work type",

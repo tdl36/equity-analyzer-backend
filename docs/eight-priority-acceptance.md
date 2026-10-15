@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T334 adds read-only local-versus-saved work comparison with exact revision checks,
+late-response protection and confirmed replacement. Synthetic phone/desktop checks
+pass; no live work, generation or investor acceptance. All eight remain uncertified.
+
 T333 adds scoped unfinished-work recovery, replacement warnings, case-baseline
 review and frozen uncertain-save retries in the existing workbench. Synthetic
 reload/company-switch/lost-response checks pass; no live work or thesis was saved.
