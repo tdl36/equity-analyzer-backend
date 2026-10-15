@@ -37,6 +37,20 @@ purpose separation; fix concrete gaps without dispatching research. Shared Ready
 expansion, historical reference/schema work and eight-priority live/investor
 acceptance remain open. Collection workers and automatic-synthesis pause unchanged.
 
+T321 production verified: Render e0986ec166da76e3ba8d7496afe566b2fe0d0c5b;
+Cloudflare 8d8c7854-8d13-44cc-97ea-1b84de64e5a6. Exact hosted JS and service-worker
+bytes, HTML release marker, authenticated read-only guards and healthy agent
+(70.7 seconds) verified. Logs: /tmp/charlie-T321-{frontend,build,ui,deploy,verify}.log.
+No additional live collection completion or investor acceptance evidence was obtained.
+
+Next-action audit: research_assignment_outputs.note and research_onepager source
+registers currently render original hashes and excerpt coverage limitations but
+omit the frozen processingSourceContext roles/publication dates and textExtraction
+limitations. Carry these into new derivative drafts using exact frozen filename/hash
+matching to labPack/sourceContext; do not infer identity by filename alone or replace
+old saved artifacts. Preserve concise one-page layout with the detailed provenance
+in the source appendix. Add synthetic rendering tests before release; no paid runs.
+
 ## T320 — Authenticated original downloads and receipt-byte verification
 
 Follow-up to T319 in the same build session: review found that ordinary browser
