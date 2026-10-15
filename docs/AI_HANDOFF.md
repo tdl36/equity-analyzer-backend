@@ -20,7 +20,11 @@ One META synthesis 7e09d0ea-1aaa-4a96-86e4-b56c2cfa3272 was already running from
 
 Controls: Catalysts / Auto-Pilot; Analyst team / each analyst / Auto Mode; Research
 desk / Evidence & changes / new-document automation. Collection/import continues.
-Release verification pending.
+Verified T301: 1,544 backend unit tests and 203 frontend tests passed; compile/build
+passed. Render a6cde8d56eb39407b0dda98a15b3a4e5ec63ac82 and Cloudflare
+8b3e486e-d8bc-4023-8fe7-cdce80bfedb0 verified, including exact hosted JS/SW bytes,
+HTML marker, and healthy Mac heartbeat (54.4 seconds). Post-release API reads confirm
+both global switches false and zero analysts with automatic earnings/takeaways on.
 
 ## T300 — Collection attention recovery and complete unfinished inventory
 
