@@ -2,6 +2,27 @@
 
 Updated: October 14, 2026
 
+## T282 — Protect edits when leaving Lab note review
+
+Closing Lab settings, opening another saved note from its job row, explicit
+Discard, and Lab's own navigation controls now ask before abandoning changed
+note prose or title. Cancelling preserves edits; returning to baseline permits
+clean navigation. A beforeunload guard covers page reload/close where supported.
+Pending uncertain submissions still use their existing session recovery and
+cannot switch notes through job-row buttons before reconciliation. Unsaved work
+is visibly labeled as screen-local: this is not autosave and does not intercept
+all application-wide sidebar/hash navigation. Save a revision before leaving.
+
+186 frontend tests, model policy and build passed. Synthetic desktop/390px checks
+verified cancellation, explicit discard, clean close, title-only edits and the
+unload guard without server writes. Production verification pending.
+Backend/agent unchanged; no paid research or investor actions. Historical provider
+documentation checkpoint is recorded in docs/historical-security-mapping.md;
+current OVERVIEW documentation does not resolve historical currency/schema needs.
+Next: persist pre-submission note edit buffers across app navigation with exact
+base-revision conflict handling; real source-quality/investor acceptance remains
+unverified. Do not treat these local checks as a complete unattended research run.
+
 ## T281 — Consistent source dates and metadata labels
 
 Lab source sorting, recency filters and date display now share timestamp parsing:

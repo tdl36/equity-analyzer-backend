@@ -15,7 +15,8 @@ export default function LabNote({
   selection,
   read,
   renderHtml,
-  focusId = ''
+  focusId = '',
+  onUnsavedChange
 }) {
   var [jobs, setJobs] = React.useState([]),
     [draft, setDraft] = React.useState(null),
@@ -29,6 +30,20 @@ export default function LabNote({
     [allowPdfText, setAllowPdfText] = React.useState(false),
     [pending, setPending] = React.useState(false),
     [pendingEdit, setPendingEdit] = React.useState(false);
+  var unsaved = !!draft && editing && (text !== draft.markdown || title !== draft.title);
+  React.useEffect(() => {
+    onUnsavedChange?.(unsaved);
+    return () => onUnsavedChange?.(false);
+  }, [unsaved, onUnsavedChange]);
+  React.useEffect(() => {
+    if (!unsaved) return;
+    var warn = e => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
   var review = React.useRef(null);
   var lock = React.useRef(false),
     key = 'charlie-lab-full-note:' + api + ':' + ticker;
@@ -253,11 +268,15 @@ export default function LabNote({
   }, /*#__PURE__*/React.createElement("strong", null, new Date(job.createdAt).toLocaleString(), " \xB7 ", job.status === 'draft' ? 'Draft saved' : job.status), job.acceptedRevision && /*#__PURE__*/React.createElement("p", null, "Investor accepted revision ", job.acceptedRevision, job.revision > job.acceptedRevision ? ' · newer edits need review' : ''), job.reason && /*#__PURE__*/React.createElement("p", null, reasons[job.reason] || job.reason), /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions"
   }, job.revision && /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => action(() => open(job.noteId))
+    disabled: busy || pendingEdit,
+    onClick: () => {
+      if (!unsaved || window.confirm('Discard unsaved note edits and open this saved revision?')) action(() => open(job.noteId));
+    }
   }, "Review latest revision ", job.revision), job.acceptedRevision && /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => action(() => open(job.noteId, job.acceptedRevision))
+    disabled: busy || pendingEdit,
+    onClick: () => {
+      if (!unsaved || window.confirm('Discard unsaved note edits and open this saved revision?')) action(() => open(job.noteId, job.acceptedRevision));
+    }
   }, "Open accepted revision"), job.status === 'attention' && job.reason !== 'parent_stopped' && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => action(async () => {
@@ -294,6 +313,7 @@ export default function LabNote({
   }, "Export Markdown"), /*#__PURE__*/React.createElement("button", {
     disabled: busy || pendingEdit,
     onClick: () => {
+      if (unsaved && !window.confirm('Discard unsaved note edits?')) return;
       setText(draft.markdown);
       setTitle(draft.title);
       setEditing(!editing);
@@ -302,7 +322,9 @@ export default function LabNote({
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Quality and source checks"), /*#__PURE__*/React.createElement("ul", null, draft.qualityIssues.map((q, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, q)))), pendingEdit && /*#__PURE__*/React.createElement("p", {
+  }, q)))), unsaved && !pendingEdit && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Unsaved note edits are only on this screen. Save a new draft revision before navigating elsewhere."), pendingEdit && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "A previous edit has no confirmed response. The submitted text is preserved below. Reconcile that same edit before changing it; this does not generate research."), pendingEdit && !editing && /*#__PURE__*/React.createElement("button", {
     disabled: busy,

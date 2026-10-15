@@ -159,6 +159,7 @@ function LabStock({
     [publishedOnly, setPublishedOnly] = React.useState(false),
     [grouped, setGrouped] = React.useState(true),
     [latest, setLatest] = React.useState(null);
+  var [noteUnsaved, setNoteUnsaved] = React.useState(false);
   var lock = React.useRef(false),
     alive = React.useRef(true),
     sourceHeading = React.useRef(null);
@@ -260,7 +261,7 @@ function LabStock({
     setNotice(keep ? 'Your selections are retained against the latest saved version. Review them and Save Lab settings to explicitly replace the saved selections. No save or research was started.' : 'Latest saved selections loaded. No research was started.');
   };
   var close = () => {
-    if (!dirty || window.confirm('Leave without saving your Lab selection changes?')) onClose();
+    if (!dirty && !noteUnsaved || window.confirm('Leave without saving your Lab source selections or note edits?')) onClose();
   };
   var save = async () => {
     if (lock.current || !saved) return;
@@ -611,8 +612,11 @@ function LabStock({
       revision: saved.revision,
       digest: checkResult.digest
     },
-    onReport: () => onNavigate('stockanalysis', ticker)
+    onReport: () => {
+      if (!noteUnsaved || window.confirm('Leave unsaved note edits?')) onNavigate('stockanalysis', ticker);
+    }
   })), /*#__PURE__*/React.createElement(LabNote, {
+    onUnsavedChange: setNoteUnsaved,
     key: focusId || ticker,
     focusId: focusId,
     api: api,
@@ -624,6 +628,9 @@ function LabStock({
       digest: checkResult.digest
     } : null
   }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    onClick: e => {
+      if (noteUnsaved && !window.confirm('Leave unsaved note edits?')) e.preventDefault();
+    },
     href: `#view=desk&ticker=${encodeURIComponent(ticker)}&section=collection`
   }, "Open this stock\u2019s browser collection schedule, history & recovery \u2192")), /*#__PURE__*/React.createElement("hr", {
     style: {
@@ -637,10 +644,12 @@ function LabStock({
     embedded: true,
     api: api,
     ticker: ticker,
-    onReport: () => onNavigate('stockanalysis', ticker)
+    onReport: () => {
+      if (!noteUnsaved || window.confirm('Leave unsaved note edits?')) onNavigate('stockanalysis', ticker);
+    }
   }), /*#__PURE__*/React.createElement("p", null, "For the current direct-update and Generate Note workflow, ", /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      if (!dirty || window.confirm('Leave unsaved Lab changes?')) onNavigate('pipeline', ticker);
+      if (!dirty && !noteUnsaved || window.confirm('Leave unsaved Lab source selections or note edits?')) onNavigate('pipeline', ticker);
     }
   }, "open original Research Pipeline \u2192")));
 }

@@ -33,3 +33,18 @@ pending mapping reviews to the historical candidate workspace. A present-day
 security profile alone must never establish historical currency/share continuity.
 Do not fetch providers, widen original limits, enable ingestion or apply mappings
 merely to exercise this internal contract. Investor review remains independent.
+
+## Provider documentation checkpoint — October 15, 2026
+
+Reviewed the official [Alpha Vantage Company Overview documentation](https://www.alphavantage.co/documentation/#company-overview).
+It describes current company information/ratios, refreshed around earnings, and
+marks OVERVIEW as premium. The documented parameters have no historical as-of
+selector. The documentation prose does not establish the currency field as a
+historical quoted-security currency, nor provide the retained JSON field schema
+needed by this adapter. No account or demo data endpoint was fetched.
+
+Do not infer historical currency or share continuity from that description, or
+add an automatic OVERVIEW call under the existing compact-price policy. Next:
+obtain a permitted retained schema/example and explicit currency semantics, then
+implement the bounded normalization adapter and assignment-locked reference store.
+The current exact-integer mapping contract and ingestion controls remain unchanged.
