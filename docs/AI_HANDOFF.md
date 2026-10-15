@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T288 — Validate iCloud import completion receipts
+
+Lab verifies import identity, company, task/revision, frozen original hashes and
+sizes, destination identities and completed selection revision before displaying
+completion or clearing a submitted request. Malformed status preserves the last
+known progress and disables new imports until a valid refresh. Exact-byte checks
+remain enforced by the backend; the UI now refuses incomplete completion claims.
+
+196 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks refused a mismatched hash without refreshing inventory or reporting success;
+a subsequent valid receipt preserved unsaved source selections and respected a
+cancelled reload. No API writes or paid research were used in these UI checks.
+Production verification pending. Backend and Mac agent unchanged.
+Next: real source-to-output and investor acceptance remain outstanding; continue
+from the Lab acceptance sequence without launching paid research merely for QA.
+
 ## T287 — Bind submission recovery to the frozen assignment plan
 
 Assignment submission receipts and read-only reconciliation now require matching

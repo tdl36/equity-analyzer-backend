@@ -1,4 +1,5 @@
 import React from 'react';
+import { checkedLabImport, checkedLabImports } from './lab-import-receipts.mjs';
 export default function LabICloudImport({
   api,
   ticker,
@@ -23,13 +24,14 @@ export default function LabICloudImport({
   var refresh = async () => {
     try {
       var d = await read(api, `/api/pipeline-lab/icloud-imports/${ticker}`);
-      if (!Array.isArray(d.imports)) throw Error('Import status unavailable.');
+      var rows = checkedLabImports(d, ticker);
       if (!alive.current) return;
-      var completed = d.imports.filter(j => j.status === 'complete').map(j => j.requestId);
+      var completed = rows.filter(j => j.status === 'complete').map(j => j.requestId);
       var changed = seen.current && completed.some(id => !seen.current.has(id));
       seen.current = new Set(completed);
-      setJobs(d.imports);
+      setJobs(rows);
       setReady(true);
+      setError('');
       if (changed) callback.current();
     } catch (e) {
       if (alive.current) {
@@ -76,16 +78,22 @@ export default function LabICloudImport({
           },
           body: JSON.stringify(body)
         });
-        if (result.requestId !== body.requestId) throw Error('Import receipt unavailable. Reconcile the same request.');
+        checkedLabImport(result, ticker, body);
         sessionStorage.removeItem(key);
         setPending(false);
-      } else result = await read(api, `/api/pipeline-lab/icloud-import/${job.requestId}/${action}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: '{}'
-      });
+      } else {
+        result = await read(api, `/api/pipeline-lab/icloud-import/${job.requestId}/${action}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: '{}'
+        });
+        checkedLabImport(result, ticker, {
+          requestId: job.requestId,
+          ...job.input
+        });
+      }
       if (result.status === 'complete') callback.current();
       await refresh();
     } catch (e) {

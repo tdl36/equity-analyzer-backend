@@ -1,12 +1,13 @@
 import React from 'react';
+import {checkedLabImport,checkedLabImports} from './lab-import-receipts.mjs';
 
 export default function LabICloudImport({api,ticker,task,revision,selected,disabled,onImported,read}) {
  const [jobs,setJobs]=React.useState([]),[ready,setReady]=React.useState(false),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[pending,setPending]=React.useState(false);
  const alive=React.useRef(true),lock=React.useRef(false),seen=React.useRef(null),callback=React.useRef(onImported);callback.current=onImported;
  const key=`charlie-lab-icloud-v1:${api}:${ticker}`;
- const refresh=async()=>{try{const d=await read(api,`/api/pipeline-lab/icloud-imports/${ticker}`);if(!Array.isArray(d.imports))throw Error('Import status unavailable.');if(!alive.current)return;
-  const completed=d.imports.filter(j=>j.status==='complete').map(j=>j.requestId);
-  const changed=seen.current&&completed.some(id=>!seen.current.has(id));seen.current=new Set(completed);setJobs(d.imports);setReady(true);if(changed)callback.current();
+ const refresh=async()=>{try{const d=await read(api,`/api/pipeline-lab/icloud-imports/${ticker}`);const rows=checkedLabImports(d,ticker);if(!alive.current)return;
+  const completed=rows.filter(j=>j.status==='complete').map(j=>j.requestId);
+  const changed=seen.current&&completed.some(id=>!seen.current.has(id));seen.current=new Set(completed);setJobs(rows);setReady(true);setError('');if(changed)callback.current();
  }catch(e){if(alive.current){setError(e.message);setReady(false);}}};
  React.useEffect(()=>{alive.current=true;try{setPending(!!sessionStorage.getItem(key));}catch{setError('Retry storage unavailable; imports cannot start safely.');}refresh();const timer=setInterval(refresh,10000);return()=>{alive.current=false;clearInterval(timer);};},[api,ticker]);
  const run=async(action,job)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
@@ -15,8 +16,8 @@ export default function LabICloudImport({api,ticker,task,revision,selected,disab
    const prior=sessionStorage.getItem(key);const body=prior?JSON.parse(prior):{requestId:crypto.randomUUID(),task,revision};
    if(!prior)sessionStorage.setItem(key,JSON.stringify(body));if(sessionStorage.getItem(key)!==JSON.stringify(body))throw Error('Could not preserve request identity. Nothing was submitted.');setPending(true);
    result=await read(api,`/api/pipeline-lab/icloud-imports/${ticker}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   if(result.requestId!==body.requestId)throw Error('Import receipt unavailable. Reconcile the same request.');sessionStorage.removeItem(key);setPending(false);
-  }else result=await read(api,`/api/pipeline-lab/icloud-import/${job.requestId}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+   checkedLabImport(result,ticker,body);sessionStorage.removeItem(key);setPending(false);
+  }else {result=await read(api,`/api/pipeline-lab/icloud-import/${job.requestId}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});checkedLabImport(result,ticker,{requestId:job.requestId,...job.input});}
   if(result.status==='complete')callback.current();await refresh();
  }catch(e){if(action==='start'&&[400,409].includes(e.status)){try{const old=JSON.parse(sessionStorage.getItem(key));await read(api,`/api/pipeline-lab/icloud-import/${old.requestId}`);}catch(check){if(check.status===404){sessionStorage.removeItem(key);if(alive.current)setPending(false);}}}if(alive.current)setError(e.message+' Existing originals remain preserved.');}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const active=jobs.find(j=>['queued','frozen','attention'].includes(j.status));
