@@ -15,7 +15,11 @@ all application-wide sidebar/hash navigation. Save a revision before leaving.
 
 186 frontend tests, model policy and build passed. Synthetic desktop/390px checks
 verified cancellation, explicit discard, clean close, title-only edits and the
-unload guard without server writes. Production verification pending.
+unload guard without server writes. Existing lost-response edit recovery also passed
+synthetic reload/replay checks on both viewports. Verified Render revision
+`2b1ae015dc24e33493f9d950ad083a255a1c2b2f`, Cloudflare
+`a03f417e-db4b-4e66-b32c-c5fdb58e3126`, exact hosted JS/service-worker bytes and
+T282 HTML. Agent healthy (91.7 seconds old); read-only original endpoint checks passed.
 Backend/agent unchanged; no paid research or investor actions. Historical provider
 documentation checkpoint is recorded in docs/historical-security-mapping.md;
 current OVERVIEW documentation does not resolve historical currency/schema needs.
