@@ -29,6 +29,10 @@ T318 verifies collection-linked proposal status before enabling processing actio
 failed/mismatched reads retain prior rows without authorizing dispatch. Synthetic
 checks passed; CVS collection is still queued and genuine end-to-end proof is open.
 
+T319 adds organized collected-source selection and original links before proposal
+save, with missing/duplicate/unknown-date states. Synthetic and safe backend
+checks passed; this does not certify source incorporation or real-run acceptance.
+
 ## 1. Job recovery
 
 Implemented: durable reservations, ownership/leases, retained checkpoints,

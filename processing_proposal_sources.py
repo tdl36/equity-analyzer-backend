@@ -32,3 +32,30 @@ def context(cur, ticker, sources, collected_names, baseline_package):
                             'publisher': metadata.get(s['documentId'], {}).get('publisher', ''),
                             'sourceKind': metadata.get(s['documentId'], {}).get('sourceKind', ''),
                             'referencedBySavedThesis': s['sha256'] in referenced} for s in sources}
+
+
+def collected_inventory(cur, ticker, receipts):
+    """Metadata for the frozen collection receipt, not a fresh byte-verification claim."""
+    if (not isinstance(receipts, list) or not 1 <= len(receipts) <= 1000
+            or any(not isinstance(r, dict) or not isinstance(r.get('filename'), str)
+                   or not r['filename'] or not isinstance(r.get('sha256'), str)
+                   or not re.fullmatch('[0-9a-f]{64}', r['sha256']) for r in receipts)
+            or len({r['filename'] for r in receipts}) != len(receipts)):
+        raise ValueError('Collection source receipts are missing or ambiguous. Inspect the saved collection.')
+    names = [r['filename'] for r in receipts]
+    cur.execute('SELECT id,filename,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s) ORDER BY id LIMIT 2001', (ticker, names))
+    rows = list(cur.fetchall())
+    if len(rows) > 2000:
+        raise ValueError('Stored source identities are ambiguous. Inspect the collection before selecting evidence.')
+    by_name = {}
+    for row in rows:
+        by_name.setdefault(row['filename'], []).append(row)
+    documents = []
+    for receipt in receipts:
+        matches = by_name.get(receipt['filename'], [])
+        row = matches[0] if len(matches) == 1 else None
+        state = 'missing' if not matches else 'ambiguous' if row is None else 'available' if eligible(row['metadata'] or {}) else 'restricted'
+        documents.append(dict(id='thesis_' + str(row['id']) if row else None,
+                              filename=receipt['filename'], receiptSha256=receipt['sha256'],
+                              availability=state, **fields(row['metadata'] if row else {})))
+    return documents

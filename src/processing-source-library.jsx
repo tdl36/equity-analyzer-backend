@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {labDocuments,visibleLabDocuments,groupLabDocuments,labSourceDate,taskSourceGuide} from './pipeline-lab-model.mjs';
 
-export function ProcessingSourceLibrary({call,path,selected,onChange,purpose,remaining}){
+export function ProcessingSourceLibrary({api,ticker,call,path,selected,onChange,purpose,remaining}){
  const [documents,setDocuments]=React.useState([]),[loaded,setLoaded]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[cursor,setCursor]=React.useState(null),[query,setQuery]=React.useState(''),[type,setType]=React.useState('All');
  const lock=React.useRef(false),live=React.useRef(true);
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
@@ -23,7 +23,7 @@ export function ProcessingSourceLibrary({call,path,selected,onChange,purpose,rem
    <p><small>Newest recorded publication dates first; unknown dates last. Filtering covers loaded entries only. A filename-based type suggestion is labeled below.</small></p>
    <div style={{maxHeight:360,overflow:'auto'}}>{groupLabDocuments(shown).map(group=><section key={group.label}><h5>{group.label}</h5><p><small>{taskSourceGuide(group.label,purpose==='event_note'?'note':'thesis')}</small></p>{group.rows.map(r=>{
     const id=r.id.slice(7),checked=selected.includes(id);
-    return <label className="sa-check" key={r.id} style={{display:'flex',alignItems:'start',gap:8,padding:'8px 0'}}><input type="checkbox" checked={checked} disabled={!r.eligible||(!checked&&selected.length>=remaining)} onChange={e=>onChange(e.target.checked?[...selected,id]:selected.filter(v=>v!==id))}/><span>{r.filename}<small style={{display:'block'}}>Published: {labSourceDate(r.publishedDate)}{r.publisher?' · '+r.publisher:''} · {r.typeRecorded?'Recorded type':'Suggested type from filename'}{!r.eligible?' · Excluded or reference-only':''}</small></span></label>;
+    return <div key={r.id}><label className="sa-check" style={{display:'flex',alignItems:'start',gap:8,padding:'8px 0'}}><input type="checkbox" checked={checked} disabled={!r.eligible||(!checked&&selected.length>=remaining)} onChange={e=>onChange(e.target.checked?[...selected,id]:selected.filter(v=>v!==id))}/><span>{r.filename}<small style={{display:'block'}}>Published: {labSourceDate(r.publishedDate)}{r.publisher?' · '+r.publisher:''} · {r.typeRecorded?'Recorded type':'Suggested type from filename'}{!r.eligible?' · Excluded or reference-only':''}</small></span></label>{r.eligible&&<a style={{marginLeft:24}} href={api+'/api/pipeline-lab/original/'+encodeURIComponent(ticker)+'/'+r.id} target="_blank" rel="noreferrer">Open stored original</a>}</div>;
    })}</section>)}{!shown.length&&<p>No matching entries in the loaded library.</p>}</div>
    {cursor&&<button disabled={busy} onClick={()=>load(cursor)}>Load more library sources</button>}
   </>}

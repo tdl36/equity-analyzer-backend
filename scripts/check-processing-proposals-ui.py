@@ -1,12 +1,12 @@
 """Full-app synthetic handoff at 390/1280px; serve .worker-assets on port 3012. All API calls are intercepted."""
-import json,copy
+import json,copy,re
 from playwright.sync_api import sync_playwright, expect
 NOTE='11111111-1111-4111-8111-111111111111'
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  for width in [390,1280]:
   page=b.new_page(viewport={'width':width,'height':1000},service_workers='block');page.add_init_script("localStorage.setItem('charlie_auth_token','synthetic')")
-  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok'
+  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok'
   def api(route):
    u=route.request.url;d={};code=200
    if route.request.method!='GET':writes.append(u)
@@ -14,6 +14,13 @@ with sync_playwright() as p:
    elif '/api/collection/control' in u:d={'snapshot':{'policies':[],'requests':[]}}
    elif '/api/provider-credentials' in u:d={'providers':{k:{'configured':True} for k in ['anthropic','gemini','openai']}}
    elif '/api/research/assignment-defaults' in u:d={'outputs':['thesis'],'horizon':'12–24 months'}
+   elif '/processing-sources' in u:
+    d={'collectionId':NOTE,'ticker':'ABT','documents':[
+     {'id':'thesis_1','filename':'recent.pdf','receiptSha256':'a'*64,'availability':'available','publishedDate':'2026-10-01','sourceKind':'press-release','publisher':'Company'},
+     {'id':'thesis_5','filename':'older.pdf','receiptSha256':'b'*64,'availability':'available','publishedDate':'2023-07-01','sourceKind':'transcript'},
+     {'id':'thesis_6','filename':'copy.pdf','receiptSha256':'a'*64,'availability':'available','publishedDate':'2026-10-01'},
+     {'id':None,'filename':'missing.pdf','receiptSha256':'d'*64,'availability':'missing','publishedDate':None}]}
+    if collection_mode=='mismatch':d['ticker']='CVS'
    elif '/processing-library' in u:
     d={'documents':[{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True},{'id':'thesis_4','filename':'reference-only.pdf','eligible':False}], 'nextCursor':'3'} if 'after=' not in u else {'documents':[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':'2023-07-01','eligible':True}], 'nextCursor':None}
    elif '/processing-proposals' in u:
@@ -34,7 +41,7 @@ with sync_playwright() as p:
      if read_mode=='company':d['proposals'][0]['ticker']='CVS'
      if read_mode=='collection':d['proposals'][0]['collectionId']='22222222-2222-4222-8222-222222222222'
      if read_mode=='duplicate':d['proposals'].append(d['proposals'][0])
-   elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64}]}}]}
+   elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64},{'filename':'copy.pdf','sha256':'a'*64},{'filename':'missing.pdf','sha256':'d'*64}]}}]}
    elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
    elif '/api/pipeline/universe' in u:d={'universe':[{'ticker':'ABT','company':'Abbott','docCount':1}]}
    elif '/api/pipeline/documents/ABT' in u:inventory_reads.append(u);d={'documents':[{'id':'thesis_1','filename':'recent.pdf','publishedDate':'2026-10-01'},{'id':'thesis_2','filename':'upload.pdf','createdAt':'2026-10-13'}]}
@@ -63,10 +70,31 @@ with sync_playwright() as p:
   assert writes==[]
   review.get_by_label('Processing purpose').select_option('event_note')
   review.get_by_role('checkbox',name='recent.pdf',exact=True).check()
+  collected=review.get_by_role('region',name='Collected evidence',exact=True)
+  expect(collected.get_by_role('checkbox',name='copy.pdf',exact=True)).to_be_disabled()
+  expect(collected.get_by_role('checkbox',name='missing.pdf',exact=True)).to_be_disabled()
+  expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True).locator('xpath=../..').get_by_role('link',name='Open stored original')).to_have_attribute('href', re.compile(r'/api/pipeline-lab/original/ABT/thesis_1$'))
+  collected.get_by_label('Collected source type',exact=True).select_option('Transcripts')
+  expect(collected.get_by_role('checkbox',name='older.pdf',exact=True)).to_be_visible()
+  expect(collected.get_by_text('1 selections hidden',exact=False)).to_be_visible()
+  collected.get_by_label('Collected source type',exact=True).select_option('All')
+  collected.get_by_label('Find collected sources',exact=True).fill('Company')
+  expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
+  assert collected.get_by_role('checkbox',name='older.pdf',exact=True).count()==0
+  collected.get_by_label('Find collected sources',exact=True).fill('')
+
   expect(save).to_be_disabled()
   review.get_by_label('Processing event title').fill('Guidance update')
   review.get_by_label('Processing event date').fill('2026-10-01')
   expect(save).to_be_enabled()
+  collection_mode='mismatch';collected.get_by_role('button',name='Refresh collected source metadata',exact=True).click()
+  expect(collected.get_by_role('alert')).to_contain_text('does not match')
+  expect(save).to_be_disabled()
+  expect(collected.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
+  collection_mode='ok';collected.get_by_role('button',name='Refresh collected source metadata',exact=True).click()
+  expect(save).to_be_enabled()
+  collected.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T319-'+str(width)+'-sources.png')
+
   review.get_by_role('checkbox',name='Meeting questions',exact=True).check()
   expect(save).to_be_disabled()
   review.get_by_label('Processing meeting date').fill('2026-10-20')
@@ -82,6 +110,7 @@ with sync_playwright() as p:
   expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).to_be_visible()
   library.get_by_label('Find library sources').fill('annual')
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).locator('xpath=../..').get_by_role('link',name='Open stored original')).to_have_attribute('href',re.compile(r'/api/pipeline-lab/original/ABT/thesis_3$'))
   assert not library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False).count()
   page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
   page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
@@ -133,7 +162,7 @@ with sync_playwright() as p:
   expect(coverage.get_by_text('A reference does not prove that evidence was incorporated',exact=False)).to_be_visible()
   expect(coverage.get_by_text('1 exact-byte references found',exact=False)).to_be_visible()
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T318-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T319-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   for read_mode in ['error','company','collection','duplicate']:
    review.get_by_role('button',name='Refresh saved proposals',exact=True).click()

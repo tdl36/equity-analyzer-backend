@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { labDocuments, visibleLabDocuments, groupLabDocuments, labSourceDate, taskSourceGuide } from './pipeline-lab-model.mjs';
 export function ProcessingSourceLibrary({
+  api,
+  ticker,
   call,
   path,
   selected,
@@ -81,9 +83,10 @@ export function ProcessingSourceLibrary({
   }, /*#__PURE__*/React.createElement("h5", null, group.label), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, taskSourceGuide(group.label, purpose === 'event_note' ? 'note' : 'thesis'))), group.rows.map(r => {
     var id = r.id.slice(7),
       checked = selected.includes(id);
-    return /*#__PURE__*/React.createElement("label", {
+    return /*#__PURE__*/React.createElement("div", {
+      key: r.id
+    }, /*#__PURE__*/React.createElement("label", {
       className: "sa-check",
-      key: r.id,
       style: {
         display: 'flex',
         alignItems: 'start',
@@ -99,7 +102,14 @@ export function ProcessingSourceLibrary({
       style: {
         display: 'block'
       }
-    }, "Published: ", labSourceDate(r.publishedDate), r.publisher ? ' · ' + r.publisher : '', " \xB7 ", r.typeRecorded ? 'Recorded type' : 'Suggested type from filename', !r.eligible ? ' · Excluded or reference-only' : '')));
+    }, "Published: ", labSourceDate(r.publishedDate), r.publisher ? ' · ' + r.publisher : '', " \xB7 ", r.typeRecorded ? 'Recorded type' : 'Suggested type from filename', !r.eligible ? ' · Excluded or reference-only' : ''))), r.eligible && /*#__PURE__*/React.createElement("a", {
+      style: {
+        marginLeft: 24
+      },
+      href: api + '/api/pipeline-lab/original/' + encodeURIComponent(ticker) + '/' + r.id,
+      target: "_blank",
+      rel: "noreferrer"
+    }, "Open stored original"));
   }))), !shown.length && /*#__PURE__*/React.createElement("p", null, "No matching entries in the loaded library.")), cursor && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => load(cursor)

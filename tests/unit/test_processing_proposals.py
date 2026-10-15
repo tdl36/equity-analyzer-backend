@@ -398,3 +398,41 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(reread['digest'],proposal['digest'])
         self.assertEqual(coverage['incorporation'],'not_assessed')
         self.assertFalse(self.submits)
+
+    def test_collected_metadata_inventory_is_scoped_read_only_and_preserves_receipts(self):
+        self.parent();before=self.row(self.ident)
+        self.extra(filename='outside.txt')
+        self.extra(filename='one.txt',ticker='OTHER',metadata={'publisher':'Wrong company'})
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE ticker=%s AND filename=%s',(json.dumps({'published':'2026-10-02','publisher':'Company','source':'alphasense_collection','sourceKind':'press-release','sha256':self.sha,'privateBody':'Must not expose'}),self.ticker,'one.txt'))
+        url=self.url.replace('processing-proposals','processing-sources')
+        r=self.client.get(url);self.assertEqual(r.status_code,200,r.json)
+        d=r.json;self.assertEqual((d['ticker'],d['collectionId']),(self.ticker,self.ident))
+        self.assertEqual(len(d['documents']),1);doc=d['documents'][0]
+        self.assertEqual((doc['filename'],doc['receiptSha256'],doc['publishedDate'],doc['sourceKind']),('one.txt',self.sha,'2026-10-02','press-release'))
+        self.assertEqual(doc['availability'],'available');self.assertRegex(doc['id'],r'^thesis_[0-9]+$')
+        self.assertNotIn('file_data',doc);self.assertNotIn('privateBody',str(d));self.assertIn('no-store',r.headers['Cache-Control'])
+        self.assertEqual(self.row(self.ident),before);self.assertFalse(self.submits)
+        self.assertEqual(self.client.get(url+'?after=1').status_code,409)
+        self.assertEqual(self.client.get(url.replace(self.ident,str(uuid.uuid4()))).status_code,409)
+
+    def test_collected_inventory_missing_restricted_and_changed_metadata_are_not_verified_bytes(self):
+        self.parent();url=self.url.replace('processing-proposals','processing-sources')
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE ticker=%s',(json.dumps({'usage':'reference_only','published':'not-a-date'}),self.ticker))
+        doc=self.client.get(url).json['documents'][0]
+        self.assertEqual(doc['availability'],'restricted');self.assertIsNone(doc['publishedDate'])
+        with self.db(True) as (_,cur):
+            cur.execute('DELETE FROM document_files WHERE ticker=%s',(self.ticker,))
+        doc=self.client.get(url).json['documents'][0]
+        self.assertEqual(doc['availability'],'missing');self.assertIsNone(doc['id']);self.assertEqual(doc['receiptSha256'],self.sha)
+        self.assertFalse(self.submits)
+
+    def test_collected_inventory_rejects_duplicate_receipts_and_unfinished_parent(self):
+        self.parent();url=self.url.replace('processing-proposals','processing-sources')
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET result=%s::jsonb WHERE id=%s",(json.dumps({'sources':[{'filename':'one.txt','sha256':self.sha}]*2}),self.ident))
+        self.assertEqual(self.client.get(url).status_code,409)
+        with self.db(True) as (_,cur):cur.execute("UPDATE mp_jobs SET status='running' WHERE id=%s",(self.ident,))
+        self.assertEqual(self.client.get(url).status_code,409)
+        self.assertFalse(self.submits)

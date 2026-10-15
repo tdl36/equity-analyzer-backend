@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T319 — Organized collected evidence before processing approval
+
+Completed collection receipts now have a read-only metadata inventory scoped to
+the exact assignment/company. The collected-source picker groups by document type,
+sorts by recorded publication date (unknown last), searches filename/publisher/
+author and offers a selected-only view. Filtering preserves choices and reports
+hidden selections. Missing, ambiguous and restricted originals remain visible.
+Duplicate receipt hashes prevent newly selecting a second identical copy; no
+original is removed or silently deselected. Restored conflicting choices remain
+subject to the existing save/approval checks. Source guidance differs for thesis
+review and event notes. Collected and supplemental rows link to stored originals.
+
+The metadata read neither retrieves source bodies nor verifies current bytes.
+Links open the current stored file; proposal save/approval still recheck originals
+against frozen receipt hashes and permissions. Failed/mismatched inventories keep
+selections and prevent a new proposal save until recovered. Existing frozen
+proposals, original Pipeline, collection workers and synthesis pause are unchanged.
+
+Validation: 57 focused isolated-Postgres tests, full 1,635 safe backend tests, 224
+frontend tests, Python compilation and production build pass. Synthetic full-app
+390/1280px checks cover grouping/search, hidden selections, duplicates, missing
+sources, exact original links, mismatched metadata recovery, draft reload and
+processing-approval guards. Screens visually inspected at both widths. All UI
+POSTs are mocked; no real generation or investor decision was submitted.
+
+Next critical path: inspect the genuine CVS collection's saved stage and, once
+complete, compare its receipts with this inventory and the processing proposal.
+Record live evidence independently of simulated UI checks. Explicit processing
+approval is still required; shared-dashboard expansion remains after genuine
+connected-journey proof. Independent next work: pre-save selected-pack review
+across collection and supplemental history (counts/known dates/unknowns/duplicate
+receipts and exclusions), reusing this inventory and frozen coverage semantics.
+
 ## T318 — Collection-linked processing approval status guards
 
 Critical-path handoff increment: saved processing proposals and save receipts now

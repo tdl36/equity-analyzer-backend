@@ -1,3 +1,4 @@
+import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalList } from './processing-proposal-status.mjs';
 import { emptyDraft, draftKey, readDraft, writeDraft } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
@@ -42,6 +43,7 @@ function ProposalReview({
     [allowPdfText, setAllowPdfText] = React.useState(initial.allowPdfText),
     [meetingDate, setMeetingDate] = React.useState(initial.meetingDate),
     [meetingType, setMeetingType] = React.useState(initial.meetingType);
+  var [collectionReady, setCollectionReady] = React.useState(false);
   var [supplements, setSupplements] = React.useState(initial.supplements);
   var [selected, setSelected] = React.useState(initial.selected),
     [purpose, setPurpose] = React.useState(initial.purpose),
@@ -274,28 +276,18 @@ function ProposalReview({
     type: "date",
     value: eventDate,
     onChange: e => setEventDate(e.target.value)
-  }))), /*#__PURE__*/React.createElement("p", null, selected.length, " of ", job.result.sources.length, " collected originals selected, plus ", supplements.length, " supplemental originals \xB7 none selected automatically. Select at least one collected original to link this proposal to the collection. Up to 15 MB per original and 60 MB per processing pack; collection itself can be larger."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      maxHeight: 280,
-      overflow: 'auto',
-      border: '1px solid var(--border-color,#d8dedd)',
-      padding: 12
-    }
-  }, job.result.sources.map(s => /*#__PURE__*/React.createElement("label", {
-    className: "sa-check",
-    key: s.filename,
-    style: {
-      display: 'flex',
-      alignItems: 'start',
-      gap: 8,
-      padding: '6px 0'
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: selected.includes(s.filename),
-    disabled: !selected.includes(s.filename) && selected.length + supplements.length >= 1000,
-    onChange: e => setSelected(p => e.target.checked ? [...p, s.filename] : p.filter(n => n !== s.filename))
-  }), /*#__PURE__*/React.createElement("span", null, s.filename)))), /*#__PURE__*/React.createElement(ProcessingSourceLibrary, {
+  }))), /*#__PURE__*/React.createElement("p", null, selected.length, " of ", job.result.sources.length, " collected originals selected, plus ", supplements.length, " supplemental originals \xB7 none selected automatically. Select at least one collected original to link this proposal to the collection. Up to 15 MB per original and 60 MB per processing pack; collection itself can be larger."), /*#__PURE__*/React.createElement(CollectedSourcePicker, {
+    api: api,
+    call: call,
+    job: job,
+    selected: selected,
+    onChange: setSelected,
+    purpose: purpose,
+    remaining: 1000 - supplements.length,
+    onReady: setCollectionReady
+  }), /*#__PURE__*/React.createElement(ProcessingSourceLibrary, {
+    api: api,
+    ticker: job.ticker,
     call: call,
     path: path.replace('processing-proposals', 'processing-library'),
     selected: supplements,
@@ -343,7 +335,7 @@ function ProposalReview({
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !!readIssue || !pending && (!selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !!readIssue || !pending && (!collectionReady || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
   }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, readIssue ? 'Saved proposals unavailable. Refresh to check their status.' : 'Loading saved proposals…') : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,

@@ -77,6 +77,23 @@ def public(row):
 def register(co):
     bp = co.bp
 
+    @bp.get('/api/research/assignments/<collection_id>/processing-sources')
+    def processing_sources(collection_id):
+        parent = co.read(collection_id)
+        if not parent or parent['status'] != 'complete' or not obj(parent['input']).get('collectionOnly'):
+            return jsonify(error='Choose a completed source-only collection.'), 409
+        try:
+            if request.args:
+                raise ValueError('Collected source inventory does not accept filters.')
+            from processing_proposal_sources import collected_inventory
+            with co.db() as (_, cur):
+                documents = collected_inventory(cur, parent['ticker'], obj(parent['result']).get('sources'))
+            response = jsonify(collectionId=collection_id, ticker=parent['ticker'], documents=documents)
+            response.headers['Cache-Control'] = 'private, no-store'
+            return response
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 409
+
     @bp.get('/api/research/assignments/<collection_id>/processing-library')
     def processing_library(collection_id):
         parent = co.read(collection_id)
