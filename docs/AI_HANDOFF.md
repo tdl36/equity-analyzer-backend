@@ -32,6 +32,32 @@ existing workflow repairs, not another orchestrator or broad approval dashboard.
 The collection/explicit-processing/accepted-research proof and historical-reference
 schema remain open; never treat synthetic note inventory as that proof.
 
+T326 production verified: Render 82347761e4798196f3d14f9740960231bacf8b98;
+Cloudflare 8153645b-83d6-4cc4-a1d8-d2c4fbeb02a3. Exact hosted JS/service-worker
+bytes and HTML marker match. Read-only auth/identity guards and agent health
+(1.5 seconds) passed. Hosted Activity returned no unavailable dependencies and zero
+full-note rows. It explicitly reported truncation of Research workflows attention,
+Research workflows active and Audio processing attention. This is not evidence of
+complete live Home coverage. Logs: /tmp/charlie-T326-{focused,backend,frontend,
+build,ui,deploy,verify,journey-audit}.log.
+
+Read-only full assignment-history page has four entries and no next page: one
+running, two complete, one cancelled. Exact completed reads identify ABT
+f9e363e4-597e-4394-b9d4-36d83def935f (8 sources, 2 artifacts) and UNH
+e998e805-0bd4-49ce-aafa-2af123e1aace (6 sources, 1 artifact). Neither is
+collection-only or linked to a processing proposal; neither has a full-note status.
+No completed collection-only request was found for the new live-journey proof.
+No coordinator wake, collection, proposal save or processing authorization occurred.
+
+Next independent work: reconcile these existing ABT/UNH saved output destinations
+and render availability at desktop/mobile using read-only requests, preserving
+private content. For Home, investigate the explicitly truncated categories using
+bounded metadata only; do not claim all work is represented by the current snapshot.
+Repair demonstrated delivery/visibility faults rather than adding another worker
+or expanding the shared approval dashboard before proof. Historical schema remains
+unavailable per historical-security-mapping.md; do not restart provider discovery
+or infer historical security semantics from a current profile.
+
 ## T325 — Full-note saved-output and recovery navigation
 
 Focused assignments now expose confirmed full Lab drafts in Saved deliverables,
