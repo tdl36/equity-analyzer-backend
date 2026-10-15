@@ -13,8 +13,14 @@ Storage verification occurs before submission. Definitive validation/conflict
 responses clear the pending identity; ambiguous failures preserve it. Recovery
 is scoped to the same browser session; this is not cross-device unsaved storage.
 
-Validation and deployment verification pending. Next: source-review reconciliation
-and collection follow-through; real source-quality/investor acceptance remain open.
+Verified Render revision `bd9bd1a3ee03702469b408904c3825a14dceadc7`, Cloudflare
+`924c1046-6e7a-49da-b43b-a32580379fc7`, T276 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (4.9 seconds old). 182 frontend tests, model-policy
+gate and build passed. Synthetic 390px/1280px checks simulated a lost edit response,
+reloaded the page, restored read-only submitted text and reconciled the identical
+event/body. All writes were intercepted fixtures; no live research or approvals.
+Next: source-review reconciliation and collection follow-through; real source
+quality and investor acceptance remain open.
 
 ## T275 — Preserve edits during background imports
 
