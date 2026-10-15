@@ -14,7 +14,10 @@ label. Original Pipeline, stored metadata, selections and research are unchanged
 186 frontend tests, model policy and production build passed; focused date tests
 also passed in Pacific/Honolulu. Synthetic 390px/1280px checks verified displayed
 publication dates, source selection and exact fixture downloads with zero writes.
-Production verification pending. Backend unchanged; no paid QA or approvals.
+Verified Render revision `390a4bd47ef33af2f4e7f6b2a8101f6837875078`, Cloudflare
+`95b1de04-5615-4555-b309-d859e0905db7`, T281 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (92 seconds old); read-only original endpoint checks retained
+401 without auth and 404 for absent identity. Backend unchanged; no paid QA or approvals.
 Next: real source-quality/investor acceptance remains unverified. Independent
 historical valuation work remains at the provider-schema/assignment-locked storage
 checkpoint in docs/historical-security-mapping.md; do not enable ingestion from
