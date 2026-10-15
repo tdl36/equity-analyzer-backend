@@ -2,6 +2,15 @@
 
 Updated: October 14, 2026
 
+## Finish sequence and reporting cadence — October 15
+
+The user authorized the explicit sequence in docs/charlie-finish-sequence.md and
+requested status updates every 15 minutes. The existing development heartbeat is
+ACTIVE at that interval with explicit progress reporting. Next engineering task:
+unified processing visibility/approval across event proposals, saved Lab packs and
+analyst generation tasks. Analyst /approve accepts completed output; /run starts
+generation. Keep those actions distinct and preserve the backfill synthesis pause.
+
 ## T306 — Ready checklist independent of unrelated desk loading
 
 Ready to process previously waited for six unrelated research-desk reads before
