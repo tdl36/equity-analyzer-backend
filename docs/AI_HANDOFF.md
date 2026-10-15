@@ -12,8 +12,13 @@ imports or starts research. The subsequent save retains server revision checks.
 This supplies a recovery path after background imports or another device changes
 settings without silently merging unlike iCloud/Charlie source identities.
 
-Validation and deployment verification pending. Next: collection follow-through
-and real source-quality/investor acceptance evidence.
+Verified Render revision `b6ad7141da41bba6e3582ae812dc19503840aab2`, Cloudflare
+`bbaac0aa-0888-494a-9790-ac6afe0b15fd`, T278 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (73.4 seconds old). 183 frontend tests, model policy
+and build passed. Synthetic 390px/1280px checks compared updated saved settings,
+retained local choices, then explicitly adopted saved choices with zero writes.
+Backend unchanged; no paid QA or live research/approval changes.
+Next: collection follow-through and real source-quality/investor acceptance evidence.
 
 ## T277 — Source groups in Lab
 
