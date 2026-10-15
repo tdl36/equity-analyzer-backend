@@ -82,3 +82,7 @@ export function groupLabDocuments(rows, grouped=true) {
     }
     return [...groups].map(([label,rows])=>({label,rows}));
 }
+
+export function sameLabSelection(a,b) {
+    return ['thesis','note'].every(task=>a[task].length===b[task].length&&a[task].every(key=>b[task].includes(key)));
+}

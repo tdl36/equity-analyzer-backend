@@ -2,6 +2,21 @@
 
 Updated: October 14, 2026
 
+## T279 — Collected-source follow-through
+
+While Lab assignment controls are open, a newly completed browser-source assignment
+with a saved source list refreshes clean source settings/inventory automatically.
+Unsaved selections instead remain intact with a completion notice and comparison/
+reload guidance. Existing completed assignments offer a visible Review collected
+sources in Lab action that returns to the source picker with the same protection.
+Restoring the same source identities now clears dirty state regardless of selection
+order. The initial status snapshot does not trigger automatic reloads; completed assignments
+from saved Lab selections are excluded. No extra browser worker, import, selection,
+research submission or approval is dispatched. Completion is not exhaustive coverage.
+
+Validation and deployment verification pending. Next: real collection/source-quality
+and investor acceptance evidence; continue independent engineering gaps as found.
+
 ## T278 — Compare and reconcile source choices
 
 Dirty Lab selections can now be compared with the latest saved configuration,

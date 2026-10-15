@@ -3,7 +3,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import {parseTimestamp,workId} from './workspace-model.mjs';
 import {ResearchAssignment} from './research-assignment';
-import {labDocuments,visibleLabDocuments,recentLabDocuments,labCollectionStatus,taskSourceGuide,groupLabDocuments} from './pipeline-lab-model.mjs';
+import {labDocuments,visibleLabDocuments,recentLabDocuments,labCollectionStatus,taskSourceGuide,groupLabDocuments,sameLabSelection} from './pipeline-lab-model.mjs';
 const stamp=value=>parseTimestamp(value)?.toLocaleDateString('en-US',{timeZone:'America/New_York'})||'Unknown';
 async function read(api,path,options={}){const r=await fetch(api+path,{...options,signal:AbortSignal.timeout(25000)});const d=await r.json();if(!r.ok){const e=Error(d.error||'Pipeline Lab could not load.');e.status=r.status;throw e;}return d;}
 export function PipelineLab({api,onNavigate,renderHtml,initialTicker='',routeWork=''}){
@@ -22,12 +22,13 @@ export function PipelineLab({api,onNavigate,renderHtml,initialTicker='',routeWor
 }
 function LabStock({api,ticker,onNavigate,onClose,renderHtml,focusId}){
  const [rows,setRows]=React.useState([]),[saved,setSaved]=React.useState(null),[selection,setSelection]=React.useState({thesis:[],note:[]}),[task,setTask]=React.useState('thesis'),[query,setQuery]=React.useState(''),[group,setGroup]=React.useState('All'),[sort,setSort]=React.useState('date'),[recency,setRecency]=React.useState('all'),[error,setError]=React.useState(''),[notice,setNotice]=React.useState(''),[busy,setBusy]=React.useState(false),[generation,setGeneration]=React.useState(0),[collect,setCollect]=React.useState(false),[checkResult,setCheckResult]=React.useState(null),[checking,setChecking]=React.useState(false),[pendingImport,setPendingImport]=React.useState(false),[selectedOnly,setSelectedOnly]=React.useState(false),[publishedOnly,setPublishedOnly]=React.useState(false),[grouped,setGrouped]=React.useState(true),[latest,setLatest]=React.useState(null);
- const lock=React.useRef(false),alive=React.useRef(true);
+ const lock=React.useRef(false),alive=React.useRef(true),sourceHeading=React.useRef(null);
  React.useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  React.useEffect(()=>{let live=true;setSaved(null);setLatest(null);setError('');Promise.all([read(api,`/api/pipeline/documents/${ticker}`),read(api,`/api/agent/local-files/${ticker}`),read(api,`/api/pipeline-lab/config/${ticker}`)]).then(([a,b,c])=>{const list=labDocuments(a.documents,b.files);if(!Number.isInteger(c.revision)||!Array.isArray(c.selection?.thesis)||!Array.isArray(c.selection?.note))throw Error('Saved Lab settings unavailable.');if(live){setRows(list);setSaved(c);setSelection(c.selection);}}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[api,ticker,generation]);
  const importKey='charlie-lab-import-v1:'+api+':'+ticker;
  React.useEffect(()=>{try{setPendingImport(!!sessionStorage.getItem(importKey));}catch{setError('Import retry storage is unavailable. Imports cannot start safely.');}},[importKey]);
- const dirty=saved&&JSON.stringify(selection)!==JSON.stringify(saved.selection);
+ const dirty=saved&&!sameLabSelection(selection,saved.selection);
+ const collected=explicit=>{setCheckResult(null);if(dirty){setNotice('Collection completed. Your unsaved selections are preserved. Compare with latest saved selections or reload when ready to review newly imported originals.');}else{setNotice('Collection completed. Source inventory is being refreshed; review dates, coverage and task relevance before selecting originals.');setGeneration(n=>n+1);}if(explicit)sourceHeading.current?.scrollIntoView({block:'start'});};
  const compare=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const d=await read(api,`/api/pipeline-lab/config/${ticker}`);if(!Number.isInteger(d.revision)||!Array.isArray(d.selection?.thesis)||!Array.isArray(d.selection?.note))throw Error('Latest settings unavailable. Your edits remain on this screen.');if(alive.current)setLatest(d);}catch(e){if(alive.current)setError(e.message);}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const adopt=keep=>{if(!latest)return;setSaved(latest);if(!keep)setSelection(latest.selection);setLatest(null);setCheckResult(null);setNotice(keep?'Your selections are retained against the latest saved version. Review them and Save Lab settings to explicitly replace the saved selections. No save or research was started.':'Latest saved selections loaded. No research was started.');};
  const close=()=>{if(!dirty||window.confirm('Leave without saving your Lab selection changes?'))onClose();};
@@ -37,7 +38,7 @@ function LabStock({api,ticker,onNavigate,onClose,renderHtml,focusId}){
  const shown=visibleLabDocuments(recentLabDocuments(rows,recency,Date.now(),publishedOnly),query,group,sort).filter(r=>!selectedOnly||selection[task].includes(r.key)),selected=new Set(selection[task]);
  const missing=selection[task].filter(k=>!rows.some(r=>r.key===k));
  const toggle=key=>setSelection(s=>({...s,[task]:s[task].includes(key)?s[task].filter(k=>k!==key):[...s[task],key]}));
- return <><div className="workspace-section-heading"><div><p className="workspace-eyebrow">INDEPENDENT LAB CONFIGURATION</p><h2>{ticker} · Sources &amp; settings</h2></div><button aria-label="Close Lab settings" onClick={close} disabled={busy}>Close</button></div>
+ return <><div ref={sourceHeading} className="workspace-section-heading"><div><p className="workspace-eyebrow">INDEPENDENT LAB CONFIGURATION</p><h2>{ticker} · Sources &amp; settings</h2></div><button aria-label="Close Lab settings" onClick={close} disabled={busy}>Close</button></div>
  <p>Organize sources here without moving iCloud files. Thesis and note selections are saved separately. Check your saved selection to prepare separate research drafts. Browser collection remains available below.</p>
  <div className="workspace-actions"><button aria-pressed={task==='thesis'} onClick={()=>setTask('thesis')}>Thesis sources ({selection.thesis.length})</button><button aria-pressed={task==='note'} onClick={()=>setTask('note')}>Note sources ({selection.note.length})</button></div>
  <p>{task==='thesis'?'Choose evidence that changes or tests the investment case, including relevant foundational work.':'Choose evidence for the specific event or question your research note should address.'}</p>
@@ -68,7 +69,7 @@ function LabStock({api,ticker,onNavigate,onClose,renderHtml,focusId}){
  <LabNote key={focusId||ticker} focusId={focusId} api={api} ticker={ticker} read={read} renderHtml={renderHtml} selection={task==='note'&&!dirty&&checkResult?.generationAvailable===true&&!checkResult.blockers.length&&checkResult.task===task&&checkResult.revision===saved?.revision?{revision:saved.revision,digest:checkResult.digest}:null}/>
  <p><a href={`#view=desk&ticker=${encodeURIComponent(ticker)}&section=collection`}>Open this stock’s browser collection schedule, history &amp; recovery →</a></p>
  <hr style={{margin:'24px 0'}}/><h3>Collect latest sources through AlphaSense in Chrome</h3><p>No AlphaSense API or MCP is required. The scheduled Operations worker uses your signed-in Chrome session. This uses Charlie’s existing coordinated assignment workflow and its own source policy, not the saved Lab selections above. It can collect up to eight eligible originals and prepare reviewable outputs. Keep the Mac awake and online, its agent running, and Codex and signed-in Chrome available. Sign-in or MFA is completed directly in AlphaSense. Collection is not guaranteed to be immediate.</p><button onClick={()=>setCollect(v=>!v)}>{collect?'Hide assignment controls':'Open coordinated assignment controls'}</button>
- {collect&&<ResearchAssignment labMode embedded api={api} ticker={ticker} onReport={()=>onNavigate('stockanalysis',ticker)}/>}
+ {collect&&<ResearchAssignment onCollectionComplete={collected} labMode embedded api={api} ticker={ticker} onReport={()=>onNavigate('stockanalysis',ticker)}/>}
  <p>For the current direct-update and Generate Note workflow, <button onClick={()=>{if(!dirty||window.confirm('Leave unsaved Lab changes?'))onNavigate('pipeline',ticker);}}>open original Research Pipeline →</button></p>
  </>;
 }

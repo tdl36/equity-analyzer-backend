@@ -18,7 +18,8 @@ export function ResearchAssignment({
   origin = null,
   labSelection = null,
   embedded = false,
-  labMode = false
+  labMode = false,
+  onCollectionComplete = null
 }) {
   var [collectionOnly, setCollectionOnly] = React.useState(false);
   var [fullNote, setFullNote] = React.useState(false),
@@ -138,6 +139,19 @@ export function ResearchAssignment({
       clearInterval(timer);
     };
   }, [api, ticker, focusId]);
+  var collectionCallback = React.useRef(onCollectionComplete),
+    seenCollections = React.useRef(null);
+  collectionCallback.current = onCollectionComplete;
+  React.useEffect(() => {
+    seenCollections.current = null;
+  }, [api, ticker]);
+  React.useEffect(() => {
+    if (!loaded) return;
+    var completed = jobs.filter(j => j.status === 'complete' && !j.input.labSelection && Array.isArray(j.result.sources) && j.result.sources.length).map(j => j.id);
+    var previous = seenCollections.current;
+    seenCollections.current = new Set(completed);
+    if (previous && completed.some(id => !previous.has(id))) collectionCallback.current?.(false);
+  }, [jobs, loaded]);
   var mutate = async fn => {
     if (locked.current) return;
     var g = generation.current;
@@ -278,7 +292,10 @@ export function ResearchAssignment({
     job: j
   }) : /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', ticker, 'stock-analysis', 'assignment:' + j.id)
-  }, "Open saved outputs \xB7 ", j.input.since, " \u2013 ", j.input.until)), /*#__PURE__*/React.createElement("details", {
+  }, "Open saved outputs \xB7 ", j.input.since, " \u2013 ", j.input.until)), onCollectionComplete && j.status === 'complete' && !j.input.labSelection && Array.isArray(j.result.sources) && j.result.sources.length > 0 && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => onCollectionComplete(true)
+  }, "Review collected sources in Lab"), /*#__PURE__*/React.createElement("details", {
     className: "assignment-history",
     open: j.status !== 'complete'
   }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {

@@ -3,7 +3,7 @@ import LabICloudImport from './pipeline-lab-import';
 import * as React from 'react';
 import { parseTimestamp, workId } from './workspace-model.mjs';
 import { ResearchAssignment } from './research-assignment';
-import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments } from './pipeline-lab-model.mjs';
+import { labDocuments, visibleLabDocuments, recentLabDocuments, labCollectionStatus, taskSourceGuide, groupLabDocuments, sameLabSelection } from './pipeline-lab-model.mjs';
 var stamp = value => parseTimestamp(value)?.toLocaleDateString('en-US', {
   timeZone: 'America/New_York'
 }) || 'Unknown';
@@ -160,7 +160,8 @@ function LabStock({
     [grouped, setGrouped] = React.useState(true),
     [latest, setLatest] = React.useState(null);
   var lock = React.useRef(false),
-    alive = React.useRef(true);
+    alive = React.useRef(true),
+    sourceHeading = React.useRef(null);
   React.useEffect(() => {
     alive.current = true;
     return () => {
@@ -195,7 +196,19 @@ function LabStock({
       setError('Import retry storage is unavailable. Imports cannot start safely.');
     }
   }, [importKey]);
-  var dirty = saved && JSON.stringify(selection) !== JSON.stringify(saved.selection);
+  var dirty = saved && !sameLabSelection(selection, saved.selection);
+  var collected = explicit => {
+    setCheckResult(null);
+    if (dirty) {
+      setNotice('Collection completed. Your unsaved selections are preserved. Compare with latest saved selections or reload when ready to review newly imported originals.');
+    } else {
+      setNotice('Collection completed. Source inventory is being refreshed; review dates, coverage and task relevance before selecting originals.');
+      setGeneration(n => n + 1);
+    }
+    if (explicit) sourceHeading.current?.scrollIntoView({
+      block: 'start'
+    });
+  };
   var compare = async () => {
     if (lock.current) return;
     lock.current = true;
@@ -328,6 +341,7 @@ function LabStock({
     [task]: s[task].includes(key) ? s[task].filter(k => k !== key) : [...s[task], key]
   }));
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    ref: sourceHeading,
     className: "workspace-section-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "workspace-eyebrow"
@@ -589,6 +603,7 @@ function LabStock({
   }), /*#__PURE__*/React.createElement("h3", null, "Collect latest sources through AlphaSense in Chrome"), /*#__PURE__*/React.createElement("p", null, "No AlphaSense API or MCP is required. The scheduled Operations worker uses your signed-in Chrome session. This uses Charlie\u2019s existing coordinated assignment workflow and its own source policy, not the saved Lab selections above. It can collect up to eight eligible originals and prepare reviewable outputs. Keep the Mac awake and online, its agent running, and Codex and signed-in Chrome available. Sign-in or MFA is completed directly in AlphaSense. Collection is not guaranteed to be immediate."), /*#__PURE__*/React.createElement("button", {
     onClick: () => setCollect(v => !v)
   }, collect ? 'Hide assignment controls' : 'Open coordinated assignment controls'), collect && /*#__PURE__*/React.createElement(ResearchAssignment, {
+    onCollectionComplete: collected,
     labMode: true,
     embedded: true,
     api: api,

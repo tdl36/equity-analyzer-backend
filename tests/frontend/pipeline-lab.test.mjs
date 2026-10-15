@@ -78,3 +78,9 @@ test('source grouping preserves identities and ordering without changing selecti
  assert.deepEqual(rows.map(r=>r.key),['a','b','c']);
  assert.deepEqual(groupLabDocuments([]),[]);
 });
+
+import {sameLabSelection} from '../../src/pipeline-lab-model.mjs';
+test('restoring the same selected identities clears dirty state regardless of order',()=>{
+ assert.equal(sameLabSelection({thesis:['b','a'],note:[]},{thesis:['a','b'],note:[]}),true);
+ assert.equal(sameLabSelection({thesis:['b'],note:['a']},{thesis:['a','b'],note:[]}),false);
+});
