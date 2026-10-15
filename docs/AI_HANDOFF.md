@@ -4,6 +4,18 @@ Updated: October 14, 2026
 
 ## Research Pipeline Lab T269 — integration release
 
+Verified release: source commit `0f9963f872bff6f553b8278a07ac18a1c73590d4`;
+Cloudflare version `0b364407-9143-4029-b955-33b147903ca1`. Render /health
+reported the exact commit. Hosted JS and service-worker bytes matched the build;
+HTML reported T269. Authenticated ABT note-job/config/inventory reads passed and
+unauthenticated note reads returned 401. 1,528 safe backend tests, 180 frontend
+tests, compile, model-policy gate and required build passed. Synthetic desktop and
+390px mobile checks passed, including source-only submission, lost-response/reload
+replay and note edit/review; Word export had a real table and Calibri styles.
+Mac agent restarted after verifying zero running pipeline jobs/collection leases;
+no startup error indicators, then a healthy production heartbeat. No paid QA,
+external messages, thesis changes or note acceptance were performed.
+
 Full Lab notes now connect authenticated submission, durable plans/call journal,
 lease-renewing worker, review/edit/history, Word/Markdown export and exact-revision
 investor acceptance. Legacy Research Pipeline and research_notes are unchanged.
