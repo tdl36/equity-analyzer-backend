@@ -2,6 +2,33 @@
 
 Updated: October 14, 2026
 
+## T325 — Full-note saved-output and recovery navigation
+
+Focused assignments now expose confirmed full Lab drafts in Saved deliverables,
+with note-specific review copy and the existing exact ticker/note route. Draft
+receipts remain reachable when the parent needs attention. Pending/attention notes
+have a separate progress/recovery panel; parent completion or a reserved ID never
+creates a saved-output claim. Missing and malformed identities do not fall back to
+an unfocused Lab screen. Collection-only requests expose no note processing.
+Existing history links and other saved outputs remain available; opening a link
+starts no generation and performs no research acceptance.
+
+Validation: eight focused delivery/model tests, full frontend suite (234) and
+production build pass. Interactive synthetic browser checks at 390/1280px exercise
+keyboard tab navigation, exact focused links, partial results, attention-only and
+missing-receipt screens. Screenshots inspected; no horizontal overflow or browser
+errors. Only a synthetic saved-preview GET was permitted; no production requests,
+processing, retries or approvals. Backend behavior is unchanged; its safe suite
+last passed 1,667 tests in T324, not rerun for this frontend-only increment.
+
+Next critical path remains genuine collection receipts -> selected processing
+proposal -> expressly approved generation -> saved output/review. Latest CVS read
+is documented under T324; do not confuse an unchanged queued collection with new
+progress. While Operations collection and investor evidence remain pending, perform
+a read-only reconciliation of Home/company saved-work visibility against actual
+jobs and outputs, and repair demonstrated gaps. Defer broad shared-dashboard
+expansion; historical reference-schema and eight-priority acceptance remain open.
+
 ## T324 — Saved full-note scope and source context survive review/export
 
 New assignment full-note plans carry versioned server-owned research provenance:
