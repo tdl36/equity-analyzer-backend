@@ -32,6 +32,24 @@ request was observed in T328; avoid repeating the unchanged archive audit. Real
 request-specific processing/investor acceptance and historical-reference schema
 remain open. Preserve original Pipeline, collection authorization and synthesis pause.
 
+T329 production verified: Render ea9b3230c18f1a1af828cdae01ec199119f575c3;
+Cloudflare 62febe4d-7f81-4ae9-a9cb-188e27185f9a. Exact hosted JS/service-worker
+bytes and HTML marker match. Backend briefly returned 502 during rollout and then
+passed exact-revision checks. Read-only auth/identity checks and Mac health
+(27.5 seconds) passed. Activity had no unavailable dependencies; background
+research/audio truncation, CVS running and zero full-note rows remain unchanged.
+No archive rescan, collection dispatch, paid generation or investor action occurred.
+Logs: /tmp/charlie-T329-{frontend,backend,build,ui,deploy,verify}.log.
+
+Next concrete recovery fix: ProcessingSourceLibrary currently permits initial
+browse and next-page retry, but no full metadata refresh once loaded. Add an
+explicit read-only library refresh that restarts pagination, preserves selected
+identities, reports unloaded selections, and blocks saving selected metadata while
+refresh is pending/failed. Test changed first-page contents and interrupted later
+pages; do not auto-remove/reselect sources or widen processing authorization.
+The existing backend suite already covers exact replay, source/baseline drift,
+full-note planning and shared-report dispatch; do not rewrite that machinery.
+
 ## T328 — Exact thesis-review loading and recovery
 
 An exact thesis draft now loads independently of the inbox. Inbox failure no
