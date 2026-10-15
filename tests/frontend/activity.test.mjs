@@ -73,3 +73,15 @@ test('evidence review retains exact proposal identity',()=>{
  const id='11111111-1111-4111-8111-111111111111';
  assert.deepEqual(activityDestination({workflow:'evidence_amendment',jobId:id}),{view:'desk',section:'evidence',work:'amendment:'+id});
 });
+
+test('Lab note inventory routes to exact note and distinguishes review from execution',()=>{
+ const jobId='11111111-1111-4111-8111-111111111111';
+ assert.deepEqual(activityDestination({workflow:'lab_note',jobId}),{view:'pipelinelab',section:'',work:'labnote:'+jobId});
+ assert.equal(activityDestination({workflow:'lab_note',jobId:'invalid'}).work,undefined);
+ const row={workflow:'lab_note',jobId,status:'needs_review',bucket:'attention'};
+ assert.equal(workLane(row),'review');assert.match(nextAction(row),/separate investor action/);
+ assert.match(nextAction({...row,status:'attention'}),/uncertain paid attempt/);
+ assert.match(nextAction({...row,status:'queued',bucket:'active'}),/existing full-note worker/);
+ assert.doesNotMatch(nextAction({...row,status:'queued'}),/collection delivery/);
+ assert.match(nextAction({...row,status:'complete',bucket:'recent'}),/does not change the current thesis/);
+});

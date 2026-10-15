@@ -9,7 +9,7 @@ ACTIVE=('queued','running','pending','waiting','starting','processing','transcri
 WORKFLOW_LABELS={'evidence_amendment':'Evidence proposal','catalyst_watch':'Catalyst monitoring','catalyst_signal':'Catalyst signal','research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
 # Identifiers/projections are constants, never request input. No source bodies or keys.
 SOURCES = [
- ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, result->>'reason' AS reason, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
+ ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'labNoteId' AS lab_note_id, result->>'labNoteStatus' AS lab_note_status, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, result->>'reason' AS reason, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
  ('research_pipeline_jobs','Document processing','pipeline','job_type AS stage, current_step AS step','updated_at'),
  ('stock_analysis_runs','Stock analysis','stockanalysis',"jsonb_array_length(COALESCE(state->'completed','[]'::jsonb)) AS stages, state->>'inFlight' AS step",'updated_at'),
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
@@ -36,8 +36,16 @@ def assemble(rows, collection, now):
     parents=[r for r in rows if r.get('stage')=='research_assignment']
     reports={r.get('report_id') for r in parents}; refreshes={r.get('refresh_id') for r in parents}
     parent_ids={str(r['id']) for r in parents}
+    note_parents={(r.get('lab_note_id'),r.get('ticker')):r for r in parents if r.get('lab_note_id')}
     items=[]
     for r in rows:
+        if r.get('stage')=='lab_note':
+            parent=note_parents.get((str(r['id']),r.get('ticker')))
+            # Only hide a child whose current execution state is represented by a loaded parent.
+            # Draft review remains distinct from parent completion and never inherits acceptance.
+            parent_stamp=stamp(parent.get('updated_at')) if parent else None;note_stamp=stamp(r.get('updated_at'))
+            represented=parent_stamp and note_stamp and datetime.fromisoformat(parent_stamp)>=datetime.fromisoformat(note_stamp)
+            if parent and represented and parent.get('lab_note_status')==r.get('note_status') and ((r['status'] in ('queued','running') and parent['status'] in ('queued','running')) or (r['status']=='attention' and r.get('note_status')=='attention' and parent['status']=='attention')):continue
         if r.get('assignment_id') in parent_ids or (r['source']=='stock_analysis_runs' and str(r['id']) in reports):continue
         is_parent=r.get('stage')=='research_assignment';status=r.get('status') or 'unknown'
         error=r.get('error') or ''
@@ -80,7 +88,7 @@ def assemble(rows, collection, now):
         if item.get('legacyUnresolved'):
             item['step']='Legacy outcome unresolved'
             item['warning']='Recorded for reconciliation; prior evidence is preserved. Provider outcome remains unknown. No cancellation or retry was performed.'
-        if not item.get('legacyUnresolved') and not item.get('pendingStart') and not item.get('executionUnconfirmed') and item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
+        if not (item.get('workflow')=='lab_note' and item['status'] in ('needs_review','attention')) and not item.get('legacyUnresolved') and not item.get('pendingStart') and not item.get('executionUnconfirmed') and item['bucket']!='recent' and history_age is not None and history_age>7*86400:item['bucket']='older'
     items.sort(key=lambda r:({'attention':0,'active':1,'recent':2,'older':3}[r['bucket']],-(datetime.fromisoformat(r['updatedAt']).timestamp() if r['updatedAt'] else 0)))
     return items
 
@@ -186,6 +194,11 @@ def create_blueprint(get_db):
                     cur.execute(f"SELECT {projection} FROM {table} WHERE status IN %s AND {updated}>NOW()-INTERVAL '24 hours' ORDER BY {updated} DESC LIMIT 20",(TERMINAL,))
                     for r in selected+list(cur.fetchall()):rows.append({**dict(r),'source':table,'label':label,'view':view})
             except Exception:unavailable.append(label)
+        try:
+            from lab_note_activity import inventory
+            with get_db() as (_,cur):note_rows,note_truncated=inventory(cur)
+            rows.extend(note_rows);truncated.extend(note_truncated)
+        except Exception:unavailable.append('Full Lab notes')
         collection={}; collected_at=None; agent=None
         try:
             with get_db() as (_,cur):

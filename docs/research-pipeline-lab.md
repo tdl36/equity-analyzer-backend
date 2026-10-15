@@ -1,3 +1,33 @@
+## T326 — Read-only Home inventory includes full Lab notes
+
+Activity/Home now includes queued/running standalone Lab notes, recovery cases,
+current drafts awaiting investor review and recently accepted current revisions.
+Acceptance of an older revision does not accept a newer draft. A draft job without
+a saved version is attention, not delivered. Read-only queries project identity,
+ticker, dates and status only; no note text, source bodies, investor identity or
+plan context reaches the inventory. No leases, worker or approvals are invoked.
+
+Separate bounded budgets retain active/recovery work despite large review queues;
+truncation and unavailable note dependencies remain explicit. Old note review and
+recovery items stay actionable. A child execution item is suppressed only when a
+loaded same-company parent records its matching state at least as recently; stale
+or missing parents cannot hide newer progress. Draft review stays distinct from
+parent completion. Links open the exact saved note and guidance distinguishes
+review, queued generation, uncertain paid outcomes and revision acceptance.
+
+Validation: 21 focused backend tests, full safe backend suite (1,671), frontend
+suite (235), Python compilation and production build pass. Synthetic browser checks
+at 390/1280px exercise review/recovery/queued/accepted lanes, exact note identity,
+partial snapshot messages and no horizontal overflow; screenshots inspected.
+Only fixture GETs were allowed. Live source-to-approved-output/investor evidence
+remains open; automatic synthesis stays paused and original Pipeline is unchanged.
+
+Next: verify hosted Activity can read the added inventory without declaring an
+unavailable dependency, then reconcile actual saved jobs and outputs. Continue
+existing workflow repairs, not another orchestrator or broad approval dashboard.
+The collection/explicit-processing/accepted-research proof and historical-reference
+schema remain open; never treat synthetic note inventory as that proof.
+
 ## T325 — Full-note saved-output and recovery navigation
 
 Focused assignments now expose confirmed full Lab drafts in Saved deliverables,

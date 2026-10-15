@@ -41,6 +41,7 @@ export function nextAction(row) {
  const lane=workLane(row);
  if(row.pendingStart)return row.startRecovery?(row.bucket==='attention'?'Automatic start recovery is enabled but this job is delayed. Check backend worker availability without submitting another run.':'Waiting for its first execution. Charlie can recover this saved job after a backend restart; do not submit a duplicate.'):'This job has not reserved an execution attempt. Automatic start recovery is unavailable; inspect the saved job before resubmitting.';
  if(row.executionUnconfirmed)return 'Reconcile the saved run with backend execution and provider outcome. Do not submit another paid run until its outcome is known.';
+ if(row.workflow==='lab_note')return row.status==='needs_review'?'Review the saved full-note revision, its purpose and frozen sources. Acceptance is a separate investor action.':row.status==='complete'?'Open the accepted note revision. Acceptance does not change the current thesis.':row.status==='attention'?'Inspect the saved note and call outcome before resuming. Do not repeat an uncertain paid attempt.':row.status==='queued'?'Waiting for the existing full-note worker. Do not submit a duplicate.':'Open saved note progress; this view does not resume generation.';
  if(row.workflow==='research_decision')return 'Inspect the recorded issue, then save a follow-up review or a new review date. No thesis or portfolio action is automatic.';
  const intakeActions={paused:'Review automatic source intake settings before enabling comparisons.',credentials:'Add the required server-side key in Settings; never send credentials in chat.',budget:'Inspect the monthly budget in Settings before changing it.',daily_limit:'Pending sources are retained. Wait for the UTC reset or deliberately change the daily limit.',baseline:'Save a thesis for this company before enabling automatic comparison.',review:'Open evidence proposals and record your review of the existing proposal.',in_progress:'Inspect the existing company comparison before submitting another run.',worker:'No decision is currently identified. The worker will recheck eligibility before dispatch.'};
  if(row.waitCode&&intakeActions[row.waitCode])return intakeActions[row.waitCode];
@@ -66,6 +67,7 @@ export function focusRows(data) {
 }
 
 export function activityDestination(row) {
+ if(row.workflow==='lab_note')return {view:'pipelinelab',section:'',...workLink(row,'pipelinelab','','labnote')};
  if(row.workflow==='evidence_amendment')return {view:'desk',section:'evidence',...workLink(row,'desk','evidence','amendment')};
  if(row.workflow==='research_decision')return {view:'stockanalysis',section:'reviews',...workLink(row,'stockanalysis','reviews','decision')};
  const sections={auto_evidence_intake:'evidence',evidence_amendment:'evidence',catalyst_signal:'collection',catalyst_watch:'collection',collection_control:'collection',command_meeting:'command',agent_runs:'runs'};
