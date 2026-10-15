@@ -35,6 +35,26 @@ Reuse the existing proposal endpoint, work revision and review route. Shared Rea
 expansion still follows genuine connected-journey proof; all broader acceptance
 gaps remain in the eight-priority ledger.
 
+T316 production verified: Render 5bb7e5e15e67f0cc97e87b75d1b504f53e6d4b9e;
+Cloudflare 81ee7b8a-e5d4-44d2-a3c2-383ec453dd8e. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac-agent health ok at 104.8 seconds. Three existing
+ETN exact-proposal reads and wrong-company refusals passed. The new follow-up query
+returned explicit empty history separately from active-company status; authentication,
+invalid/ambiguous-filter, original/library refusal checks passed. All live checks
+were read-only; the new real follow-up-to-proposal journey is not claimed accepted.
+
+October 15 18:41 UTC focused CVS checkpoint: assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105 remains running, collectionOnly true,
+step Collecting and verifying originals, zero verified sources and no saved error.
+Collection status was not supplied in this response; do not infer queued or failed.
+No processing readiness is established and no collector/coordinator was restarted.
+Next independent engineering is durable meeting-answer submission recovery: save
+its exact request ID and follow-up ID/revision before POST, reconcile via exact-ID
+GET after reload, and retain ambiguous intents without automatically submitting or
+retrying. Storage failure must prevent a new submission; a changed follow-up must
+not silently replace an unresolved intent. Keep generation/acceptance decisions
+explicit and preserve Operations ownership of collection.
+
 ## T315 — Preserve rejected review-action messages
 
 Follow-up to the T314 exact evidence-proposal navigation fix: focused read errors
