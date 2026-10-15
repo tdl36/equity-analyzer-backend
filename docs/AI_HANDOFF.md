@@ -14,8 +14,14 @@ order. The initial status snapshot does not trigger automatic reloads; completed
 from saved Lab selections are excluded. No extra browser worker, import, selection,
 research submission or approval is dispatched. Completion is not exhaustive coverage.
 
-Validation and deployment verification pending. Next: real collection/source-quality
-and investor acceptance evidence; continue independent engineering gaps as found.
+Verified Render revision `ece442b57e6acc9e44678cf770953780a678e7b8`, Cloudflare
+`3784be66-15c9-47ef-b853-5819e0a4814d`, T279 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (3.8 seconds old). 184 frontend tests, model policy
+and build passed. Synthetic 390px/1280px checks verified new assignment completion,
+explicit source review, dirty-selection protection and automatic clean inventory
+refresh with zero writes. Backend unchanged; no paid QA/live research or approvals.
+Next: real collection/source-quality and investor acceptance evidence; continue
+independent engineering gaps as found.
 
 ## T278 — Compare and reconcile source choices
 
