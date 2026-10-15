@@ -13,9 +13,12 @@ acceptance receipt is outside the recent list display an explicit unknown status
 Validation: 181 frontend tests, model-policy gate and production build passed.
 Synthetic 390px and 1280px browser checks verified direct older-note access, reload,
 cross-stock refusal, readable layout and zero write requests. No paid QA or investor
-approval. Backend code and original Pipeline were unchanged. Deployment verification
-pending. Next: continue source-review usability and exact acceptance receipts for
-older drafts; real collection/source-quality and investor acceptance remain open.
+approval. Backend code and original Pipeline were unchanged. Verified Render revision
+`c520b1af8dc04ed6282b64189fddda4b81b26b9c`, Cloudflare deployment
+`2399bab9-9e55-4e2a-844f-dd1a3b4984d9`, T271 hosted HTML and exact hosted
+JS/service-worker bytes. Mac heartbeat healthy (70.6 seconds old).
+Next: continue source-review usability and exact acceptance receipts for older
+drafts; real collection/source-quality and investor acceptance remain open.
 
 ## T270 — Stop the full-note child with its assignment
 
