@@ -157,7 +157,8 @@ function LabStock({
     [pendingImport, setPendingImport] = React.useState(false),
     [selectedOnly, setSelectedOnly] = React.useState(false),
     [publishedOnly, setPublishedOnly] = React.useState(false),
-    [grouped, setGrouped] = React.useState(true);
+    [grouped, setGrouped] = React.useState(true),
+    [latest, setLatest] = React.useState(null);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -169,6 +170,7 @@ function LabStock({
   React.useEffect(() => {
     var live = true;
     setSaved(null);
+    setLatest(null);
     setError('');
     Promise.all([read(api, `/api/pipeline/documents/${ticker}`), read(api, `/api/agent/local-files/${ticker}`), read(api, `/api/pipeline-lab/config/${ticker}`)]).then(([a, b, c]) => {
       var list = labDocuments(a.documents, b.files);
@@ -194,6 +196,30 @@ function LabStock({
     }
   }, [importKey]);
   var dirty = saved && JSON.stringify(selection) !== JSON.stringify(saved.selection);
+  var compare = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      var d = await read(api, `/api/pipeline-lab/config/${ticker}`);
+      if (!Number.isInteger(d.revision) || !Array.isArray(d.selection?.thesis) || !Array.isArray(d.selection?.note)) throw Error('Latest settings unavailable. Your edits remain on this screen.');
+      if (alive.current) setLatest(d);
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    } finally {
+      lock.current = false;
+      if (alive.current) setBusy(false);
+    }
+  };
+  var adopt = keep => {
+    if (!latest) return;
+    setSaved(latest);
+    if (!keep) setSelection(latest.selection);
+    setLatest(null);
+    setCheckResult(null);
+    setNotice(keep ? 'Your selections are retained against the latest saved version. Review them and Save Lab settings to explicitly replace the saved selections. No save or research was started.' : 'Latest saved selections loaded. No research was started.');
+  };
   var close = () => {
     if (!dirty || window.confirm('Leave without saving your Lab selection changes?')) onClose();
   };
@@ -217,6 +243,7 @@ function LabStock({
       if (alive.current) {
         setSaved(d);
         setSelection(d.selection);
+        setLatest(null);
         setNotice('Lab settings saved centrally for all devices. No research was started.');
       }
     } catch (e) {
@@ -329,7 +356,37 @@ function LabStock({
         setGeneration(n => n + 1);
       }
     }
-  }, "Reload saved settings & inventory"), !saved ? /*#__PURE__*/React.createElement("p", {
+  }, "Reload saved settings & inventory"), dirty && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: compare
+  }, "Compare with latest saved selections"), latest && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Compare saved selections",
+    className: "workspace-panel",
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("h3", null, "Review saved changes before saving"), /*#__PURE__*/React.createElement("p", null, "Saved version ", latest.revision, " compared with your current choices. Imported originals may have different storage identities. Keeping your choices can leave newly imported originals unselected."), ['thesis', 'note'].map(t => /*#__PURE__*/React.createElement("div", {
+    key: t
+  }, /*#__PURE__*/React.createElement("h4", null, t === 'thesis' ? 'Thesis' : 'Note', " sources"), /*#__PURE__*/React.createElement("p", null, selection[t].length, " on this screen \xB7 ", latest.selection[t].length, " saved"), [['Only on this screen', selection[t].filter(k => !latest.selection[t].includes(k))], ['Only in saved settings', latest.selection[t].filter(k => !selection[t].includes(k))]].map(([label, keys]) => /*#__PURE__*/React.createElement("details", {
+    key: label
+  }, /*#__PURE__*/React.createElement("summary", null, label, " (", keys.length, ")"), /*#__PURE__*/React.createElement("ul", null, keys.map(k => /*#__PURE__*/React.createElement("li", {
+    key: k,
+    style: {
+      overflowWrap: 'anywhere'
+    }
+  }, rows.find(r => r.key === k)?.filename || k, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, k)))))))), /*#__PURE__*/React.createElement("div", {
+    className: "workspace-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => adopt(true)
+  }, "Keep my choices for review"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => {
+      if (window.confirm('Replace your unsaved selections with the latest saved selections?')) adopt(false);
+    }
+  }, "Use latest saved selections"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setLatest(null)
+  }, "Close comparison")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Keeping your choices does not save them. The next save still checks for concurrent changes. Neither action imports sources or starts research."))), !saved ? /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, error ? 'Inventory is incomplete; saving is disabled.' : 'Loading sources and saved configuration…') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions",

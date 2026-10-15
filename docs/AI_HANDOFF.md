@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T278 — Compare and reconcile source choices
+
+Dirty Lab selections can now be compared with the latest saved configuration,
+showing source identities present only locally or only in saved settings for each
+task. The investor can retain local choices against that baseline for review, or
+explicitly confirm replacing them with saved choices. Neither action saves,
+imports or starts research. The subsequent save retains server revision checks.
+This supplies a recovery path after background imports or another device changes
+settings without silently merging unlike iCloud/Charlie source identities.
+
+Validation and deployment verification pending. Next: collection follow-through
+and real source-quality/investor acceptance evidence.
+
 ## T277 — Source groups in Lab
 
 The source picker now presents matching documents in labeled document-type groups
