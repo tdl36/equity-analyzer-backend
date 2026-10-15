@@ -34,6 +34,22 @@ and investor acceptance remain open, as does permitted historical-reference sche
 Original Pipeline and automatic-synthesis backfill pause remain unchanged.
 Logs: /tmp/charlie-T331-{frontend,backend,build,ui,recovery,deploy,verify}.log.
 
+T331 production verified: Render 98d6362eeb7968d608e21acd3f70e2be4db05c32;
+Cloudflare d4edefd3-43d4-4971-9e19-eeb9328361fe. Exact hosted JavaScript and
+service-worker bytes and HTML marker match. Read-only identity/auth guards passed;
+agent healthy (3.8 seconds). Activity has no unavailable dependencies, unchanged
+research/audio truncation, CVS running and zero full-note rows. No dispatch or
+investor action. Additional synthetic navigation check at 390/1280px switches
+collection identities and returns: drafts remain isolated and original choices
+restore. No implementation change needed for the existing keyed boundary.
+
+Next durable action: continue the remaining company-workspace acceptance using
+read-only existing saved meeting/follow-up destinations and their return navigation;
+repair only a demonstrated delivery or recovery gap. Avoid repeating purpose-draft,
+source inventory or unchanged legacy assignment checks. Preserve the external
+live collection-only processing/acceptance and historical-schema gaps. Do not expand
+the shared approval dashboard before the connected stock journey has real proof.
+
 ## T330 — Refresh wider-library metadata without losing selections
 
 The collection-to-processing handoff now offers a read-only library refresh that
