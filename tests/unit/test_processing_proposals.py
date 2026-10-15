@@ -382,3 +382,19 @@ class ProcessingProposalTests(unittest.TestCase):
         with self.app.app_context(): self.co.advance(assignment_id(proposal['id']))
         self.assertEqual(len(self.submits), 1)
         self.assertNotIn('sourcePreparation', self.note_calls[0])
+
+    def test_coverage_uses_frozen_metadata_without_refreshing_thesis_claims(self):
+        self.parent();extra=self.extra()
+        self.body['supplementalIds']=[extra]
+        proposal=self.client.post(self.url,json=self.body).json
+        coverage=proposal['coverage']
+        self.assertEqual(coverage['roles'],{'collection':1,'supplemental':1,'unknown':0})
+        self.assertEqual(coverage['publication']['beforeWindow'],1)
+        self.assertEqual(coverage['publication']['unknown'],1)
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE document_files SET metadata=%s::jsonb WHERE ticker=%s",(json.dumps({'published':'2026-10-10','sourceKind':'transcript'}),self.ticker))
+        reread=self.client.get(self.url).json['proposals'][0]
+        self.assertEqual(reread['coverage'],coverage)
+        self.assertEqual(reread['digest'],proposal['digest'])
+        self.assertEqual(coverage['incorporation'],'not_assessed')
+        self.assertFalse(self.submits)

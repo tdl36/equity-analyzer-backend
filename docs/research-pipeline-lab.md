@@ -1,3 +1,33 @@
+## T312 — Frozen evidence coverage in processing proposals
+
+Saved processing proposals now expose a read-only summary derived solely from
+frozen sourceContext and the saved discovery window. It separates selected
+collection/supplemental/unknown roles, recorded publication range, unknown dates,
+before/within/after-window counts, source types and exact-byte saved-thesis register
+references. Missing legacy metadata stays unknown; current library metadata is
+never substituted. Existing proposal digests, choices and authorization are unchanged.
+
+The UI distinguishes a requested collection window from observed selected dates,
+and explicitly avoids continuous/exhaustive coverage, accepted-thesis incorporation
+or freshness claims. No-reference sources are not automatically classified as new
+or unused. Older foundational sources remain valid selections for longitudinal
+review. This is deterministic metadata accounting, not model-assisted screening.
+
+Validation: 28 focused tests, 1,625 safe backend tests, 208 frontend tests, Python
+compilation and production build pass. Synthetic 390/1280px browser checks (all
+APIs intercepted; remote fonts blocked) cover saved coverage/reference limits and
+explicit approval. Production verification follows. Original Pipeline, active
+collections, automatic-synthesis pause and investor approval boundaries are preserved.
+
+Next independent engineering: protect unsaved source/purpose/output choices when
+navigating away from the processing-proposal form, with a scoped local draft and
+explicit restored-choice notice. Restore only authoring choices, never pending
+approval or an execution request; keep the existing exact submission/replay key.
+Revalidate sources/baselines at save/approval. Genuine collection-to-approved-output
+proof still awaits a completed source-only assignment and investor authorization;
+shared Ready expansion remains after that proof. Historical schema and wider
+live/investor acceptance gaps remain open; none of the eight priorities is closed.
+
 ## T311 — Full-note source readiness before processing approval
 
 New full-note processing proposals now run local source planning at save. They

@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T312 adds a read-only frozen evidence-coverage summary: selected dates, unknowns,
+source roles/types and separate thesis-register references. It does not certify
+source incorporation, exhaustive coverage or accepted-thesis freshness.
+
 T311 adds pre-approval full-note source planning, representation-drift guards and
 explicit PDF/OCR/batch blockers. Local/synthetic planning is not provider budget
 validation, investment-quality acceptance or a genuine end-to-end run.

@@ -67,6 +67,8 @@ Propose catch-up windows with reasons and allow explicit changes. Older foundati
 sources remain eligible for thesis review. Event windows describe event coverage.
 Organize and deduplicate the larger library; metadata suggestions are not content
 analysis. Disclose selected/excluded/context-only evidence and size/context limits.
+T312 adds the frozen selection summary (dates/unknowns, source roles/types and
+thesis-register references) without retroactively changing saved proposals.
 Any model-assisted screening is explicit and budgeted, not automatic backfill work.
 
 ## Priority 4 — Expand Ready to process as a shared view

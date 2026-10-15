@@ -67,9 +67,10 @@ def dispatch(cur, proposed_plan, ident):
 def public(row):
     frozen = obj(row['input'])
     from processing_proposal_note import public as note_public
+    from processing_proposal_coverage import summarize
     return dict(id=row['id'], ticker=row['ticker'], status=row['status'], revision=1,
                 digest=frozen['digest'], collectionId=frozen['collectionId'], plan=frozen['plan'],
-                sources=frozen['sources'], fullNote=note_public(frozen.get('labNotePlan')), sourceContext=frozen.get('sourceContext', {}), baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
+                sources=frozen['sources'], coverage=summarize(frozen), fullNote=note_public(frozen.get('labNotePlan')), sourceContext=frozen.get('sourceContext', {}), baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
                 assignmentId=obj(row['result']).get('assignmentId'), created_at=row['created_at'])
 
 
