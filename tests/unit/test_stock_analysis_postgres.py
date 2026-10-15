@@ -210,7 +210,7 @@ class StockPostgresTests(unittest.TestCase):
         try:
             r=self.client.get('/api/research/stock-analysis-run/'+run['id']+'/infographic')
             self.assertEqual(r.status_code,200,r.json);self.assertEqual(r.json['assignmentId'],assignment)
-            self.assertEqual(r.json['rendererVersion'],'research-onepager-v4');self.assertIn('research-onepager-v4',r.json['html'])
+            self.assertEqual(r.json['rendererVersion'],'research-onepager-v5');self.assertIn('research-onepager-v5',r.json['html'])
             self.assertEqual(r.headers['Cache-Control'],'no-store');self.assertEqual(len(self.calls),calls)
             with self.db() as (_,c):
                 c.execute('SELECT result FROM mp_jobs WHERE id=%s',(assignment,));self.assertEqual(c.fetchone()['result'],result)

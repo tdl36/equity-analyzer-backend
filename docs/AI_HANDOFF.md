@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T322 — Frozen source provenance reaches derivative outputs
+
+New summary notes, stock summaries and both one-pager renderers now carry frozen
+collection/supplemental roles, publication dates, publisher, recorded source type
+and thesis-register reference status into their source appendices. Metadata joins
+require matching filename and SHA-256 plus an unambiguous frozen document identity;
+missing/changed/legacy context is disclosed instead of substituted from today's
+library. A source reference still does not prove incorporation or current validity.
+
+Saved extraction limitations (including omitted charts/layout) and research-context
+omissions are displayed separately and escaped. The infographic no longer claims
+text was excerpted when saved coverage records no omissions. Processing-proposal
+outputs label discovery dates separately from publication dates and analytical
+history. Source appendices retain black Calibri text and responsive layout; compact
+one-pager bodies remain unchanged except for the date label. Renderer versions:
+research-onepager-v5 and stock-infographic-v26. No saved artifact, approval, source,
+worker or accepted thesis is rewritten, and no provider calls are added.
+
+Validation: 84 initial focused tests; final renderer checks (37), full safe backend
+suite (1,641), frontend suite (231), Python compilation and production build pass.
+Synthetic browser checks inspect all three output layouts at 390/1280px, assert
+provenance/extraction text, black Calibri styling and no horizontal overflow.
+Screens were visually inspected. This is synthetic rendering evidence, not real
+research quality or investor acceptance. No paid runs or research decisions.
+
+Next critical path: inspect real completed collection receipts/proposal readiness
+and observe expressly authorized processing. Independent engineering next: audit
+whether the shared research and full-note prompts receive the per-source frozen
+roles/dates (not just generic scope text), preserving existing saved research inputs.
+Do not create another orchestrator or expand the shared dashboard before connected-
+journey proof. Historical schema and broader eight-priority acceptance remain open.
+
 ## T321 — Combined selected-evidence review before proposal save
 
 The collection-linked processing form now reviews collected and supplemental

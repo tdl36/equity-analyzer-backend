@@ -13,7 +13,7 @@ from onepager_edition_evidence import render_evidence, editorial_label, labeled_
 from onepager_editorial import ordered_candidates, statement_identity
 from scenario_arithmetic import check as check_scenario_arithmetic
 
-VERSION='stock-infographic-v25'
+VERSION='stock-infographic-v26'
 e=lambda value:html.escape(str(value if value is not None else ''),quote=True)
 
 @lru_cache(maxsize=3)
@@ -280,25 +280,28 @@ def render(run,assignment,fundamentals, *, preview=None):
         history+='<p class="micro history-context"><b>Historical earnings context:</b> '+e(financial_context['summary'])+' '+e(financial_context['caveat'])+' <a href="'+e(financial_context['sourceUrl'])+'">[H]</a></p>'
     glossary=profile.get('glossary','EPS = earnings per share · P/E = price / earnings · FCF = free cash flow')
     def link(url,label):return '<a href="'+e(url)+'">'+e(label)+'</a>' if urlparse(url or '').scheme in ('https','http') else e(label)
+    from research_source_provenance import render as source_provenance
+    from research_extraction import has_omissions
     source_names=[]
     for n,s in enumerate(ed.sources,1):
         name=s.get('publisher') or s.get('filename','Source')
         if not s.get('publisher'):
             name=re.sub(r'--[a-f0-9]+(?=\.)','',name);name=re.sub(r'\.pdf$','',name);name=name.replace(ticker+'-','',1);name=re.sub(r'^\d{4}-','',name).replace('-',' ')
         source_names.append(f'<span id="source-{n}">[{n}] '+link(s.get('sourceUrl',''),name if len(name)<=65 else name[:62]+'…')+'</span>')
-    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights in saved research order; source matching does not establish investment accuracy.</p><p><b>Dates:</b> Events '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
+    window_label='Discovery' if assignment.get('processingProposal') or (assignment.get('researchPurpose') or {}).get('kind')=='thesis_review' else 'Events'
+    footer='<div class="footer"><p>'+('Some supported text omitted for length. Read the full research. ' if ed.omitted else '')+'Selected highlights in saved research order; source matching does not establish investment accuracy.</p><p><b>Dates:</b> '+window_label+' '+window+' · Financials '+e(latest.get('year',''))+' · Quote '+e(q.get('observedAt','Unavailable')[:10])+'.</p><p>'+e(glossary)+'</p><p>'+ ' · '.join(source_names)+' · [F] '+link(f.get('sourceUrl',''),'SEC filings')+' · [B] '+link(profile.get('source',''),'Business')+' · [M] '+link(q.get('sourceUrl',''),'Market data')+'. Illustration is conceptual.</p></div>'
     if financial_context:
         footer+='<p class="micro">[H] Historical public supplement: '+link(financial_context['sourceUrl'],'Abbott FY2024 reconciliation')+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+'.</p>'
     from financial_provenance import register
     details='<details><summary>Source register, dates and calculation inputs</summary>'+register(f)
-    for n,s in enumerate(ed.sources,1):details+=f'<p id="register-source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p>'
+    for n,s in enumerate(ed.sources,1):details+=f'<p id="register-source-{n}">[{n}] '+link(s.get('sourceUrl',''),s.get('filename','Original'))+'</p><p>Original SHA-256: '+e(s.get('originalHash','Unknown'))+'</p>'+source_provenance(s,assignment)
     details+='<p>[F] '+link(f.get('sourceUrl',''),'SEC company facts')+' · SHA-256 '+e(f.get('sourceHash',''))+'</p>'
     if f.get('segmentSource'):details+='<p>'+link(f['segmentSource']['url'],'Segment filing')+' · SHA-256 '+e(f['segmentSource']['sha256'])+'</p>'
     if profile:details+='<p>[B] '+link(profile['source'],'Business description and dated segment structure')+'</p>'
     for peer in peers:details+='<p>[M] '+e(peer['ticker'])+' '+link(peer['quote'].get('sourceUrl',''),'Market snapshot')+' · '+e(peer['quote'].get('observedAt',''))+'</p>'
     if financial_context:
         details+='<h3>Historical public supplement [H]</h3><p>'+e(financial_context['summary'])+' '+e(financial_context['detail'])+' '+e(financial_context['caveat'])+'</p><p>'+link(financial_context['sourceUrl'],financial_context['locator'])+' · Published '+financial_context['published']+' · Verified '+financial_context['verified']+' · SHA-256 '+financial_context['sourceHash']+'. Added public context, not part of the original frozen research pack.</p>'
-    details+='<p>AI source review does not replace investor review. Some originals were excerpted; omitted text was not reviewed. Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
+    details+='<p>AI source review does not replace investor review. '+('Some originals were excerpted; omitted text was not reviewed. ' if has_omissions(ed.sources) else 'Selected source coverage is not an exhaustive company review. ')+'Saved scenario assumptions are reproduced with their evidence; only explicitly formatted P/E arithmetic is checked; calibrated price targets are not established by this page. Historical multiples are not supplied. Generated artwork is conceptual.</p><pre>'+e(json.dumps(f,indent=2))+'</pre></details>'
     from onepager_readiness import readiness, scenario_readiness
     checks=readiness(run,{'thesis':bool(thesis_claims),'debate':bool(debates),'view':bool(bottom_claim)}, preview=preview)
     readiness_html='<details class="evidence-readiness"><summary>Evidence readiness — investment argument and scenarios</summary><p>Read-only checks of saved evidence and page selection. These do not certify investment accuracy or completeness of other sections.</p>'

@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T322 carries exact-matched frozen source metadata and saved extraction limitations
+into derivative note/one-pager registers; scope dates now distinguish discovery
+from analytical history. Safe and synthetic layout tests pass; live source-to-output
+and investor acceptance remain open.
+
 T321 adds combined pre-save collection/history review, duplicate-hash hints,
 publication unknowns and explicit selection removal. Unloaded/unavailable selected
 metadata blocks a new save. Synthetic mobile/desktop validation is not genuine
