@@ -15,7 +15,10 @@ unchanged.
 200 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
 checks verified that the expanded receipt shows both original names, correct sizes
 and stored identities and exposes the recorded fingerprint. All API calls were
-mocked; no paid research or approvals. Production verification pending.
+mocked; no paid research or approvals. Verified Render
+`82b1330cc2540cc3a06364753228aa9c5ac67a29`, Cloudflare
+`01a7117c-9146-4a3f-8429-bb657a9c0351`, T294 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (97.5 seconds old); endpoint authentication checks passed.
 Next: real source-to-output acceptance and investor review remain open; preserve
 the historical valuation provider-schema checkpoint.
 
