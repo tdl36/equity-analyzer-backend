@@ -15,3 +15,16 @@ test('malformed import snapshots cannot replace known progress or trigger comple
  assert.deepEqual(checkedLabImports({imports:[]},'ABT'),[]);
  assert.equal(checkedLabImport({...job,status:'queued',manifest:undefined,receipts:undefined,completedRevision:undefined},'ABT').status,'queued');
 });
+
+test('pending import reconciliation uses a read and preserves ambiguous outcomes',async()=>{
+ const {reconcileLabImport}=await import('../../src/lab-import-receipts.mjs');
+ const body={requestId:job.requestId,task:'note',revision:2},calls=[];
+ const read=async(...args)=>{calls.push(args);return job;};
+ assert.equal(await reconcileLabImport(read,'/backend','ABT',body),job);
+ assert.deepEqual(calls,[['/backend',`/api/pipeline-lab/icloud-import/${job.requestId}`]]);
+ assert.equal(await reconcileLabImport(async()=>{throw Object.assign(Error('missing'),{status:404});},'','ABT',body),null);
+ for(const status of [401,409,500])await assert.rejects(()=>reconcileLabImport(async()=>{throw Object.assign(Error('unresolved'),{status});},'','ABT',body));
+ await assert.rejects(()=>reconcileLabImport(read,'','MSFT',body));
+ await assert.rejects(()=>reconcileLabImport(read,'','ABT',{...body,requestId:'../bad'}));
+ assert.equal(calls.length,2);
+});

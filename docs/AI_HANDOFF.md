@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T289 — Read-only reconciliation before iCloud resubmission
+
+A retained iCloud import submission now checks its exact saved request through the
+read-only status endpoint first. Matching company/task/revision and verified
+receipts clear local uncertainty without submitting again. Only a confirmed 404
+permits resending the same saved request identity; authentication, network and
+receipt mismatch failures retain it. Invalid local request shapes are refused
+before constructing a status URL. Original Pipeline remains unchanged.
+
+197 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
+checks retained a mismatched company response, then reconciled a matching queued
+request with zero API writes. No paid research or investor approvals occurred.
+Production verification pending. Backend and Mac agent unchanged.
+Next: follow the Lab real-run acceptance sequence on authorized research; synthetic
+recovery checks do not establish source coverage or investment quality.
+
 ## T288 — Validate iCloud import completion receipts
 
 Lab verifies import identity, company, task/revision, frozen original hashes and

@@ -1,5 +1,5 @@
 import React from 'react';
-import { checkedLabImport, checkedLabImports } from './lab-import-receipts.mjs';
+import { checkedLabImport, checkedLabImports, checkedLabImportRequest, reconcileLabImport } from './lab-import-receipts.mjs';
 export default function LabICloudImport({
   api,
   ticker,
@@ -63,15 +63,16 @@ export default function LabICloudImport({
       var result;
       if (action === 'start') {
         var prior = sessionStorage.getItem(key);
-        var body = prior ? JSON.parse(prior) : {
+        var body = checkedLabImportRequest(prior ? JSON.parse(prior) : {
           requestId: crypto.randomUUID(),
           task,
           revision
-        };
+        });
         if (!prior) sessionStorage.setItem(key, JSON.stringify(body));
         if (sessionStorage.getItem(key) !== JSON.stringify(body)) throw Error('Could not preserve request identity. Nothing was submitted.');
         setPending(true);
-        result = await read(api, `/api/pipeline-lab/icloud-imports/${ticker}`, {
+        result = prior ? await reconcileLabImport(read, api, ticker, body) : null;
+        if (!result) result = await read(api, `/api/pipeline-lab/icloud-imports/${ticker}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

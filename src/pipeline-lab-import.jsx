@@ -1,5 +1,5 @@
 import React from 'react';
-import {checkedLabImport,checkedLabImports} from './lab-import-receipts.mjs';
+import {checkedLabImport,checkedLabImports,checkedLabImportRequest,reconcileLabImport} from './lab-import-receipts.mjs';
 
 export default function LabICloudImport({api,ticker,task,revision,selected,disabled,onImported,read}) {
  const [jobs,setJobs]=React.useState([]),[ready,setReady]=React.useState(false),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[pending,setPending]=React.useState(false);
@@ -13,9 +13,10 @@ export default function LabICloudImport({api,ticker,task,revision,selected,disab
  const run=async(action,job)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
   let result;
   if(action==='start'){
-   const prior=sessionStorage.getItem(key);const body=prior?JSON.parse(prior):{requestId:crypto.randomUUID(),task,revision};
+   const prior=sessionStorage.getItem(key);const body=checkedLabImportRequest(prior?JSON.parse(prior):{requestId:crypto.randomUUID(),task,revision});
    if(!prior)sessionStorage.setItem(key,JSON.stringify(body));if(sessionStorage.getItem(key)!==JSON.stringify(body))throw Error('Could not preserve request identity. Nothing was submitted.');setPending(true);
-   result=await read(api,`/api/pipeline-lab/icloud-imports/${ticker}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   result=prior?await reconcileLabImport(read,api,ticker,body):null;
+   if(!result)result=await read(api,`/api/pipeline-lab/icloud-imports/${ticker}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    checkedLabImport(result,ticker,body);sessionStorage.removeItem(key);setPending(false);
   }else {result=await read(api,`/api/pipeline-lab/icloud-import/${job.requestId}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});checkedLabImport(result,ticker,{requestId:job.requestId,...job.input});}
   if(result.status==='complete')callback.current();await refresh();

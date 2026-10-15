@@ -25,3 +25,13 @@ export function checkedLabImports(data,ticker){
  if(new Set(rows.map(r=>r.requestId)).size!==rows.length)fail();
  return rows;
 }
+
+export function checkedLabImportRequest(body){
+ if(!object(body)||!uuid(body.requestId)||!['thesis','note'].includes(body.task)||!Number.isSafeInteger(body.revision)||body.revision<1||Object.keys(body).some(k=>!['requestId','task','revision'].includes(k)))throw Error('Saved import request is unreadable. Preserve this session and inspect import status.');
+ return body;
+}
+export async function reconcileLabImport(read,api,ticker,body){
+ checkedLabImportRequest(body);
+ try{return checkedLabImport(await read(api,`/api/pipeline-lab/icloud-import/${body.requestId}`),ticker,body);}
+ catch(e){if(e.status===404)return null;throw e;}
+}
