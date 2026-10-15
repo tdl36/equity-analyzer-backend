@@ -30,7 +30,17 @@ Also fixed workbench condition validation overwriting the work-record ID with th
 last condition ID, which could break subsequent revision saves. Regression coverage
 keeps record/request/revision identity stable as conditions reorder or disappear.
 
-Release validation pending; update this checkpoint after exact hosted verification.
+Verified release T300: 1,543 backend unit tests and 203 frontend tests passed;
+Python compilation and production build passed. Render revision
+18c8964241bf10e6d65fba3f6b8c3ae7dbb242b0 and Cloudflare
+4623ab85-5231-417a-8c85-d34b9e32db05 verified with exact hosted JS/service-worker
+bytes and HTML marker. Mac agent restarted, healthy at 8.3 seconds on final check.
+Initial deployment checks briefly returned 502/stale heartbeat; subsequent reads
+recovered. Cloud snapshot contained 122 requests with AVB/AMZN still attention.
+CVS catch-up reached the Mac as request 9f7ced1d-7b7a-42d1-9747-6e51f0cfff4d,
+queued with four pending searches. Existing CVS recap pipeline job
+17e9a1d8-81b7-455a-8fb4-fe631a81e9d3 completed at 13:46:51 UTC, and activity
+a3ab6d7b-14db-4901-97df-16b372b67bb1 is pending_review, not approved.
 Next: observe Operations recovery receipts, reconcile any renewed source errors,
 resolve AVB organization with investor, and continue answer-to-proposal engineering.
 
