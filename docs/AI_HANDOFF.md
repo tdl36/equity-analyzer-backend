@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T285 — Visible partial delivery and downstream failures in Lab
+
+Coordinated Lab runs now show each requested output's saved-receipt status above
+the collapsible history. A failed full note stays visible beside already saved
+thesis/one-pager drafts, with an exact note/recovery link. Parent completion and a
+reserved note ID do not prove delivery; absent receipts are explicit. Recorded
+output errors remain visible even alongside a saved receipt. Source-only runs
+state that no paid outputs were requested. Original Pipeline behavior is unchanged.
+
+191 frontend tests, model policy and build passed. Synthetic desktop/390px checks
+verified partial outputs, downstream failure and recovery link remain visible with
+history collapsed, with zero writes. Mobile layout inspected; no overflow.
+Production verification pending. Backend/agent unchanged; no paid QA/approvals.
+Next: exercise the full source-to-output acceptance sequence only on a real
+authorized research request; inspect remaining engineering gaps without launching
+paid QA. Historical valuation stays at its documented provider-schema checkpoint.
+
 ## T284 — Compare local note recovery with a saved revision
 
 Lab note review now offers a read-only comparison of local title/prose with the

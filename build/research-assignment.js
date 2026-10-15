@@ -1,3 +1,4 @@
+import { labAssignmentDelivery } from './lab-assignment-delivery.mjs';
 import { assignmentRows } from './assignment-list.mjs';
 import { AssignmentReview } from './assignment-review';
 import { assignmentOutputs, checkedAssignmentDefaults, fallbackAssignmentDefaults, outputNames } from './assignment-defaults.mjs';
@@ -295,7 +296,19 @@ export function ResearchAssignment({
   }, "Open saved outputs \xB7 ", j.input.since, " \u2013 ", j.input.until)), onCollectionComplete && j.status === 'complete' && !j.input.labSelection && Array.isArray(j.result.sources) && j.result.sources.length > 0 && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => onCollectionComplete(true)
-  }, "Review collected sources in Lab"), /*#__PURE__*/React.createElement("details", {
+  }, "Review collected sources in Lab"), (labMode || labSelection) && /*#__PURE__*/React.createElement("section", {
+    "aria-label": "Lab delivery status",
+    style: {
+      padding: '12px 0',
+      overflowWrap: 'anywhere'
+    }
+  }, /*#__PURE__*/React.createElement("h4", null, j.input.collectionOnly ? 'Source-only collection' : 'Requested draft outputs'), /*#__PURE__*/React.createElement("p", null, "Assignment: ", j.status, j.result.step ? ' · ' + j.result.step : ''), j.error && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, j.error), j.input.collectionOnly ? /*#__PURE__*/React.createElement("p", null, "No paid research outputs were requested by this assignment. Collection completion does not establish exhaustive coverage.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("ul", null, labAssignmentDelivery(j).map(row => /*#__PURE__*/React.createElement("li", {
+    key: row.key
+  }, /*#__PURE__*/React.createElement("strong", null, row.label, ": ", row.status), row.error && /*#__PURE__*/React.createElement("p", null, row.error)))), j.result.labNoteId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    href: routeHash('pipelinelab', ticker, '', 'labnote:' + j.result.labNoteId)
+  }, "Open full Lab note & recovery")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved drafts remain available in Sources, progress & history below, even if another stage needs attention. Saved does not mean investor-approved. Missing receipts are not proof of delivery.")))), /*#__PURE__*/React.createElement("details", {
     className: "assignment-history",
     open: j.status !== 'complete'
   }, /*#__PURE__*/React.createElement("summary", null, "Sources, progress & history"), /*#__PURE__*/React.createElement("strong", null, j.input.since, "\u2013", j.input.until, " \xB7 ", j.status), /*#__PURE__*/React.createElement("p", null, j.result.step), j.input.labSelection && /*#__PURE__*/React.createElement("p", null, "Saved Lab ", j.input.labSelection.task, " selection \xB7 configuration ", j.input.labSelection.revision, " \xB7 ", j.input.labPack?.length || 0, " original identities frozen. No new browser collection for this run."), j.input.origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", /*#__PURE__*/React.createElement("a", {
