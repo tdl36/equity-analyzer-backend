@@ -14,7 +14,10 @@ state that no paid outputs were requested. Original Pipeline behavior is unchang
 191 frontend tests, model policy and build passed. Synthetic desktop/390px checks
 verified partial outputs, downstream failure and recovery link remain visible with
 history collapsed, with zero writes. Mobile layout inspected; no overflow.
-Production verification pending. Backend/agent unchanged; no paid QA/approvals.
+Verified Render `b77edfdd43d0d2aab91c978973eb39f83f073cbc`, Cloudflare
+`0223306a-0b7a-4691-81f0-4f2d64b2e9de`, T285 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (65.6 seconds old); read-only endpoint auth checks passed.
+Backend/agent unchanged; no paid QA/approvals.
 Next: exercise the full source-to-output acceptance sequence only on a real
 authorized research request; inspect remaining engineering gaps without launching
 paid QA. Historical valuation stays at its documented provider-schema checkpoint.
