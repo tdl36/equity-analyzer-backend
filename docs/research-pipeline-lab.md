@@ -15,6 +15,23 @@ or generation was sent. Backend is unchanged from T314's 26 focused tests and
 verification follows. Next action remains the T314 saved-object acceptance audit;
 genuine collection-to-approved-output and investor acceptance are still open.
 
+T315 production verified: Render c8cfee06d6dfe4f895721f4ce456be8a2168c55c;
+Cloudflare c2e8e66c-adad-4902-a4f5-5e8fee86e854. Exact hosted JS/service-worker
+bytes and HTML marker match. Mac-agent health was ok at 14.3 seconds. Three
+existing ETN proposals (one awaiting approval and two failed) each returned only
+the requested identity; wrong-company requests returned no rows. Authentication,
+malformed-ID and original/library refusal checks passed. All live checks were GETs.
+The initial health check briefly returned 502 during deployment; final exact-revision
+and endpoint verification succeeded. T314 is included in this verified release.
+
+Concrete next action: MeetingAnswerProposal currently displays linked work-evidence
+jobs but sends every review link to the general company evidence screen. Reuse the
+new amendment work route for each linked saved proposal, preserving follow-up
+revision and explicit no-match/error handling; test reload and back/forward without
+creating or accepting research. Do not introduce another proposal/orchestration
+layer. Genuine collection-to-approved-output proof, shared Ready expansion,
+historical reference semantics and eight-priority acceptance remain outstanding.
+
 ## T314 — Exact saved evidence-proposal navigation
 
 Read-only Activity inspection found eleven evidence-amendment rows, including
