@@ -11,8 +11,14 @@ and selected-only review; selection identities and saved settings do not change.
 This organizes the display without moving originals or treating folder names as
 relevance. Recorded versus filename-suggested types remain labeled per source.
 
-Validation and deployment verification pending. Next: source-review reconciliation
-and collection follow-through; real source-quality/investor acceptance remain open.
+Verified Render revision `a8515c90b5f3edd6c30290d88bced990b4686f89`, Cloudflare
+`8fd90468-3bd1-484f-88a6-8b03b6e021af`, T277 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (54.9 seconds old) after transient deployment 502.
+183 frontend tests, model-policy gate and build passed. Synthetic 390px/1280px
+checks verified group/flat toggling, publication filtering and hidden selections
+with zero writes. Backend unchanged; no paid QA or live research/approval changes.
+Next: source-review reconciliation and collection follow-through; real source
+quality and investor acceptance remain open.
 
 ## T276 — Explicit uncertain-edit recovery
 
