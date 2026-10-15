@@ -89,6 +89,7 @@ export function ResearchDesk({
   var [section, setLocalSection] = useState(routeSection || 'work'),
     [days, setDays] = useState(90),
     [query, setQuery] = useState('');
+  var readyOnly = section === 'ready';
   var setSection = value => {
     setLocalSection(value);
     onSectionChange?.(value);
@@ -155,6 +156,11 @@ export function ResearchDesk({
   };
   useEffect(() => {
     alive.current = true;
+    if (readyOnly) return () => {
+      alive.current = false;
+      request.current++;
+    };
+    setLoading(true);
     refresh();
     var timer = setInterval(() => {
       if (!document.hidden) refresh();
@@ -164,7 +170,7 @@ export function ResearchDesk({
       clearInterval(timer);
       request.current++;
     };
-  }, [api]);
+  }, [api, readyOnly]);
   useEffect(() => {
     var models = data.providers[provider] || [];
     if (!models.includes(model)) setModel(models[0] || '');
@@ -268,7 +274,7 @@ export function ResearchDesk({
     key: id,
     "aria-current": section === id ? 'page' : undefined,
     onClick: () => setSection(id)
-  }, label))), /*#__PURE__*/React.createElement("button", {
+  }, label))), !readyOnly && /*#__PURE__*/React.createElement("button", {
     onClick: refresh,
     disabled: loading
   }, loading ? 'Loading…' : 'Refresh', updated && /*#__PURE__*/React.createElement("small", null, "Updated ", updated.toLocaleTimeString([], {
@@ -280,7 +286,7 @@ export function ResearchDesk({
       setWorkTicker(ticker);
       setSection('priorities');
     }
-  }), errors.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }), !readyOnly && errors.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "workspace-error",
     role: "alert"
   }, "Some live data could not be refreshed. Previously loaded records may be out of date.", /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Connection details"), errors.map(e => /*#__PURE__*/React.createElement("p", {
@@ -303,7 +309,7 @@ export function ResearchDesk({
     rel: "noopener noreferrer"
   }, "Open collection monitor \u2197")), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading ? /*#__PURE__*/React.createElement("p", {
+  }, "Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.")), loading && !readyOnly ? /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty",
     role: "status"
   }, "Loading research activity\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, section === 'work' && /*#__PURE__*/React.createElement(MyWork, {

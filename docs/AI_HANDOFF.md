@@ -2,6 +2,24 @@
 
 Updated: October 14, 2026
 
+## T306 — Ready checklist independent of unrelated desk loading
+
+Ready to process previously waited for six unrelated research-desk reads before
+mounting its own checklist. It now loads its own proposals/settings immediately,
+without starting the desk overview poll while that section is open. Switching to
+other desk sections resumes their normal refresh; their failures remain visible
+there rather than blocking or mislabeling the ready checklist. Its own refresh,
+error/selection disabling and explicit processing approval remain unchanged.
+
+Validation: 207 frontend tests and production build pass. Full-app synthetic
+390/1280px checks confirm the checklist is usable during an unrelated desk outage,
+that overview reads resume on navigation, and that returning isolates those errors.
+No submission or API write was made. Earlier read-only live Home/Lab/Ready checks
+at both widths reported no request/page errors or document overflow; these are
+screen checks, not collection/generation or investor-quality acceptance.
+Next: continue saved-object journeys and complete long-content/error-state
+acceptance; keep automatic synthesis paused and Operations collection separate.
+
 ## T305 — Keyboard navigation in Lab source settings
 
 The Lab source dialog now moves focus to Close when opened, keeps Tab and

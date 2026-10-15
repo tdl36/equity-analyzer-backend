@@ -25,6 +25,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
   const [data,setData]=useState({runs:[],activities:[],failed:[],analysts:[],providers:{},capabilities:{maxConcurrency:1,maxBatchSize:12}});
   const [errors,setErrors]=useState([]),[loading,setLoading]=useState(true),[updated,setUpdated]=useState(null);
   const [section,setLocalSection]=useState(routeSection||'work'),[days,setDays]=useState(90),[query,setQuery]=useState('');
+  const readyOnly=section==='ready';
   const setSection=value=>{setLocalSection(value);onSectionChange?.(value);};
   useEffect(()=>{if(onSectionChange)setLocalSection(routeSection||'work');},[routeSection]);
   const [tickers,setTickers]=useState(''),[provider,setProvider]=useState('anthropic'),[model,setModel]=useState('');
@@ -44,7 +45,7 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
     results.forEach((r,i)=>{const [key,,field]=sources[i];if(r.status==='fulfilled')next[key]=field?r.value[field]||[]:r.value;else if(key!=='capabilities')failed.push(`${key}: ${r.reason.message}`);});
     setData(old=>({...old,...next}));setErrors(failed);setLoading(false);setUpdated(new Date());
   };
-  useEffect(()=>{alive.current=true;refresh();const timer=setInterval(()=>{if(!document.hidden)refresh();},30000);return()=>{alive.current=false;clearInterval(timer);request.current++;};},[api]);
+  useEffect(()=>{alive.current=true;if(readyOnly)return()=>{alive.current=false;request.current++;};setLoading(true);refresh();const timer=setInterval(()=>{if(!document.hidden)refresh();},30000);return()=>{alive.current=false;clearInterval(timer);request.current++;};},[api,readyOnly]);
   useEffect(()=>{const models=data.providers[provider]||[];if(!models.includes(model))setModel(models[0]||'');},[provider,data.providers]);
   useEffect(()=>{if(!selected)return;let current=true;setDetail(null);setDetailError('');fetchJson(`/api/agents/status/${encodeURIComponent(selected.id)}`).then(d=>{if(current)setDetail(d);}).catch(e=>{if(current)setDetailError(e.message);});return()=>{current=false;};},[selected]);
   const parsed=parseTickers(tickers),counts=runCounts(data.runs),statusChecks=runsNeedingStatusCheck(data.runs),queue=researchQueue(analyses,days),pending=data.activities.filter(a=>a.status==='pending_review');
@@ -59,12 +60,12 @@ export function ResearchDesk({api,analyses,onCompany,onNavigate,renderHtml,rende
   };
   return <div className="workspace-page research-desk">
     <div className="desk-heading"><div><p className="workspace-eyebrow">CHARLIE / RESEARCH OPERATIONS</p><h1>Your research desk.</h1><p className="workspace-lead">Prioritize the next question. Coordinate the team. Review the evidence.</p></div><button className="workspace-primary" onClick={()=>setSection('launch')}>Prepare a research batch ↗</button></div>
-    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['work','My work'],['ready','Ready to process'],['overview','Overview'],['command','Command Charlie'],['collection','Collection'],['history','Research history'],['priorities','Investment cases & portfolio'],['earnings','Earnings & evidence'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav><button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button></div>
+    <div className="desk-toolbar"><nav aria-label="Research desk sections">{[['work','My work'],['ready','Ready to process'],['overview','Overview'],['command','Command Charlie'],['collection','Collection'],['history','Research history'],['priorities','Investment cases & portfolio'],['earnings','Earnings & evidence'],['evidence','Evidence & changes'],['inbox','Review inbox'],['queue','Coverage queue'],['launch','Batch planner'],['runs','Runs'],['playbooks','Playbooks']].map(([id,label])=><button key={id} aria-current={section===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}</nav>{!readyOnly&&<button onClick={refresh} disabled={loading}>{loading?'Loading…':'Refresh'}{updated&&<small>Updated {updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>}</button>}</div>
     {section==='work'&&<ResearchDueQueue api={api} onOpen={ticker=>{setWorkTicker(ticker);setSection('priorities');}}/>}
-    {errors.length>0&&<div className="workspace-error" role="alert">Some live data could not be refreshed. Previously loaded records may be out of date.<details><summary>Connection details</summary>{errors.map(e=><p key={e}>{e}</p>)}</details><button onClick={refresh}>Retry</button></div>}
+    {!readyOnly&&errors.length>0&&<div className="workspace-error" role="alert">Some live data could not be refreshed. Previously loaded records may be out of date.<details><summary>Connection details</summary>{errors.map(e=><p key={e}>{e}</p>)}</details><button onClick={refresh}>Retry</button></div>}
     {message&&<p className="workspace-notice" role="status">{message}</p>}
     {section==='overview'&&['127.0.0.1','localhost'].includes(window.location.hostname)&&<section className="workspace-panel"><div className="workspace-section-heading"><div><p className="workspace-eyebrow">SOURCE OPERATIONS</p><h2>AlphaSense collection</h2></div><a className="workspace-link-row" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer">Open collection monitor ↗</a></div><p className="desk-explainer">Manage ticker refresh schedules, verified originals, iCloud handoffs, and source restrictions. The monitor runs on this Mac.</p></section>}
-    {loading?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
+    {loading&&!readyOnly?<p className="workspace-empty" role="status">Loading research activity…</p>:<>
     {section==='work'&&<MyWork api={api} activities={[...data.activities,...data.failed]} onNavigate={onNavigate} onSection={setSection} renderHtml={renderRecapHtml||renderHtml}/>}
     {section==='ready'&&<ReadyProcessing api={api}/>}
     {section==='command'&&<CommandCharlie api={api} onNavigate={onNavigate} onSection={setSection}/>}
