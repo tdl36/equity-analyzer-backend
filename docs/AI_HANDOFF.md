@@ -2,6 +2,26 @@
 
 Updated: October 14, 2026
 
+## T283 — Recover local note edits across navigation
+
+Lab now retains pre-submission title/prose edits in sessionStorage, scoped to API,
+stock and note identity with the exact base revision. Reopening the same revision
+restores its edits. If the saved revision advanced, recovery stays separate and
+opens its original revision explicitly; it never rebases onto the latest draft.
+Existing server revision conflicts still apply. Confirmed saves and explicit
+discard clear the copy; uncertain submitted edits retain their existing replay
+identity and take precedence. Corrupt/quota-failed recovery is visible, not treated
+as saved. No server autosave, new generation or acceptance occurs from editing.
+Session storage is limited to this browser tab/session, not cross-device backup.
+
+188 frontend tests, model policy and build passed. Synthetic 390px/1280px checks
+verified reload and app navigation recovery, changed-baseline separation, original
+revision restoration and discard with zero server writes. Production verification
+pending. Backend/agent unchanged. Real collection/source-quality and investor
+acceptance remain unverified. Next: make revision-conflict comparison easier without
+automatically rebasing or overwriting investor edits; retain the independent
+historical provider-schema checkpoint from docs/historical-security-mapping.md.
+
 ## T282 — Protect edits when leaving Lab note review
 
 Closing Lab settings, opening another saved note from its job row, explicit

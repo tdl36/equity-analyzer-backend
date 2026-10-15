@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
 var reasons = {
   parent_stopped: "The parent assignment was stopped. No further note batches will start. An already dispatched call may finish; saved replies and drafts are retained.",
   provider_outcome_unknown: 'Provider outcome is uncertain. Do not start a replacement: inspect the saved call before spending again.',
@@ -30,6 +31,23 @@ export default function LabNote({
     [allowPdfText, setAllowPdfText] = React.useState(false),
     [pending, setPending] = React.useState(false),
     [pendingEdit, setPendingEdit] = React.useState(false);
+  var [localRecovery, setLocalRecovery] = React.useState(null),
+    [bufferError, setBufferError] = React.useState('');
+  var bufferKey = id => key + ':unsaved:' + id;
+  var change = (nextTitle, nextText) => {
+    setTitle(nextTitle);
+    setText(nextText);
+    try {
+      if (nextTitle === draft.title && nextText === draft.markdown) sessionStorage.removeItem(bufferKey(draft.noteId));else writeEditBuffer(sessionStorage, bufferKey(draft.noteId), {
+        revision: draft.revision,
+        title: nextTitle,
+        markdown: nextText
+      });
+      setBufferError('');
+    } catch {
+      setBufferError('Local recovery could not be saved. Keep this screen open and save a new draft revision before leaving.');
+    }
+  };
   var unsaved = !!draft && editing && (text !== draft.markdown || title !== draft.title);
   React.useEffect(() => {
     onUnsavedChange?.(unsaved);
@@ -138,10 +156,29 @@ export default function LabNote({
   });
   React.useEffect(() => {
     setPendingEdit(false);
+    setLocalRecovery(null);
+    setBufferError('');
     if (!draft) return;
     try {
       var raw = sessionStorage.getItem(key + ':edit:' + draft.noteId);
-      if (!raw) return;
+      if (!raw) {
+        try {
+          var buffer = readEditBuffer(sessionStorage, bufferKey(draft.noteId));
+          if (buffer) {
+            if (buffer.revision === draft.revision) {
+              setTitle(buffer.title);
+              setText(buffer.markdown);
+              setEditing(true);
+            } else setLocalRecovery(buffer);
+          }
+        } catch (e) {
+          setLocalRecovery({
+            unreadable: true
+          });
+          setBufferError(e.message);
+        }
+        return;
+      }
       var body = JSON.parse(raw);
       if (!body || typeof body.eventId !== 'string' || !Number.isInteger(body.expectedRevision) || typeof body.title !== 'string' || typeof body.markdown !== 'string') throw Error('Pending edit is unreadable. Preserve this browser session for recovery.');
       setPendingEdit(true);
@@ -197,6 +234,7 @@ export default function LabNote({
     try {
       await post(`/api/pipeline-lab/notes/${draft.noteId}/revisions`, body);
       sessionStorage.removeItem(editKey);
+      sessionStorage.removeItem(bufferKey(draft.noteId));
       setPendingEdit(false);
       await open(draft.noteId);
       await load();
@@ -270,12 +308,12 @@ export default function LabNote({
   }, job.revision && /*#__PURE__*/React.createElement("button", {
     disabled: busy || pendingEdit,
     onClick: () => {
-      if (!unsaved || window.confirm('Discard unsaved note edits and open this saved revision?')) action(() => open(job.noteId));
+      if (!unsaved || window.confirm('Leave these edits in browser-session recovery and open this saved revision?')) action(() => open(job.noteId));
     }
   }, "Review latest revision ", job.revision), job.acceptedRevision && /*#__PURE__*/React.createElement("button", {
     disabled: busy || pendingEdit,
     onClick: () => {
-      if (!unsaved || window.confirm('Discard unsaved note edits and open this saved revision?')) action(() => open(job.noteId, job.acceptedRevision));
+      if (!unsaved || window.confirm('Leave these edits in browser-session recovery and open this saved revision?')) action(() => open(job.noteId, job.acceptedRevision));
     }
   }, "Open accepted revision"), job.status === 'attention' && job.reason !== 'parent_stopped' && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -311,9 +349,16 @@ export default function LabNote({
     disabled: busy,
     onClick: () => download('md')
   }, "Export Markdown"), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || pendingEdit,
+    disabled: busy || pendingEdit || !!localRecovery,
     onClick: () => {
       if (unsaved && !window.confirm('Discard unsaved note edits?')) return;
+      try {
+        sessionStorage.removeItem(bufferKey(draft.noteId));
+        setBufferError('');
+      } catch {
+        setBufferError('Local recovery could not be cleared. Keep this screen open.');
+        return;
+      }
       setText(draft.markdown);
       setTitle(draft.title);
       setEditing(!editing);
@@ -324,7 +369,27 @@ export default function LabNote({
     key: i
   }, q)))), unsaved && !pendingEdit && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Unsaved note edits are only on this screen. Save a new draft revision before navigating elsewhere."), pendingEdit && /*#__PURE__*/React.createElement("p", {
+  }, "Unsaved edits are kept in this browser tab\u2019s session when storage is available. They are not saved in Charlie or synced to other devices. Save a new draft revision to retain them centrally."), bufferError && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, bufferError), localRecovery && /*#__PURE__*/React.createElement("div", {
+    role: "status"
+  }, /*#__PURE__*/React.createElement("p", null, localRecovery.unreadable ? 'A local edit recovery copy is unreadable.' : 'Local edits belong to revision ' + localRecovery.revision + '. They have not been applied to this saved revision. Open their original revision to review or copy them; saving still checks the server baseline.'), !localRecovery.unreadable && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || pendingEdit,
+    onClick: () => action(() => open(draft.noteId, localRecovery.revision))
+  }, "Open original revision with local edits"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || pendingEdit,
+    onClick: () => {
+      if (window.confirm('Permanently discard this browser-session recovery copy?')) {
+        try {
+          sessionStorage.removeItem(bufferKey(draft.noteId));
+          setLocalRecovery(null);
+          setBufferError('');
+        } catch {
+          setBufferError('Local recovery could not be cleared.');
+        }
+      }
+    }
+  }, "Discard local recovery copy")), pendingEdit && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "A previous edit has no confirmed response. The submitted text is preserved below. Reconcile that same edit before changing it; this does not generate research."), pendingEdit && !editing && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -336,7 +401,7 @@ export default function LabNote({
       width: '100%'
     },
     value: title,
-    onChange: e => setTitle(e.target.value)
+    onChange: e => change(e.target.value, text)
   })), /*#__PURE__*/React.createElement("label", null, "Note text (Markdown)", /*#__PURE__*/React.createElement("textarea", {
     "aria-label": "Note text",
     readOnly: pendingEdit || busy,
@@ -346,7 +411,7 @@ export default function LabNote({
       fontFamily: 'Calibri, sans-serif'
     },
     value: text,
-    onChange: e => setText(e.target.value)
+    onChange: e => change(title, e.target.value)
   })), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: save

@@ -64,6 +64,16 @@ search, and a successful collection is not exhaustive coverage.
   Older originals are preserved; unknown metadata remains unknown. Types based on
   filename hints are labeled suggested. No source is moved to organize the display.
 
+### Local note edit recovery
+
+Unsubmitted title/prose changes are retained in the current browser tab's session
+and restored only against their original revision. A newer saved revision displays
+a separate recovery action; it is never silently overwritten or used as a new
+baseline. Successful saves and explicit discard clear local recovery. Storage
+failures are visible. This is not server autosave or cross-device backup; save a
+draft revision in Charlie for durable retention. Pending submitted edits continue
+to use the existing exact-request reconciliation path.
+
 ## Remaining acceptance and limits
 
 1. Verify a real user-authorized selection through collection, iCloud preservation,
