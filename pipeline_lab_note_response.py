@@ -61,7 +61,7 @@ def parse(response, title, source_pack):
     return {key:checked[key] for key in payload}
 
 
-def store_draft(cur, note_id, batch, ticker, title, representation_warnings=()):
+def store_draft(cur, note_id, batch, ticker, title, representation_warnings=(), research_provenance=None):
     """Materialize a completed final reply in the caller's transaction.
 
     The future coordinator must supply its frozen final batch/ticker/title. No
@@ -81,5 +81,7 @@ def store_draft(cur, note_id, batch, ticker, title, representation_warnings=()):
         issue = warning['reference'] + ': ' + warning['issue']
         if issue not in payload['qualityIssues']:
             payload['qualityIssues'].append(issue)
+    if research_provenance is not None:
+        payload['researchProvenance']=research_provenance
     event = str(uuid.uuid5(uuid.UUID(note_id),'generated-draft'))
     return append(cur,note_id,ticker,event,0,payload)

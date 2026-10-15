@@ -24,6 +24,7 @@ class Integration(fixtures.Review):
             verified=check_originals(ticker,'note',0,[ref],{ref:doc})['verified']
             assignment['labNotePlan']['sourcePreparation']=source_plan(c,ticker,[dict(s,documentId=doc['id']) for s in verified],assignment['labNotePlan'])
         from research_source_context import freeze, GUIDANCE
+        assignment['researchPurpose']={'kind':'event_note','event':{'title':'Fixture earnings','date':'2025-03-01'}}
         assignment['processingEvidenceContext']=freeze([dict(s,documentId=doc['id']) for s in verified],{doc['id']:{'role':'supplemental','publishedDate':'2024-03-01','publisher':'Frozen publisher','sourceKind':'transcript','referencedBySavedThesis':False}})
         bad=json.loads(json.dumps(assignment));bad['labNotePlan']['sourcePreparation']['representationSha256']='0'*64
         with self.assertRaisesRegex(ValueError,'representation changed'):
@@ -44,7 +45,11 @@ class Integration(fixtures.Review):
         self.assertEqual(result['status'],'draft');self.assertEqual(len(calls),1)
         messages=json.dumps(calls[0]);self.assertIn('Frozen publisher',messages);self.assertIn('2024-03-01',messages);self.assertIn(GUIDANCE,messages);self.assertNotIn('Changed caller context',messages)
         self.assertEqual(assignment_note(self.db,ident,assignment,pack)['status'],'draft')
-        with self.db() as (_,c):self.assertEqual(read(c,receipt['noteId'])['sourcePack'][0]['sha256'],pack[0]['sha256'])
+        with self.db() as (_,c):
+            draft=read(c,receipt['noteId'])
+            self.assertEqual(draft['sourcePack'][0]['sha256'],pack[0]['sha256'])
+            self.assertEqual(draft['researchProvenance']['purpose'],assignment['researchPurpose'])
+            self.assertEqual(draft['researchProvenance']['sourceEvidence'],assignment['processingEvidenceContext'])
     def test_assignment_changed_bytes_never_enqueue(self):
         ticker='FIX'+uuid.uuid4().hex[:6].upper()
         with self.db(True) as (_,c):c.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s)',(ticker,'fixture.txt','YQ==','{}'))

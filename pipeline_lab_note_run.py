@@ -28,7 +28,7 @@ def execute(get_db, note_id, load_documents, invoke, planner=None):
     def materialize():
         try:
             with get_db(commit=True) as (_,cur):
-                draft=store_draft(cur,note_id,plan['batchCount'],plan['ticker'],plan['title'],plan['warnings'])
+                draft=store_draft(cur,note_id,plan['batchCount'],plan['ticker'],plan['title'],plan['warnings'],plan.get('researchProvenance'))
             return {'status':'draft','noteId':draft['noteId'],'revision':draft['revision']}
         except ValueError:
             return {'status':'attention','reason':'saved_reply_needs_review'}

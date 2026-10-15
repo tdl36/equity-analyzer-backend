@@ -42,3 +42,12 @@ class Plans(unittest.TestCase):
         verify_preparation(self.plan,prepared)
         for field,value in [('representationSha256','b'*64),('batches',[[],[]]),('warnings',[{}])]:
             with self.assertRaises(ValueError):verify_preparation(self.plan,{**prepared,field:value})
+
+    def test_provenance_is_part_of_plan_replay_identity(self):
+        from tests.unit.test_pipeline_lab_note_provenance import fixture
+        self.plan['sourcePack'],self.plan['researchProvenance']=fixture()
+        with self.db(True) as (_,c):
+            freeze(c,self.plan)
+            self.assertEqual(load(c,self.note)['researchProvenance'],self.plan['researchProvenance'])
+        changed={**self.plan,'researchProvenance':{**self.plan['researchProvenance'],'purpose':{'kind':'thesis_review'}}}
+        with self.assertRaises(ValueError),self.db(True) as (_,c):freeze(c,changed)

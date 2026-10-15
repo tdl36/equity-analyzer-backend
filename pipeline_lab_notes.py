@@ -20,7 +20,7 @@ def schema(cur):
 
 def normalized(value):
     required = {'title','markdown','sourcePack','qualityIssues'}
-    if not isinstance(value,dict) or not required <= set(value) or set(value) - required - {'generationEvidence'}:
+    if not isinstance(value,dict) or not required <= set(value) or set(value) - required - {'generationEvidence','researchProvenance'}:
         raise ValueError('A title, draft, frozen source pack and explicit quality issues are required.')
     title=value['title'];markdown=value['markdown'];sources=value['sourcePack'];issues=value['qualityIssues']
     if not isinstance(title,str) or not 1<=len(title.strip())<=240:raise ValueError('A bounded note title is required.')
@@ -48,6 +48,9 @@ def normalized(value):
                 normalized_value['qualityIssues'].append(issue)
         if len(normalized_value['qualityIssues']) > 100:
             raise ValueError('Quality issues exceed their bound.')
+    if 'researchProvenance' in value:
+        from pipeline_lab_note_provenance import validate as provenance
+        normalized_value['researchProvenance']=provenance(value['researchProvenance'],normalized_value['sourcePack'])
     return normalized_value
 
 
@@ -77,6 +80,8 @@ def append(cur,note_id,ticker,event_id,expected_revision,payload):
         raise ValueError('Editing cannot substitute the frozen source pack. Start a separate sourced draft.')
     if latest and obj(latest['payload']).get('generationEvidence') != value.get('generationEvidence'):
         raise ValueError('Editing cannot substitute generated evidence. Start a separate sourced draft.')
+    if latest and obj(latest['payload']).get('researchProvenance') != value.get('researchProvenance'):
+        raise ValueError('Editing cannot substitute frozen research provenance.')
     cur.execute('INSERT INTO pipeline_lab_note_versions(note_id,revision,event_id,ticker,payload,payload_hash) VALUES(%s,%s,%s,%s,%s::jsonb,%s)',
                 (note_id,revision+1,event_id,ticker,json.dumps(value),digest))
     return {'noteId':note_id,'revision':revision+1,'replayed':False,'status':'draft'}
@@ -149,6 +154,8 @@ def edit(cur, note_id, event_id, expected_revision, changes):
                'qualityIssues': base['qualityIssues']}
     if 'generationEvidence' in base:
         payload['generationEvidence'] = base['generationEvidence']
+    if 'researchProvenance' in base:
+        payload['researchProvenance']=base['researchProvenance']
     # Edits retain existing caveats; they never inherit a claim of fresh review.
     # Approval remains false on every revision regardless of quality issue count.
     return append(cur, note_id, base['ticker'], event_id, expected_revision, payload)

@@ -1,3 +1,33 @@
+## T324 — Saved full-note scope and source context survive review/export
+
+New assignment full-note plans carry versioned server-owned research provenance:
+explicit longitudinal thesis review or identified event/debrief, and exact-matched
+frozen source dates/roles when available. The generated draft stores that record
+independently of model prose. Edits retain it, changed plans/draft provenance are
+rejected, and exact revision reads and Markdown/Word exports preserve it. Existing
+plans and notes are not retrofitted; missing structured scope remains explicit.
+
+The review screen separates event-focused work from longitudinal review, shows
+unknown publication dates and source metadata without inferring freshness, and
+states that thesis implications need a separate proposal. Metadata is escaped for
+portable export. No approval, current thesis, original Pipeline or automatic
+synthesis setting changes; no new provider calls or workers.
+
+Validation: 41 focused tests, 24 final export/version checks, full safe backend
+suite (1,667), frontend suite (231), compilation and production build pass. Six
+synthetic browser cases cover event/thesis/legacy records at 390/1280px, including
+untrusted title text, unknown dates, black Calibri styling and no horizontal overflow;
+mobile and desktop screenshots inspected. Word tests verify metadata and black
+Calibri runs. These are synthetic tests, not a real approved source-to-output run.
+
+Next: verify genuine collection receipts and processing-proposal readiness, then
+observe explicitly approved generation and exact saved draft links before widening
+the shared dashboard. Preserve request-specific approval and the backfill pause.
+If external evidence remains unavailable, audit existing linked-output navigation
+and recoverable failure presentation using saved-state fixtures; avoid adding more
+orchestration. Historical valuation/reference-schema and wider eight-priority
+acceptance remain open.
+
 ## T323 — Frozen per-source context reaches generation
 
 New processing proposals now freeze a versioned source-evidence manifest alongside

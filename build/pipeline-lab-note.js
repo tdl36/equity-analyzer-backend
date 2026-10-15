@@ -1,4 +1,5 @@
 import * as React from 'react';
+import NoteProvenance from './lab-note-provenance';
 import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
 var reasons = {
   parent_stopped: "The parent assignment was stopped. No further note batches will start. An already dispatched call may finish; saved replies and drafts are retained.",
@@ -445,7 +446,9 @@ export default function LabNote({
   }, "A previous edit has no confirmed response. The submitted text is preserved below. Reconcile that same edit before changing it; this does not generate research."), pendingEdit && !editing && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: save
-  }, "Reconcile same edit"), editing ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", null, "Title", /*#__PURE__*/React.createElement("input", {
+  }, "Reconcile same edit"), /*#__PURE__*/React.createElement(NoteProvenance, {
+    value: draft.researchProvenance
+  }), editing ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", null, "Title", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Note title",
     readOnly: pendingEdit || busy,
     style: {

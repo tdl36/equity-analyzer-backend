@@ -118,9 +118,11 @@ def assignment_note(get_db, ident, assignment, pack):
         from lab_source_identity import validate as identity_pack
         expected_ids=identity_pack([{'id':r['reference'][len('charlie:thesis_'):],'filename':r['filename'],'sha256':r['sha256']} for r in checked['verified']], names)
         context=note_context(assignment,expected_ids)
+        from pipeline_lab_note_provenance import from_assignment
+        provenance=from_assignment(assignment,prepared['sourcePack'])
         return enqueue(cur,{'noteId':note_id,'ticker':assignment['ticker'],
             'title':assignment['ticker']+(' — '+assignment['researchPurpose']['event']['title'] if assignment.get('researchPurpose',{}).get('kind')=='event_note' else ' — Equity research note'),
-            'context':context,
+            'context':context,**provenance,
             'promptTemplate':cfg['promptTemplate'],'modelKey':cfg['modelKey'],'maxTokens':32000,
             'sourcePack':prepared['sourcePack'],'representationSha256':prepared['representationSha256'],
             'batchCount':len(prepared['batches']),'warnings':prepared['warnings'],'allowPdfText':cfg['allowPdfText']})

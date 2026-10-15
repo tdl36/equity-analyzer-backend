@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T324 preserves server-owned full-note purpose and frozen source context through
+draft revisions, review and exports. Synthetic integration/layout/export checks
+pass; no actual processing or investor acceptance was performed.
+
 T323 carries versioned exact-identity source roles/dates through shared report
 author/reviewer prompts and full-note immutable context. Legacy replay is preserved.
 81 focused, 1,646 full backend and 231 frontend tests pass using synthetic providers.

@@ -26,8 +26,10 @@ def export_text(draft,accepted=False):
     parts=[draft['markdown'],'\n## Review record',
            ('Investor accepted' if accepted else 'DRAFT — not investor accepted')+f" · revision {draft['revision']} · saved {draft['createdAt']}",
            '\n## Quality and source limitations',*['- '+s for s in draft['qualityIssues']],
-           '\n## Sources appendix',evidence.get('sourcesMarkdown') or 'No sources appendix supplied.',
-           '\n## Frozen original manifest']
+           '\n## Sources appendix',evidence.get('sourcesMarkdown') or 'No sources appendix supplied.']
+    from pipeline_lab_note_provenance import export_lines
+    parts.extend(export_lines(draft.get('researchProvenance')))
+    parts.append('\n## Frozen original manifest')
     for s in draft['sourcePack']:parts.append(f"- {s['filename']} · {s['reference']} · {s['bytes']} bytes · SHA-256 {s['sha256']}")
     for chart in evidence.get('chartSpecs',[]):
         parts.extend(['\n### '+chart['period']+' — '+chart['kind'],'Units and figures require source verification.','| Segment | Value |','| --- | ---: |'])

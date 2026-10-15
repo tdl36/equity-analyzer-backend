@@ -19,7 +19,7 @@ def schema(cur):
 def validate(value):
     keys={'noteId','ticker','title','context','promptTemplate','modelKey','maxTokens',
           'sourcePack','representationSha256','batchCount','warnings','allowPdfText'}
-    if not isinstance(value,dict) or set(value)!=keys:
+    if not isinstance(value,dict) or not keys <= set(value) or set(value)-keys-{'researchProvenance'}:
         raise ValueError('A complete frozen note plan is required.')
     out=dict(value);out['noteId']=_note_identity(value['noteId'])
     if not isinstance(value['ticker'],str) or not re.fullmatch('[A-Z0-9][A-Z0-9.-]{0,19}',value['ticker']):
@@ -33,6 +33,9 @@ def validate(value):
         raise ValueError('Explicit PDF representation policy required.')
     out['sourcePack']=normalized({'title':value['title'],'markdown':'Manifest',
                                   'sourcePack':value['sourcePack'],'qualityIssues':[]})['sourcePack']
+    if 'researchProvenance' in value:
+        from pipeline_lab_note_provenance import validate as provenance
+        out['researchProvenance']=provenance(value['researchProvenance'],out['sourcePack'])
     # Reuse the journal's model, hash, batch and output-cap validation.
     request_value({'noteId':out['noteId'],'batch':value['batchCount'],
                    'sourcePack':out['sourcePack'],'contextSha256':value['representationSha256'],
