@@ -55,15 +55,15 @@ def validate(data):
         for condition in conditions:
             if not isinstance(condition, dict):
                 raise ValueError('Invalid reconsideration condition.')
-            ident = str(uuid.UUID(condition.get('id', '')))
-            if ident in seen:
+            condition_id = str(uuid.UUID(condition.get('id', '')))
+            if condition_id in seen:
                 raise ValueError('Condition IDs must be unique.')
-            seen.add(ident)
+            seen.add(condition_id)
             category = condition.get('category')
             state = condition.get('state')
             if category not in ('fundamental', 'valuation', 'constraint', 'research_gap') or state not in ('unassessed', 'not_met', 'partly_met', 'met'):
                 raise ValueError('Choose a valid condition type and assessment.')
-            item = dict(id=ident, category=category, state=state,
+            item = dict(id=condition_id, category=category, state=state,
                         trigger=text(condition.get('trigger'), 'reconsideration condition'))
             for key in ('evidence', 'sourceReference'):
                 value = condition.get(key, '')

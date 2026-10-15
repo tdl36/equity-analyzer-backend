@@ -159,5 +159,32 @@ and managed research commands retain their own public-source import path.
 For the previously blocked CVS scheduled event requests, resume the same request
 after this release. Verify the frozen event and search filters normally; the old
 missing-import-path issue no longer applies. Import failures remain attention and
-must not be reported as successful collection. The eight-original assignment bound
-is unchanged. This is infrastructure support, not evidence of a completed CVS run.
+must not be reported as successful collection. Assignment collection bounds follow the frozen request scope described above. This is infrastructure support, not evidence of a completed CVS run.
+
+
+## Attention recovery audit (T300)
+
+The October 15 audit reviewed all 112 locally blocked requests, not just the latest
+50 snapshot entries. Retain all unfinished requests in the monitor alongside the
+latest 50 completed/cancelled entries. Recovery decisions and previous issues are
+preserved in the private ledger events and attention-recovery-2026-10-15.json.
+33 false/stale automatic signals and 11 duplicate/superseded event requests were
+cancelled without deleting originals or canonical research. 66 requests were
+requeued for fresh verification; this is not collection completion. Current Chrome
+was signed in, Downloads readable and the prior shared stalled-export overlay gone.
+Exact company/date/type filters still require verification for each resumed request.
+Do not automatically cancel new signals using an issue-string heuristic.
+
+HUM, IQV and LH conflicting exports matched per-page extracted research after the
+recognized broker delivery watermark was normalized. The collector now supports
+that full delivery-line pattern only after the observed source ID matches. Keep
+original bytes; substantive differences, blank/image-only pages and unknown stamp
+formats still fail closed. GOOGL's earlier temporary candidate was absent: re-export
+its observed ID and compare, never assume equivalence. Result-count discrepancies
+still require actual search reconciliation and honest unavailable-result coverage.
+
+CVS catch-up assignment 6cdf8f71-0e5c-49c4-838a-525c0731a105 freezes July 17–October
+14, 2026, all four categories, 200-original scope, collection only. Its thesis was
+last saved August 25; that timestamp is not proof of the evidence cutoff. The
+separate seven-day event recap does not establish thesis source coverage. Do not
+widen old requests or generate/approve research from this source-only assignment.

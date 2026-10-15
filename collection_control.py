@@ -84,7 +84,7 @@ def create_blueprint(get_db, is_agent):
         with get_db(commit=request.method=='POST') as (_,cur):
             if request.method=='POST':
                 data=request.get_json(silent=True)
-                if not isinstance(data,dict) or not isinstance(data.get('snapshot'),dict) or not isinstance(data.get('receipts',[]),list) or len(json.dumps(data))>500000:return jsonify(error='Invalid collection sync payload.'),400
+                if not isinstance(data,dict) or not isinstance(data.get('snapshot'),dict) or not isinstance(data.get('receipts',[]),list) or len(json.dumps(data))>5000000:return jsonify(error='Invalid collection sync payload.'),400
                 cur.execute('INSERT INTO app_settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()',(KEY,json.dumps(data['snapshot'])))
                 for receipt in data.get('receipts',[])[:10]:
                     if not isinstance(receipt,dict) or receipt.get('status') not in ('applied','failed'):continue

@@ -46,7 +46,7 @@ export function CollectionRequests({
     onChange: e => setFinished(e.target.checked)
   }), "Include completed and cancelled")), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, rows.length, " matching requests in the latest ", requests.length, " reported by this Mac (up to 50). Search and document counts describe collection progress, not report completion."), !available ? /*#__PURE__*/React.createElement("p", {
+  }, rows.length, " matching requests among ", requests.length, " reported by this Mac \xB7 unfinished work and the latest 50 finished requests. Search and document counts describe collection progress, not report completion."), !available ? /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Waiting for a Mac collection snapshot.") : !rows.length ? /*#__PURE__*/React.createElement("p", null, focusId ? 'The linked request is outside this snapshot or belongs to another company. No replacement request is selected.' : `No ${finished ? 'matching' : 'unfinished'} collection requests in this snapshot.`) : rows.map(r => /*#__PURE__*/React.createElement("article", {
     className: "workspace-panel",

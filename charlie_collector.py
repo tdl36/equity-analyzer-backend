@@ -74,7 +74,7 @@ def document_key(url):
 
 
 def same_watermarked_export(left, right):
-    """Compare exports of one verified document, ignoring only download timestamps.
+    """Compare exports of one verified document, ignoring recognized delivery watermarks.
 
     Never use this to infer identity: callers must first match AlphaSense doc IDs.
     Blank/image-only PDFs and exports without a recognized watermark fail closed.
@@ -89,7 +89,14 @@ def same_watermarked_export(left, right):
             text, count = re.subn(
                 r'([\w.+-]+@[\w.-]+ - [^\n]*? - )\d{2}/\d{2}/\d{4} \d{2}:\d{2} (?:AM|PM) UTC',
                 r'\1[download timestamp]', text)
-            stamps += count
+            # Broker exports also stamp recipient/institution and download time.
+            # Match only the complete observed delivery line, never generic dates
+            # or usage restrictions in the research body. Originals stay intact.
+            text, broker_count = re.subn(
+                r'^Provided for the exclusive use of [^\n]{1,250} on '
+                r'\d{2}-[A-Za-z]{3}-\d{4} \d{2}:\d{2} (?:AM|PM)[ \t]*$',
+                '[broker delivery watermark]', text, flags=re.MULTILINE)
+            stamps += count + broker_count
             pages.append(text)
         return pages if stamps and all(len(p.strip()) > 100 for p in pages) else None
     try:

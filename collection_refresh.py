@@ -221,7 +221,13 @@ class RefreshManager:
         policies = []
         for r in self.db.execute('SELECT * FROM refresh_policies ORDER BY ticker'):
             policies.append(dict(json.loads(r['config']), nextDue=r['next_due'], lastSuccess=r['last_success']))
-        requests = [dict(r) for r in self.db.execute('SELECT id,ticker,run,status,created,issue,result FROM refresh_requests ORDER BY created DESC LIMIT 50')]
+        # Keep unresolved work visible even when newer completed runs accumulate.
+        requests = [dict(r) for r in self.db.execute("""
+            SELECT id,ticker,run,status,created,issue,result FROM refresh_requests
+            WHERE status NOT IN ('complete','cancelled')
+               OR id IN (SELECT id FROM refresh_requests WHERE status IN ('complete','cancelled')
+                         ORDER BY created DESC LIMIT 50)
+            ORDER BY created DESC""")]
         for r in requests:
             r['result'] = json.loads(r['result']) if r['result'] else None
             r['sourceProgress'] = {

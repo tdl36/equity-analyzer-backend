@@ -42,6 +42,23 @@ class CollectorTests(unittest.TestCase):
         return self.collector.observe(self.run, 'DE', kind,
             'https://research.alpha-sense.com/search', count, 'Reviewed unique originals in the fixed window')
 
+    def test_broker_delivery_stamp_deduplicates_but_body_changes_do_not(self):
+        from reportlab.pdfgen.canvas import Canvas
+        from charlie_collector import same_watermarked_export
+        def report(stamp, body='Original evidence ' * 20):
+            output = io.BytesIO(); canvas = Canvas(output)
+            canvas.drawString(30, 750, body)
+            canvas.drawString(30, 30, stamp)
+            canvas.save(); return output.getvalue()
+        first = report('Provided for the exclusive use of Test Reader at Example Fund on 07-Oct-2026 01:28 PM')
+        second = report('Provided for the exclusive use of Test Reader on 14-Oct-2026 01:34 AM')
+        self.assertTrue(same_watermarked_export(first, second))
+        self.assertFalse(same_watermarked_export(first, report(
+            'Provided for the exclusive use of Test Reader on 14-Oct-2026 01:34 AM',
+            'Changed evidence ' * 20)))
+        self.assertFalse(same_watermarked_export(report('Unknown footer'), report('Different footer')))
+        self.assertFalse(same_watermarked_export(pdf(), pdf()))
+
     def test_full_universe_plan_is_idempotent_and_bounded(self):
         tickers = ['DE'] + ['T' + str(i) for i in range(25)]
         first = self.collector.plan(tickers, '2026-08-07', '2026-09-06')

@@ -18,6 +18,19 @@ class RefreshTests(unittest.TestCase):
         self.clock=1788796800.;self.m=RefreshManager(self.c,lambda:self.clock)
         self.cfg={'ticker':'MDT','hours':24,'lookbackDays':7,'kinds':['transcript']}
 
+    def test_snapshot_retains_old_attention_beyond_recent_history(self):
+        self.m.save(self.cfg)
+        original = self.m.trigger('MDT')
+        claim = self.m.claim(original)
+        self.m.mark(original, claim['owner'], 'attention', 'Source needs review')
+        for n in range(60):
+            self.c.db.execute("INSERT INTO refresh_requests(id,ticker,run,status,created) VALUES(?,?,?,'complete',?)",
+                              (f'finished-{n}', 'MDT', f'run-{n}', self.clock+n+1))
+        rows = self.m.status()['requests']
+        self.assertEqual(len(rows), 51)
+        self.assertIn(original, [r['id'] for r in rows])
+        self.assertEqual(sum(r['status']=='complete' for r in rows), 50)
+
     def queued_pair(self):
         self.m.save(self.cfg)
         first = self.m.trigger('MDT')

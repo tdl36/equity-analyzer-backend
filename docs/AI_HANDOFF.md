@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T300 — Collection attention recovery and complete unfinished inventory
+
+Audited all 112 attention requests, including older items hidden by the latest-50
+snapshot. Cancelled 33 false/stale automatic signals and 11 duplicate/superseded
+requests after reviewing frozen context and canonical receipts; originals and
+canonical jobs remain intact. Requeued 66 for verified browser/source completion,
+not claimed complete. AVB successor destination and AMZN external terms acceptance
+remain explicit user dependencies. Private audit records preserve every old issue.
+
+The snapshot now includes all unfinished work plus the latest 50 terminal requests;
+the authenticated sync envelope allows 5 MB. Broker duplicate comparison recognizes
+only the observed full delivery-watermark line after source IDs match. HUM, IQV and
+LH original/candidate pairs matched per-page extracted research with this rule;
+unknown footers, changed body text and blank pages still fail closed. GOOGL's earlier
+temporary candidate is absent and requires a verified re-export. Originals were not
+rewritten or bulk reclassified. Existing attribution/duplicate guards already cover
+many historical false triggers; retries still require primary-event verification.
+
+CVS last full/condensed thesis save was August 25. Queued source-only assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105 for July 17–October 14 and up to 200 relevant
+originals across all four categories. A last-save timestamp is not an evidence
+cutoff; seven-day event recaps are separate from thesis catch-up. No research or
+thesis approval was launched for this audit.
+
+Also fixed workbench condition validation overwriting the work-record ID with the
+last condition ID, which could break subsequent revision saves. Regression coverage
+keeps record/request/revision identity stable as conditions reorder or disappear.
+
+Release validation pending; update this checkpoint after exact hosted verification.
+Next: observe Operations recovery receipts, reconcile any renewed source errors,
+resolve AVB organization with investor, and continue answer-to-proposal engineering.
+
 ## T297–T299 — Configurable collection library and larger selected packs
 
 Collection controls default to 40 relevant originals and accept 1–1000; the explicit

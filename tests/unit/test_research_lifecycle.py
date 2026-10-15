@@ -27,6 +27,25 @@ class LifecycleTests(unittest.TestCase):
         p['body']['reviewConditions']*=2
         with self.assertRaises(ValueError):validate(p)
 
+    def test_conditions_never_replace_work_identity(self):
+        p = self.payload()
+        second = dict(p['body']['reviewConditions'][0], id=str(uuid.uuid4()))
+        p['body']['reviewConditions'].append(second)
+        original_id = p['id']
+        for revision, conditions in enumerate([
+            p['body']['reviewConditions'][:],
+            list(reversed(p['body']['reviewConditions'])),
+            [second], [],
+        ]):
+            p['revision'] = revision
+            p['body']['reviewConditions'] = conditions
+            request_id, work_id, actual_revision, body = validate(p)
+            self.assertEqual(work_id, original_id)
+            self.assertEqual(request_id, p['requestId'])
+            self.assertEqual(actual_revision, revision)
+            self.assertEqual([c['id'] for c in body['reviewConditions']],
+                             [c['id'] for c in conditions])
+
     def test_legacy_records_remain_editable(self):
         p=self.payload();p['body'].pop('reviewConditions');validate(p)
         p['body']['holdingPct']='4'
