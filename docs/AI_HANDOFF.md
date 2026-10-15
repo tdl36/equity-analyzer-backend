@@ -34,6 +34,22 @@ Historical schema, real output quality and eight-priority acceptance remain open
 The wider picker lists supported stored originals; iCloud-only/research-storage
 sources still use the existing Lab import path before this handoff can select them.
 
+T309 production verified: Render d297b2b0f7df70bc86e2d99efb6bf1558efdf661;
+Cloudflare 66aa4d12-a1aa-4733-ba7e-e01527309697. Hosted JS/service-worker bytes
+and HTML marker match; final Mac-agent health ok at 5.8 seconds. Original endpoint
+and new library endpoint authentication/missing-parent refusals pass. A transient
+502 during rollout cleared before the final complete verification. A subsequent
+read-only archive inspection covered all four current assignments (two complete),
+with no eligible completed source-only parent and no further history cursor. No
+live proposal or processing approval was created for QA. This preserves the genuine
+journey/investor acceptance gap; independent handoff engineering continues.
+
+Next-action detail: freeze full-note model/prompt/representation choices in the
+proposal at save, expose their digest/model and up-to-eight additional calls, and
+pass those exact settings to the existing assignment note worker after approval.
+Add meeting date/type from the shared report with no extra generation stage. Do not
+silently replace saved generation settings at approval or build another coordinator.
+
 ## T308 — Completed collection to explicit processing approval
 
 Completed source-only assignments now expose “Choose sources & prepare processing
