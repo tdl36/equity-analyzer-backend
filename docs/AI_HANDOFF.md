@@ -11,8 +11,14 @@ cursor available for retry. Discard unsaved edits now restores the saved title a
 text, so reentering the editor cannot resurrect discarded changes. No research,
 acceptance or stored-note mutation occurs from browsing/discarding.
 
-Validation and deployment verification pending. Next: source-review and collection
-follow-through usability; real source-quality and investor acceptance remain open.
+Verified Render revision `bdd7a37a1b647ea56ee91e7506b04b6d6dc68f63`, Cloudflare
+`d49783b9-d449-40fd-b555-f55d79c28e93`, T274 HTML and exact hosted JS/service-worker
+bytes. Agent heartbeat healthy (79 seconds old). 182 frontend tests, model policy
+and build passed. Synthetic desktop/390px checks loaded 60 revisions, selected the
+oldest without losing its option, discarded/reopened edits, and refused cross-stock
+notes with zero writes. Backend unchanged; no paid QA or live approvals.
+Next: source-review and collection follow-through usability; real source-quality
+and investor acceptance remain open.
 
 ## T273 — Publication-date source review
 
