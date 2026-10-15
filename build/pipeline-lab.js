@@ -461,7 +461,11 @@ function LabStock({
     read: read,
     onImported: () => {
       setCheckResult(null);
-      setGeneration(n => n + 1);
+      if (dirty) {
+        setNotice('An iCloud import completed while you were editing. Your unsaved selections are preserved on this screen. Reload saved settings & inventory when ready to review the imported originals; this will replace unsaved selections.');
+      } else {
+        setGeneration(n => n + 1);
+      }
     }
   }), /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",

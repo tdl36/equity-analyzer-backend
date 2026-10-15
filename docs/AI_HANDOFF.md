@@ -2,6 +2,18 @@
 
 Updated: October 14, 2026
 
+## T275 — Preserve edits during background imports
+
+A completed iCloud import no longer automatically reloads Lab settings while the
+investor has unsaved source selections. The current selections stay visible and a
+notice explains the completed import and explicit reload. Clean settings still
+refresh automatically. Any prior byte-check result is invalidated in both cases.
+Reload keeps its existing discard confirmation and revision conflicts remain
+server-enforced; this does not silently merge or overwrite imported selections.
+
+Validation and deployment verification pending. Next: source-review reconciliation
+and collection follow-through; real source-quality/investor acceptance remain open.
+
 ## T274 — Complete revision browsing
 
 Lab notes now page through older revisions beyond the first 50, preserving loaded
