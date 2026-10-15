@@ -28,6 +28,29 @@ Then observe the genuine connected journey when request-specific authorization i
 available. Shared Ready expansion follows that proof. Historical schema and wider
 live/investor acceptance remain open; do not certify all eight priorities complete.
 
+T313 production verified: Render 3198f900b0c74bc3ba3b673545cf9ccdd8160977;
+Cloudflare d4d9248c-1197-4b92-b899-df4c048dc01e. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac-agent health ok at 71.7 seconds. Original/library
+authentication and missing-identity refusals pass. No live processing, source
+mutation, paid research or investor decisions were performed.
+
+Read-only delivery checkpoint (October 15, 18:09 UTC): CVS source-only assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105 is running at collecting/verifying originals,
+linked to collection 9f7ced1d-7b7a-42d1-9747-6e51f0cfff4d, queued with zero sources
+and no recorded issue/error. Its four source-category tasks are pending. The fresh
+collection snapshot reports 66 queued, one collecting and three attention; this
+establishes queue state, not a cause or a stalled-worker diagnosis. No collection,
+policy, approval or coordinator mutation was made. Operations owns this queue.
+
+Next action: retain the genuine collection-to-output acceptance gap, and inspect
+existing saved Home/company job and output links against read-only records while
+collection proceeds; fix demonstrated delivery/navigation defects without starting
+research. On genuine source-only completion, check exact-byte receipts and linked
+proposal readiness, then await the investor's request-specific processing approval.
+Do not repeatedly poll the unchanged queue or expand the shared dashboard before
+connected-journey proof. Historical reference semantics and investor acceptance
+remain open independently of these releases.
+
 ## T312 — Frozen evidence coverage in processing proposals
 
 Saved processing proposals now expose a read-only summary derived solely from
