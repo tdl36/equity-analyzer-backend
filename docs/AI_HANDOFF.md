@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T309 — Foundational evidence in collection-linked processing proposals
+
+The handoff now allows explicit supplemental selections from the same company's
+stored-original library. The library is metadata-only, paginated, grouped by source
+type and sorted by recorded publication date within groups, with search and clearly
+labeled filename suggestions/unknown dates. Collection members are excluded from
+this supplemental list; excluded/reference-only sources cannot be selected. Nothing
+is preselected. At least one collected original retains the collection link.
+
+New proposals freeze collection vs supplemental source roles, metadata dates and
+exact-hash references found in the saved thesis source register. A reference does
+not certify incorporation or current validity; absence means unknown, not unused.
+Selected byte-identical duplicates are rejected. Source IDs, company, permissions,
+bytes, baseline and 60 MB pack bound remain checked at save/approval. Existing T308
+proposals keep their frozen choices and replay hashes. No new browser worker or
+collection is created. Collapsing the handoff retains unsaved in-screen selections;
+only saved proposals are durable across navigation.
+
+Validation: 1,609 safe backend tests, 208 frontend tests, focused 15-test handoff
+suite, Python compilation and production build pass. Full-app synthetic 390/1280px
+checks cover supplementary selection, exclusions, search, pagination, collapse
+retention, saved roles, reload and explicit processing links. No paid research,
+production processing approval or source mutation was used for testing.
+
+Next critical path: complete full-note and meeting choices in this proposal flow,
+with exact frozen generation settings/cost disclosure; continue read-only inspection
+for a genuinely completed source-only request. Real processing waits for its explicit
+investor authorization. Unified dashboard expansion follows the connected proof.
+Historical schema, real output quality and eight-priority acceptance remain open.
+The wider picker lists supported stored originals; iCloud-only/research-storage
+sources still use the existing Lab import path before this handoff can select them.
+
 ## T308 — Completed collection to explicit processing approval
 
 Completed source-only assignments now expose “Choose sources & prepare processing

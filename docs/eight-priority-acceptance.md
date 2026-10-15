@@ -74,9 +74,9 @@ Ticker entry itself neither identifies the issuer conclusively nor starts work.
 
 T308 adds immutable collection-linked processing proposals and explicit, replay-safe
 approval into the existing coordinator. Synthetic selected-original, baseline,
-cancellation, concurrency and desktop/mobile journey checks pass. Wider-library
-source selection, shared dashboard integration and real authorized-run acceptance
-remain open; this does not close priorities 5 or 8.
+cancellation, concurrency and desktop/mobile journey checks pass. T309 adds explicit wider-library foundational selection, duplicate-byte rejection
+and distinct collection/supplemental/saved-thesis-reference labels. Shared dashboard
+integration and real authorized-run acceptance remain open; this does not close priorities 5 or 8.
 
 ## 6. Connected research follow-through
 

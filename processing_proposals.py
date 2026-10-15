@@ -21,10 +21,10 @@ def assignment_id(ident):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, 'charlie:processing-proposal:' + ident))
 
 
-def original_pack(cur, ticker, filenames):
-    cur.execute("WITH selected AS MATERIALIZED (SELECT id,filename,metadata,file_data FROM document_files WHERE ticker=%s AND filename=ANY(%s) FOR SHARE) SELECT id::text AS id,filename,metadata,CASE WHEN octet_length(file_data)<=20000000 AND sum(octet_length(file_data)) OVER ()<=80000000 THEN file_data ELSE NULL END AS file_data FROM selected", (ticker, filenames))
+def original_pack(cur, ticker, filenames, supplemental_ids=()):
+    cur.execute("WITH selected AS MATERIALIZED (SELECT id,filename,metadata,file_data FROM document_files WHERE ticker=%s AND (filename=ANY(%s) OR id::text=ANY(%s)) FOR SHARE) SELECT id::text AS id,filename,metadata,CASE WHEN octet_length(file_data)<=20000000 AND sum(octet_length(file_data)) OVER ()<=80000000 THEN file_data ELSE NULL END AS file_data FROM selected", (ticker, filenames, list(supplemental_ids)))
     documents = {'charlie:thesis_' + str(r['id']): r for r in cur.fetchall()}
-    if len(documents) != len(filenames):
+    if len(documents) != len(filenames) + len(supplemental_ids):
         raise ValueError('Selected original identities are missing or ambiguous. Refresh the source library.')
     checked = check_originals(ticker, 'processing', 1, sorted(documents), documents)
     if checked['blockers']:
@@ -52,6 +52,8 @@ def dispatch(cur, proposed_plan, ident):
     pack = original_pack(cur, row['ticker'], [s['filename'] for s in frozen['sources']])
     if pack != frozen['sources']:
         raise ValueError('Selected originals changed. Save a fresh proposal before processing.')
+    if frozen.get('sourceContext'):
+        proposed_plan['processingSourceContext'] = frozen['sourceContext']
     cur.execute("UPDATE mp_jobs SET status='dispatched',result=%s::jsonb,updated_at=NOW() WHERE id=%s", (json.dumps({'assignmentId': ident}), row['id']))
     return pack
 
@@ -60,12 +62,28 @@ def public(row):
     frozen = obj(row['input'])
     return dict(id=row['id'], ticker=row['ticker'], status=row['status'], revision=1,
                 digest=frozen['digest'], collectionId=frozen['collectionId'], plan=frozen['plan'],
-                sources=frozen['sources'], baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
+                sources=frozen['sources'], sourceContext=frozen.get('sourceContext', {}), baseline=frozen['baseline'], caseRevision=frozen['caseRevision'],
                 assignmentId=obj(row['result']).get('assignmentId'), created_at=row['created_at'])
 
 
 def register(co):
     bp = co.bp
+
+    @bp.get('/api/research/assignments/<collection_id>/processing-library')
+    def processing_library(collection_id):
+        parent = co.read(collection_id)
+        if not parent or parent['status'] != 'complete' or not obj(parent['input']).get('collectionOnly'):
+            return jsonify(error='Choose a completed source-only collection.'), 409
+        try:
+            if set(request.args) - {'after'} or len(request.args.getlist('after')) > 1:
+                raise ValueError('Invalid source-library filters.')
+            from processing_proposal_sources import inventory
+            with co.db() as (_, cur):
+                data = inventory(cur, parent['ticker'], [s['filename'] for s in obj(parent['result']).get('sources', [])], request.args.get('after'))
+            response = jsonify(data); response.headers['Cache-Control'] = 'private, no-store'
+            return response
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
 
     @bp.route('/api/research/assignments/<collection_id>/processing-proposals', methods=['GET', 'POST'])
     def processing_proposals(collection_id):
@@ -81,12 +99,14 @@ def register(co):
             return response
         try:
             data = request.get_json(silent=True)
-            if not isinstance(data, dict) or set(data) != {'requestId', 'filenames', 'plan'}:
+            if not isinstance(data, dict) or set(data) not in ({'requestId', 'filenames', 'plan'}, {'requestId', 'filenames', 'plan', 'supplementalIds'}):
                 raise ValueError('Choose originals, purpose and outputs before saving a proposal.')
             ident = str(uuid.UUID(data['requestId']))
             filenames = data['filenames']
             if not isinstance(filenames, list) or not 1 <= len(filenames) <= 1000 or any(not isinstance(n, str) for n in filenames) or len(set(filenames)) != len(filenames):
                 raise ValueError('Choose distinct originals (1–1000) from this collection.')
+            from processing_proposal_sources import supplemental_ids, context
+            supplements = supplemental_ids(data.get('supplementalIds', []), len(filenames))
             choices = data['plan']
             allowed = {'researchPurpose', 'outputs', 'horizon', 'instruction', 'meeting', 'visualFundamentals'}
             if not isinstance(choices, dict) or set(choices) - allowed or 'researchPurpose' not in choices:
@@ -94,6 +114,8 @@ def register(co):
             parent_plan = obj(parent['input'])
             normalized = plan({**choices, **{k: parent_plan[k] for k in ('ticker', 'since', 'until')}})
             intent = {'collectionId': collection_id, 'plan': normalized, 'filenames': sorted(filenames)}
+            if 'supplementalIds' in data:
+                intent['supplementalIds'] = supplements
             intent_hash = digest(intent)
             # Exact replay returns the frozen proposal even if evidence has since changed.
             with co.db() as (_, cur):
@@ -103,7 +125,8 @@ def register(co):
                 if old['stage'] != STAGE or obj(old['input']).get('intentHash') != intent_hash:
                     raise ValueError('Proposal identity already used for different choices.')
                 return jsonify(public(old)), 200
-            baseline = co.call('thesis_imports.prepare', ticker=parent['ticker'])['package']['baseline']
+            baseline_package = co.call('thesis_imports.prepare', ticker=parent['ticker'])['package']
+            baseline = baseline_package['baseline']
             revision = co.call('stock_analysis.listing', ticker=parent['ticker'])['baseline']['revision']
             receipts = obj(parent['result']).get('sources', [])
             hashes = {s['filename']: s['sha256'] for s in receipts}
@@ -117,11 +140,17 @@ def register(co):
                     if old['stage'] != STAGE or obj(old['input']).get('intentHash') != intent_hash:
                         raise ValueError('Proposal identity already used for different choices.')
                     return jsonify(public(old)), 200
-                sources = original_pack(cur, parent['ticker'], filenames)
-                if any(s['sha256'] != hashes[s['filename']] for s in sources):
+                sources = original_pack(cur, parent['ticker'], filenames, supplements)
+                if any(s['filename'] not in filenames and s['filename'] in hashes for s in sources):
+                    raise ValueError('An added original belongs to this collection. Select it in the collected evidence list.')
+                if any(s['sha256'] != hashes[s['filename']] for s in sources if s['filename'] in filenames):
                     raise ValueError('Original bytes no longer match the completed collection receipt.')
                 frozen = dict(collectionId=collection_id, plan=normalized, sources=sources,
                               baseline=baseline, caseRevision=revision, intentHash=intent_hash)
+                if 'supplementalIds' in data:
+                    if len({s['sha256'] for s in sources}) != len(sources):
+                        raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
+                    frozen['sourceContext'] = context(cur, parent['ticker'], sources, filenames, baseline_package)
                 frozen['digest'] = digest(frozen)
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result) VALUES(%s,%s,%s,'pending',%s::jsonb,'{}'::jsonb) RETURNING *", (ident, STAGE, parent['ticker'], json.dumps(frozen)))
                 saved = public(cur.fetchone())

@@ -14,6 +14,8 @@ with sync_playwright() as p:
    elif '/api/collection/control' in u:d={'snapshot':{'policies':[],'requests':[]}}
    elif '/api/provider-credentials' in u:d={'providers':{k:{'configured':True} for k in ['anthropic','gemini','openai']}}
    elif '/api/research/assignment-defaults' in u:d={'outputs':['thesis'],'horizon':'12–24 months'}
+   elif '/processing-library' in u:
+    d={'documents':[{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True},{'id':'thesis_4','filename':'reference-only.pdf','eligible':False}], 'nextCursor':'3'} if 'after=' not in u else {'documents':[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':'2023-07-01','eligible':True}], 'nextCursor':None}
    elif '/processing-proposals' in u:
     if route.request.method=='POST':
      body=route.request.post_data_json
@@ -21,8 +23,8 @@ with sync_playwright() as p:
       assert body=={'revision':1,'digest':'a'*64}
       proposals[0]['status']='dispatched';proposals[0]['assignmentId']=NOTE;d={'id':NOTE,'status':'queued'}
      else:
-      assert body['filenames']==['recent.pdf'];assert body['plan']['researchPurpose']=={'kind':'event_note','event':{'title':'Guidance update','date':'2026-10-01'}}
-      d={'id':body['requestId'],'ticker':'ABT','revision':1,'digest':'a'*64,'status':'pending','sources':[{'documentId':'1','filename':'recent.pdf','bytes':10}],'plan':{**body['plan'],'since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
+      assert body['filenames']==['recent.pdf'];assert body['supplementalIds']==['3'];assert body['plan']['researchPurpose']=={'kind':'event_note','event':{'title':'Guidance update','date':'2026-10-01'}}
+      d={'id':body['requestId'],'ticker':'ABT','revision':1,'digest':'a'*64,'status':'pending','sourceContext':{'1':{'role':'collection','publishedDate':'2026-10-01','referencedBySavedThesis':False},'3':{'role':'supplemental','publishedDate':'2024-03-01','referencedBySavedThesis':True}},'sources':[{'documentId':'1','filename':'recent.pdf','bytes':10},{'documentId':'3','filename':'annual-2024-10-K.pdf','bytes':20}],'plan':{**body['plan'],'since':'2026-07-01','until':'2026-10-14'}};proposals.append(d)
     else:d={'proposals':proposals}
    elif '/api/research/assignments' in u:d={'assignments':[{'id':NOTE,'ticker':'ABT','status':'complete','input':{'ticker':'ABT','since':'2026-07-01','until':'2026-10-14','outputs':[],'collectionOnly':True},'result':{'sources':[{'filename':'recent.pdf','sha256':'a'*64},{'filename':'older.pdf','sha256':'b'*64}]}}]}
    elif '/api/pipeline-lab/check/' in u:d={'task':'thesis','revision':1,'checkedOnly':True,'generationAvailable':False,'blockers':[],'digest':'b'*64,'verified':[{'reference':'charlie:thesis_99' if mismatch else 'charlie:thesis_1','filename':'recent.pdf','sha256':'a'*64,'bytes':12},{'reference':'charlie:thesis_2','filename':'upload.pdf','sha256':'c'*64,'bytes':15}]}
@@ -54,6 +56,19 @@ with sync_playwright() as p:
   review.get_by_label('Processing event title').fill('Guidance update')
   review.get_by_label('Processing event date').fill('2026-10-01')
   expect(save).to_be_enabled()
+  review.get_by_role('button',name='Browse wider source library',exact=True).click()
+  library=review.get_by_role('region',name='Supplemental source library',exact=True)
+  expect(library.get_by_role('checkbox',name='reference-only.pdf',exact=False)).to_be_disabled()
+  library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).check()
+  library.get_by_role('button',name='Load more library sources',exact=True).click()
+  expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).to_be_visible()
+  library.get_by_label('Find library sources').fill('annual')
+  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+  assert not library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False).count()
+  page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
+  page.get_by_text('Choose sources & prepare processing approval',exact=True).click()
+  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+  assert writes==[]
   save.click()
   approve=review.get_by_role('button',name='Approve processing · uses research credits',exact=True)
   expect(approve).to_be_visible()
@@ -67,12 +82,12 @@ with sync_playwright() as p:
   expect(approve).to_be_visible()
   assert len(writes)==1
   approve.scroll_into_view_if_needed()
-  page.screenshot(path='/tmp/charlie-T308-'+str(width)+'-approval.png')
+  page.screenshot(path='/tmp/charlie-T309-'+str(width)+'-approval.png')
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Overflow'
   approve.click()
   link=review.get_by_role('link',name='Open saved processing job and outputs')
   expect(link).to_have_attribute('href', '#view=stockanalysis&ticker=ABT&section=stock-analysis&work=assignment%3A'+NOTE)
   assert len(writes)==2,writes
-  print(width,'selection, event scope, save without generation, reload and explicit approval link passed',flush=True)
+  print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, frozen roles and explicit approval passed',flush=True)
   page.close()
  b.close()

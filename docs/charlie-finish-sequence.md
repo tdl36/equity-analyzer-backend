@@ -34,9 +34,10 @@ output choices, source/config revision, baseline references and explicit blocker
 Do not mutate the completed request's authorization or silently select every file.
 Approval freezes the exact proposal revision and dispatches existing workers once.
 Protect concurrent changes, reloads, lost responses and ambiguous paid outcomes.
-A changed proposal needs fresh authorization. The initial UI selects from the completed
-collection only; wider-library foundation selection and full-note/meeting choices
-in this handoff UI remain open. Next prove the connected journey with genuine
+A changed proposal needs fresh authorization. T309 adds explicit wider-library
+foundational selections, frozen collection/supplemental roles and exact-hash saved-
+thesis reference labels. Full-note/meeting configuration in this handoff UI remains
+open; freeze those generation settings and disclose their incremental calls next. Next prove the connected journey with genuine
 request-specific processing authorization before shared-dashboard expansion. Merely viewing a proposal starts no
 research. A raw library or unverified selection is not ready to run.
 

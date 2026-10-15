@@ -1,3 +1,4 @@
+import { ProcessingSourceLibrary } from './processing-source-library';
 import * as React from 'react';
 import { routeHash } from './workspace-model.mjs';
 import { assignmentOutputs } from './assignment-defaults.mjs';
@@ -7,7 +8,9 @@ export function ProcessingProposals({
 }) {
   var [open, setOpen] = React.useState(false);
   return /*#__PURE__*/React.createElement("details", {
-    onToggle: e => setOpen(e.currentTarget.open)
+    onToggle: e => {
+      if (e.currentTarget.open) setOpen(true);
+    }
   }, /*#__PURE__*/React.createElement("summary", null, "Choose sources & prepare processing approval"), open && /*#__PURE__*/React.createElement(ProposalReview, {
     api: api,
     job: job
@@ -17,6 +20,7 @@ function ProposalReview({
   api,
   job
 }) {
+  var [supplements, setSupplements] = React.useState([]);
   var [selected, setSelected] = React.useState([]),
     [purpose, setPurpose] = React.useState('thesis_review'),
     [title, setTitle] = React.useState(''),
@@ -105,6 +109,7 @@ function ProposalReview({
     var body = pending || {
       requestId: crypto.randomUUID(),
       filenames: [...selected].sort(),
+      supplementalIds: [...supplements].sort(),
       plan: {
         researchPurpose: purpose === 'event_note' ? {
           kind: purpose,
@@ -161,7 +166,7 @@ function ProposalReview({
     value: "thesis_review"
   }, "Thesis review \xB7 longitudinal"), /*#__PURE__*/React.createElement("option", {
     value: "event_note"
-  }, "Event note \xB7 specific catalyst"))), /*#__PURE__*/React.createElement("p", null, purpose === 'thesis_review' ? 'Review the full investment case over time. This selection contains collected documents only; if foundational evidence is missing, use the wider Lab source library before requesting a holistic update.' : 'Debrief an identified event with contextual history. This does not change the thesis or mark it current. Thesis implications need a separate proposal.'), purpose === 'event_note' && /*#__PURE__*/React.createElement("div", {
+  }, "Event note \xB7 specific catalyst"))), /*#__PURE__*/React.createElement("p", null, purpose === 'thesis_review' ? 'Review the full investment case over time. Add relevant foundational and historical originals from the wider library below. The collection window does not limit the investment case; missing evidence remains a gap.' : 'Debrief an identified event with contextual history. This does not change the thesis or mark it current. Thesis implications need a separate proposal.'), purpose === 'event_note' && /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "Event title", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Processing event title",
@@ -173,7 +178,7 @@ function ProposalReview({
     type: "date",
     value: eventDate,
     onChange: e => setEventDate(e.target.value)
-  }))), /*#__PURE__*/React.createElement("p", null, selected.length, " of ", job.result.sources.length, " originals selected \xB7 none selected automatically. Up to 15 MB per original and 60 MB per processing pack; collection itself can be larger."), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("p", null, selected.length, " of ", job.result.sources.length, " collected originals selected, plus ", supplements.length, " supplemental originals \xB7 none selected automatically. Select at least one collected original to link this proposal to the collection. Up to 15 MB per original and 60 MB per processing pack; collection itself can be larger."), /*#__PURE__*/React.createElement("div", {
     style: {
       maxHeight: 280,
       overflow: 'auto',
@@ -192,8 +197,16 @@ function ProposalReview({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: selected.includes(s.filename),
+    disabled: !selected.includes(s.filename) && selected.length + supplements.length >= 1000,
     onChange: e => setSelected(p => e.target.checked ? [...p, s.filename] : p.filter(n => n !== s.filename))
-  }), /*#__PURE__*/React.createElement("span", null, s.filename)))), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, s.filename)))), /*#__PURE__*/React.createElement(ProcessingSourceLibrary, {
+    call: call,
+    path: path.replace('processing-proposals', 'processing-library'),
+    selected: supplements,
+    onChange: setSupplements,
+    purpose: purpose,
+    remaining: 1000 - selected.length
+  }), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, assignmentOutputs.filter(([id]) => id !== 'meeting_prep' && (purpose !== 'event_note' || id === 'summary_note')).map(([id, label]) => /*#__PURE__*/React.createElement("label", {
     className: "sa-check",
@@ -216,13 +229,13 @@ function ProposalReview({
       borderTop: '1px solid var(--border-color,#d8dedd)',
       padding: '14px 0'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), p.plan.instruction && /*#__PURE__*/React.createElement("p", null, p.plan.instruction), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen sources and scope"), /*#__PURE__*/React.createElement("p", null, "Revision ", p.revision, ". Collection ", p.plan.since, "\u2013", p.plan.until, ". Sources and baseline will be checked again before dispatch."), /*#__PURE__*/React.createElement("ul", null, p.sources.map(s => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), p.plan.instruction && /*#__PURE__*/React.createElement("p", null, p.plan.instruction), p.sourceContext && Object.keys(p.sourceContext).length > 0 && /*#__PURE__*/React.createElement("p", null, Object.values(p.sourceContext).filter(s => s.role === 'collection').length, " from the collection \xB7 ", Object.values(p.sourceContext).filter(s => s.role === 'supplemental').length, " supplemental history. Collection coverage and thesis evidence coverage are different."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen sources and scope"), /*#__PURE__*/React.createElement("p", null, "Revision ", p.revision, ". Collection ", p.plan.since, "\u2013", p.plan.until, ". Sources and baseline will be checked again before dispatch."), /*#__PURE__*/React.createElement("ul", null, p.sources.map(s => /*#__PURE__*/React.createElement("li", {
     key: s.documentId
   }, /*#__PURE__*/React.createElement("a", {
     href: api + '/api/pipeline-lab/original/' + encodeURIComponent(p.ticker) + '/thesis_' + s.documentId,
     target: "_blank",
     rel: "noreferrer"
-  }, s.filename), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB")))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, s.filename), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "workspace-primary",
     disabled: busy,
     onClick: () => act(async () => {

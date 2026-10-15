@@ -1,3 +1,20 @@
+## T309 supplemental foundational evidence
+
+The processing-approval form now includes a wider stored-original library. Browse
+metadata, filter by type/search, load more entries and explicitly select older
+foundational/contextual sources. The discovery date window does not exclude history.
+Collection and supplemental roles are frozen separately; identical-byte duplicates,
+changed originals and excluded sources cannot dispatch. Saved-thesis hash references
+are shown as references only, never as proof of complete incorporation or freshness.
+Filtering covers loaded entries; unknown dates and inferred types stay explicit.
+Saved proposals are durable; collapsing the form also retains unsaved in-screen
+choices, but navigation before saving does not create a durable proposal.
+
+The original Pipeline and paused auto-synthesis controls are unchanged. Full-note
+and meeting configuration in this handoff UI, live authorized processing proof and
+shared Ready integration remain open. Supported stored originals appear here;
+iCloud-only/research-storage evidence needs the existing import path first.
+
 ## T308 collection-to-processing handoff
 
 After a source-only assignment completes, open its coordinated assignment controls
@@ -9,8 +26,8 @@ proposals cannot dispatch. Repeated approval returns the same job. Follow its sa
 job/output link; research acceptance remains separate. No new browser collection is
 created and automatic synthesis remains paused during backfill.
 
-This first form uses originals from that collection, not the entire library; review
-foundational history in the wider Lab before a holistic thesis update when needed.
+T308 initially used originals from the collection only; T309 adds explicit
+supplemental history from the supported stored-original library.
 Collection dates are not accepted-thesis coverage. Full-note/meeting configuration
 in this approval form and integration into Ready to process remain open. Existing
 Lab note/meeting paths remain available. Synthetic checks establish mechanics, not

@@ -146,3 +146,77 @@ class ProcessingProposalTests(unittest.TestCase):
             cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'research_assignment',%s,'attention','{}')", (str(uuid.uuid4()), self.ticker))
         self.assertEqual(self.decision(proposal).status_code, 409)
         self.assertEqual(self.row(proposal['id'])['status'], 'pending')
+
+    def extra(self, filename='annual-2024.txt', raw=b'Historical foundation', ticker=None, metadata=None):
+        with self.db(True) as (_, cur):
+            cur.execute('INSERT INTO document_files(ticker,filename,file_data,file_type,metadata) VALUES(%s,%s,%s,%s,%s::jsonb) RETURNING id', (ticker or self.ticker, filename, base64.b64encode(raw).decode(), 'txt', json.dumps(metadata or {'published':'2024-03-01'})))
+            return str(cur.fetchone()['id'])
+
+    def test_supplemental_history_freezes_roles_and_dispatches_exact_pack(self):
+        self.parent();extra=self.extra()
+        self.body['supplementalIds']=[extra]
+        response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,201,response.json)
+        proposal=response.json
+        self.assertEqual(len(proposal['sources']),2)
+        self.assertEqual(proposal['sourceContext'][extra]['role'],'supplemental')
+        self.assertEqual(proposal['sourceContext'][extra]['publishedDate'],'2024-03-01')
+        self.assertFalse(proposal['sourceContext'][extra]['referencedBySavedThesis'])
+        self.assertEqual(self.decision(proposal).status_code,202)
+        aid=assignment_id(proposal['id']);self.report_status='running'
+        with self.app.app_context():self.co.advance(aid)
+        research=next(iter(self.submits.values()))
+        self.assertEqual(len(research['expectedOriginals']),2)
+        self.assertIn('supplemental stored history',research['question'])
+        self.assertEqual(self.co.read(aid)['input']['processingSourceContext'],proposal['sourceContext'])
+        self.assertIsNone(self.row(child(aid,'collection')))
+
+    def test_supplements_reject_other_company_overlap_and_duplicate_bytes(self):
+        self.parent()
+        other=self.extra(ticker='DIFFERENT')
+        copy_id=self.extra(raw=self.raw)
+        with self.db() as (_,cur):
+            cur.execute('SELECT id FROM document_files WHERE ticker=%s AND filename=%s',(self.ticker,'one.txt'));collected=str(cur.fetchone()['id'])
+        for ids in ([other],[collected],[copy_id],['-1'],[True],['1','1']):
+            with self.subTest(ids=ids):
+                response=self.client.post(self.url,json={**self.body,'supplementalIds':ids})
+                self.assertEqual(response.status_code,409,response.json)
+        self.assertFalse(self.submits)
+
+    def test_supplemental_bytes_and_permissions_rechecked_before_dispatch(self):
+        self.parent();extra=self.extra()
+        self.body['supplementalIds']=[extra]
+        proposal=self.client.post(self.url,json=self.body).json
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE document_files SET file_data=%s WHERE id=%s',(base64.b64encode(b'new historical source').decode(),int(extra)))
+        self.assertEqual(self.decision(proposal).status_code,409)
+        self.assertEqual(self.row(proposal['id'])['status'],'pending')
+        self.body['requestId']=str(uuid.uuid4())
+        proposal=self.client.post(self.url,json=self.body).json
+        with self.db(True) as (_,cur):cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE id=%s',(json.dumps({'usage':'reference_only'}),int(extra)))
+        self.assertEqual(self.decision(proposal).status_code,409)
+
+    def test_library_inventory_is_scoped_paged_and_body_free(self):
+        self.parent();self.extra(ticker='OTHER')
+        with self.db(True) as (_,cur):
+            cur.execute("INSERT INTO document_files(ticker,filename,metadata) SELECT %s,'source-'||n||'.txt',%s::jsonb FROM generate_series(1,201) n",(self.ticker,json.dumps({'published':'2023-12-31','private':'SECRET_FIXTURE','usage':'reference_only'})))
+        url=self.url.replace('processing-proposals','processing-library')
+        response=self.client.get(url);self.assertEqual(response.status_code,200)
+        data=response.json;self.assertEqual(len(data['documents']),200)
+        self.assertNotIn('SECRET_FIXTURE',response.text)
+        self.assertNotIn('file_data',response.text)
+        self.assertTrue(all(not r['eligible'] for r in data['documents']))
+        more=self.client.get(url+'?after='+data['nextCursor']).json
+        self.assertEqual(len(more['documents']),1)
+        self.assertIsNone(more['nextCursor'])
+        self.assertEqual(self.client.get(url+'?after=99999999999999999999').status_code,400)
+        self.assertFalse(self.submits)
+
+    def test_saved_thesis_reference_requires_exact_bytes_not_filename(self):
+        self.parent();extra=self.extra()
+        from processing_proposal_sources import context
+        with self.db() as (_,cur):
+            rows=context(cur,self.ticker,[{'documentId':extra,'filename':'annual-2024.txt','sha256':'a'*64}],[],{'sourceRegister':[{'filename':'annual-2024.txt','sha256':'b'*64}]})
+            self.assertFalse(rows[extra]['referencedBySavedThesis'])
+            rows=context(cur,self.ticker,[{'documentId':extra,'filename':'annual-2024.txt','sha256':'a'*64}],[],{'sourceRegister':[{'filename':'different-name.txt','sha256':'a'*64}]})
+            self.assertTrue(rows[extra]['referencedBySavedThesis'])
