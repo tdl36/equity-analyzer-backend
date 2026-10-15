@@ -1,3 +1,32 @@
+## T317 — Meeting-answer submission recovery across reloads
+
+Critical-path recovery increment: before dispatch, meeting-answer proposals now
+persist the exact request identity and saved follow-up revision in per-tab session
+storage, scoped to API/company/follow-up identity. Reload performs read-only exact-ID
+reconciliation. A matching saved receipt restores its exact review link and clears
+the unresolved intent; a missing receipt requires explicit retry of the same frozen
+request. Newer follow-up revisions never silently replace an unresolved request.
+No answer bodies, credentials or automatic retries are stored or introduced.
+Malformed/unavailable/nonpersistent storage and mismatched receipts block unsafe
+submission. Status-read errors remain separate from submission messages.
+
+Validation: 218 frontend tests, four existing backend meeting-proposal identity
+checks, Python compilation and production build pass. Full-app synthetic checks
+at 390/1280px cover lost-response/reload recovery without a second POST, unchanged
+request identity across a changed follow-up revision, wrong-company receipt refusal,
+unreadable/unavailable storage, exact review links and Back/Forward. Browser POSTs
+are intercepted fixtures only; no real comparison or investor decision was made.
+Production verification is recorded below after release.
+
+Next: inspect the genuine CVS collection-only assignment's exact-byte receipts and
+linked processing-proposal readiness once collection completes; processing remains
+investor-authorized. Independently inspect recovery of definitively rejected/stale
+follow-up submissions without clearing ambiguous paid outcomes. This increment
+closes reload loss, not cross-device/session recovery or all eight priorities.
+Shared Ready expansion remains after genuine connected-journey proof. The last
+verified CVS checkpoint (T316, 18:41 UTC) was running, collecting/verifying originals,
+zero verified sources and no saved error; no collection status was supplied.
+
 ## T316 — Follow-up proposal links and atomic history navigation
 
 Meeting-answer follow-ups now retrieve their own proposal history independently

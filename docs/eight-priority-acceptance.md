@@ -21,6 +21,10 @@ saved model/instructions through approval. Isolated fixtures test the selected
 source-to-report-to-note/meeting handoff; this is not genuine paid-run evidence
 or investor acceptance. The eight priorities remain open as recorded below.
 
+T317 adds per-tab meeting-answer submission recovery and exact saved-receipt
+reconciliation across reloads. Changed revisions retain the original request;
+synthetic lost-response checks do not constitute real paid-run acceptance.
+
 ## 1. Job recovery
 
 Implemented: durable reservations, ownership/leases, retained checkpoints,
