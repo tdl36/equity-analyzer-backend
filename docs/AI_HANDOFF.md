@@ -14,9 +14,15 @@ before constructing a status URL. Original Pipeline remains unchanged.
 197 frontend tests, model-policy gate and build passed. Synthetic desktop/390px
 checks retained a mismatched company response, then reconciled a matching queued
 request with zero API writes. No paid research or investor approvals occurred.
-Production verification pending. Backend and Mac agent unchanged.
+Verified Render `52d5d3d898c99c6ba1dbaad8fc10e76c77c6fa3c`, Cloudflare
+`45a1564e-9687-49f9-8256-1fb788c17999`, T289 HTML and exact hosted JS/service-worker
+bytes. Agent healthy (82.8 seconds old); endpoint auth checks passed. Backend and
+Mac agent unchanged.
 Next: follow the Lab real-run acceptance sequence on authorized research; synthetic
 recovery checks do not establish source coverage or investment quality.
+Concrete next engineering item: Research-storage imports in `pipeline-lab.jsx`
+still clear pending state after request-ID-only validation; bind their returned
+input/revision/source/destination/hash/size receipts before displaying success.
 
 ## T288 — Validate iCloud import completion receipts
 
