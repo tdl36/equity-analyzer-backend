@@ -455,7 +455,7 @@ class RefreshManager:
                 if not any(x['activityId']==a['id'] for x in created):
                     created.append({'activityId':a['id'], 'autoRan':a.get('status')=='running' or bool((a.get('output') or {}).get('synthesisMarkdown'))})
             for activity in created:
-                if not activity.get('autoRan'):
+                if cfg.get('researchCommand') and not activity.get('autoRan'):
                     resp = requests.post(CHARLIE_API+'/api/analyst-activities/'+activity['activityId']+'/run',headers=headers,json={'customInstructions':cfg['instructions']},timeout=30)
                     resp.raise_for_status()
             if not created:

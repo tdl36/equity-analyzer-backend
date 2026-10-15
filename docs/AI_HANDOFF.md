@@ -2,6 +2,26 @@
 
 Updated: October 14, 2026
 
+## T301 — Backfill automatic synthesis paused
+
+Investor requested no automatic synthesis for newly downloaded backfill originals.
+Verified production settings: catalyst folder Auto-fire off (already off), new-file
+research intake disabled (was on), all analyst earnings/takeaways auto modes off
+(Medical Devices was enabled and is now disabled). Prior settings saved privately
+in the AlphaSense state folder. Keep off until investor re-enables them.
+
+Fixed scheduled collection dispatch forcing every pending recap activity through
+/run even when analyst auto mode was off. Scheduled collection now leaves pending
+activities alone; explicit researchCommand dispatch remains explicit authorization.
+Local audit found no unfinished researchCommand, note, or generation-bearing
+assignment; CVS catch-up is source-only. No originals or research results deleted.
+One META synthesis 7e09d0ea-1aaa-4a96-86e4-b56c2cfa3272 was already running from
+13:50:53 UTC before the pause; it was not cancelled or retried.
+
+Controls: Catalysts / Auto-Pilot; Analyst team / each analyst / Auto Mode; Research
+desk / Evidence & changes / new-document automation. Collection/import continues.
+Release verification pending.
+
 ## T300 — Collection attention recovery and complete unfinished inventory
 
 Audited all 112 attention requests, including older items hidden by the latest-50

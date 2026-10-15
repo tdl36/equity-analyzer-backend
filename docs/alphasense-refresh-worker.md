@@ -188,3 +188,16 @@ CVS catch-up assignment 6cdf8f71-0e5c-49c4-838a-525c0731a105 freezes July 17–O
 last saved August 25; that timestamp is not proof of the evidence cutoff. The
 separate seven-day event recap does not establish thesis source coverage. Do not
 widen old requests or generate/approve research from this source-only assignment.
+
+## Backfill synthesis pause (October 15, T301)
+
+The investor requested collection without automatic synthesis during backfill.
+New-document research intake is disabled, catalyst folder Auto-fire is off, and
+all analyst earnings/takeaways auto modes are off. Leave those settings off until
+the investor changes them. Scheduled recap collection may queue a pending activity
+but must not explicitly invoke its run endpoint when analyst auto mode is off.
+The helper now honors this distinction; explicit researchCommand assignments retain
+their requested dispatch semantics. No unfinished such commands or note workflows
+were found in the local audit; CVS catch-up remains collection-only. Do not manually
+start a synthesis to complete a recovered collection. Already-dispatched calls may
+finish; do not retry them or discard their saved results.

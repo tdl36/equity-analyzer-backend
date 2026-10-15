@@ -31,6 +31,28 @@ class RefreshTests(unittest.TestCase):
         self.assertIn(original, [r['id'] for r in rows])
         self.assertEqual(sum(r['status']=='complete' for r in rows), 50)
 
+    def test_scheduled_collection_respects_analyst_auto_mode(self):
+        from unittest.mock import patch, Mock
+        cfg = dict(self.cfg, workflow='recap', topic='Event', instructions='Review')
+        response = Mock()
+        response.json.return_value = {'created': [{'activityId': 'saved-activity', 'autoRan': False}]}
+        pending = Mock(); pending.json.return_value = {'activities': []}
+        with patch('charlie_local_agent._agent_headers', return_value={}), \
+             patch('catalyst_sources.inventory', return_value=([{'name':'original.pdf'}], [])), \
+             patch('catalyst_sources.fingerprint', return_value='revision'), \
+             patch('requests.post', return_value=response) as post, \
+             patch('requests.get', return_value=pending):
+            result = self.m.dispatch(cfg, [])
+            self.assertEqual(post.call_count, 1)
+            self.assertTrue(post.call_args.args[0].endswith('/queue-catalyst-activity'))
+            self.assertFalse(result['activities'][0]['autoRan'])
+            # Explicit commands retain their requested research; ordinary scheduled
+            # collection cannot escalate a pending activity to a paid run.
+            post.reset_mock()
+            self.m.dispatch({**cfg, 'researchCommand': {'coordinated': True}}, [])
+            self.assertEqual(post.call_count, 2)
+            self.assertTrue(post.call_args.args[0].endswith('/saved-activity/run'))
+
     def queued_pair(self):
         self.m.save(self.cfg)
         first = self.m.trigger('MDT')
