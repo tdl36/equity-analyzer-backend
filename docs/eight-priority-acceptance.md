@@ -55,6 +55,10 @@ and outputs, Lab source library, meetings and valuation/scenarios in addition to
 existing thesis/evidence/review/one-pager destinations. Synthetic navigation checks
 preserved ABT and the intended sections at desktop/mobile sizes.
 
+T304 adds same-tab recovery of unsaved Lab thesis/note source selections, with
+explicit reconciliation when the central revision changed. Full-app synthetic
+390/1280px reload/recovery checks pass; no generation was run.
+
 Remaining: exercise saved real objects across each destination and back/forward;
 verify long content and unsaved edits across the complete company journey.
 
@@ -115,7 +119,9 @@ No paid calls solely for QA; no duplicate Operations worker or API entitlement.
 
 ## Next execution order
 
-1. Verify/deploy the bounded Home/company navigation repairs from this audit.
+1. Continue Home/company acceptance beyond the shipped navigation repairs and
+   T304 Lab selection recovery: saved-object back/forward, keyboard focus, long
+   content and unavailable-service states. Preserve the synthesis pause.
 2. Continue the priority-2 historical evidence integration only with an actual
    permitted schema and field semantics; preserve unresolved gaps otherwise.
 3. Complete real-input acceptance of the T303 answer-to-proposal handoff when

@@ -16,6 +16,12 @@ Validation: 207 frontend tests and production build pass. Synthetic full-app
 390/1280px browser checks cover reload recovery, undo clearing the draft, and
 explicit recovery after a central revision change, with no API writes. Original
 Pipeline, queued collection and automatic-synthesis settings are unchanged.
+T304 production verified: Render revision
+7dd7345e202b499555817e4c502408c219afbe78; Cloudflare
+4ee093dd-568c-44db-87d6-3ffc16a695cb. Hosted JavaScript and service worker
+match built bytes; HTML release marker is T304. Mac agent reports healthy (110.1
+seconds). Original endpoint authentication and missing-source refusal also pass.
+
 Next: continue full-workspace acceptance and provider-evidence gaps; this bounded
 recovery improvement does not certify all eight priorities or real end-to-end runs.
 
