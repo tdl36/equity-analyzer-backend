@@ -28,6 +28,12 @@ proof still awaits a completed source-only assignment and investor authorization
 shared Ready expansion remains after that proof. Historical schema and wider
 live/investor acceptance gaps remain open; none of the eight priorities is closed.
 
+T312 production verified: Render bff1b81648aed33a7bb117bac61330685631be8e;
+Cloudflare 29f53b34-f643-4dd5-b75d-731133d57a4a. Exact hosted JS/service-worker
+bytes and HTML marker match; Mac-agent health ok at 2.0 seconds. Original/library
+authentication and missing-identity refusals pass. No live processing, source
+mutation, paid research or investor decisions were performed.
+
 ## T311 — Full-note source readiness before processing approval
 
 New full-note processing proposals now run local source planning at save. They
