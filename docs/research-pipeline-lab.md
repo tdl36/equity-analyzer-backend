@@ -25,6 +25,25 @@ a read-only reconciliation of Home/company saved-work visibility against actual
 jobs and outputs, and repair demonstrated gaps. Defer broad shared-dashboard
 expansion; historical reference-schema and eight-priority acceptance remain open.
 
+T325 production verified: Render dd7118e01745a34459d756f609e580265402c9b9;
+Cloudflare 1255b8f7-0bb8-4365-9b2a-f92baee37b20. Exact hosted JS/service-worker
+bytes and HTML marker match; read-only authentication/identity guards and agent
+health (11.2 seconds) passed. Initial Cloudflare API timeout was reconciled against
+deployment history/hosted T324 before retrying. A transient older service-worker
+response cleared; complete verification passed in /tmp/charlie-T325-verify-confirmed.log.
+Other logs: /tmp/charlie-T325-{focused,frontend,build,ui,deploy,deploy-retry}.log.
+
+Read-only Home audit during rollout returned 502, then a connection error for
+/api/activity. ABT and CVS note-job reads subsequently returned 200 with zero jobs.
+Do not claim live Home completeness or real-note navigation acceptance from these
+reads. Static audit found activity_snapshot.SOURCES does not include standalone
+pipeline_lab_note_jobs; parent assignments can appear but that is not a complete
+note inventory. Next inspect the existing bounded inventory adapter and route map,
+add safe note visibility if confirmed (deduplicate against assignment children,
+include unknown/unavailable states), and test it using isolated saved-state fixtures.
+This repairs existing Home visibility; do not build a new approval dashboard or
+worker. Keep actual collection-to-approved-output and investor evidence gaps open.
+
 ## T324 — Saved full-note scope and source context survive review/export
 
 New assignment full-note plans carry versioned server-owned research provenance:
