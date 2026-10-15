@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { MeetingAnswerProposal } from './meeting-answer-proposal';
 import { ResearchChat } from './research-chat';
 var today = () => new Date().toLocaleDateString('en-CA');
 var inputs = {
@@ -355,7 +356,13 @@ export function ResearchWorkbench({
     className: "desk-explainer"
   }, "Evidence snapshot: ", r.evidenceState.replaceAll('_', ' '), ". Saved text matching does not establish currentness of the original disclosure."), /*#__PURE__*/React.createElement("p", null, r.body.rationale), /*#__PURE__*/React.createElement("p", null, "Next: ", r.body.nextAction), r.body.outcome && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "Review outcome: "), r.body.outcome), r.body.resolution && /*#__PURE__*/React.createElement("p", null, "Answer resolution \xB7 analyst assessment: ", r.body.resolution), r.body.calculation && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Metric"), /*#__PURE__*/React.createElement("th", null, "Before"), /*#__PURE__*/React.createElement("th", null, "After"))), /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "EPS"), /*#__PURE__*/React.createElement("td", null, r.body.calculation.beforeEPS), /*#__PURE__*/React.createElement("td", null, r.body.calculation.afterEPS)), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Implied price \xB7 ", r.body.inputs.currency), /*#__PURE__*/React.createElement("td", null, r.body.calculation.beforeValue ?? 'Not applicable'), /*#__PURE__*/React.createElement("td", null, r.body.calculation.afterValue ?? 'Not applicable')))), /*#__PURE__*/React.createElement("p", null, "Operating profit change: ", r.body.calculation.operatingProfitDeltaMillions, "m \xB7 EPS change: ", r.body.calculation.epsDelta), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, r.body.calculation.scope), /*#__PURE__*/React.createElement("blockquote", null, r.body.passage, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", r.body.sourceFilename))), r.body.answerSnapshot && /*#__PURE__*/React.createElement("blockquote", null, r.body.answerSnapshot.response_notes), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement("p", null, "Active weight: ", r.body.activeWeightPct, "% \xB7 ", r.body.mandate, " vs ", r.body.benchmark, " \xB7 as of ", r.body.asOf, (Date.now() - Date.parse(r.body.asOf)) / 86400000 > 30 ? ' · Inputs older than 30 days' : ''), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, r.body.calculation.scope), /*#__PURE__*/React.createElement("blockquote", null, r.body.passage, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", r.body.sourceFilename))), r.body.answerSnapshot && /*#__PURE__*/React.createElement("blockquote", null, r.body.answerSnapshot.response_notes), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement("p", null, "Active weight: ", r.body.activeWeightPct, "% \xB7 ", r.body.mandate, " vs ", r.body.benchmark, " \xB7 as of ", r.body.asOf, (Date.now() - Date.parse(r.body.asOf)) / 86400000 > 30 ? ' · Inputs older than 30 days' : ''), r.body.kind === 'followup' && /*#__PURE__*/React.createElement(MeetingAnswerProposal, {
+    key: r.id + ':' + r.revision,
+    api: api,
+    ticker: ticker,
+    record: r,
+    disabled: disabled || busy
+  }), r.body.kind === 'underweight' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => setDebate(r)
   }, "Challenge my underweight rationale"), /*#__PURE__*/React.createElement("p", null, "Review decision: ", (r.body.reviewDecision || 'pending').replaceAll('_', ' ')), r.body.reviewConditions?.map(c => /*#__PURE__*/React.createElement("p", {
     key: c.id

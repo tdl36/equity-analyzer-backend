@@ -2,6 +2,30 @@
 
 Updated: October 14, 2026
 
+## T303 — Recorded meeting answers to reviewable thesis proposals
+
+Saved follow-ups now offer explicit thesis comparison from their recorded answer.
+The server resolves the exact work revision, meeting/question IDs and answer hash,
+checks the current case/assumption, and freezes an attributed evidence snapshot.
+Only recorded answer text is citable; the question, analyst interpretation,
+resolution and next action are separate context. This is not a verified transcript.
+The existing amendment workflow handles checkpoints, independent review, before/
+after edits and investor acceptance; no live thesis writes occur on submission.
+Changed work/answers/case block dispatch and application. Stable request replay and
+one active thesis proposal prevent duplicate submission. Each meeting-evidence
+model call is reserved durably; an interrupted call without a saved stage cannot
+be replayed automatically. Existing document comparisons retain their own path.
+
+Lab links the selected ticker to the existing company review workbench. The original
+Pipeline and backfill synthesis pause remain unchanged. This fills a priority-6
+engineering gap, not end-to-end live acceptance or all eight priorities.
+Validation: 1,559 backend / 205 frontend tests pass, Python compile and production
+build pass; isolated 390/1280px component checks cover saved-revision submission,
+active-proposal blocking, review routing and separate question/answer/interpretation.
+No paid research or investor approval was executed. Release verification pending.
+Next: verify this handoff with an investor-requested real meeting/answer when chosen;
+continue Lab/whole-workspace acceptance and historical provider evidence gaps.
+
 ## T302 — Ready to process synthesis checklist
 
 Added a prominent Ready to process link in the desktop sidebar, mobile workspace

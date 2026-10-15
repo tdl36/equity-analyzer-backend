@@ -49,7 +49,7 @@ search, and a successful collection is not exhaustive coverage.
   Stale Mac snapshots and unavailable status are explicit. Existing collection
   schedules/history/recovery are linked per ticker.
 - Check selected originals validates stored bytes, permissions, IDs, nonempty
-  selections and pack bounds (8 originals, 15 MB each, 60 MB total).
+  selections and pack bounds (up to 1000 originals, 15 MB each, 60 MB total).
 - Import selected Research originals copies saved Research-storage selections with
   exact-byte receipts, atomic conflict handling and replay after lost responses.
   Originals remain in place; only that task’s selection changes. Import starts no
@@ -100,6 +100,16 @@ from the cards. The ticker is saved in the URL for reload/bookmark. Opening perf
 only reads: it does not add a portfolio thesis, discover sources or authorize paid
 research. Confirm company identity and source/output choices before explicitly
 submitting the coordinated assignment. Ticker syntax alone is not identity proof.
+
+### Connected meeting follow-through (T303)
+
+A ticker-specific Lab link opens the existing company review workbench. Saved
+meeting follow-ups can explicitly prepare thesis proposals from the exact recorded
+answer and saved work revision. The question, meeting, answer hash and analyst
+interpretation remain inspectable in proposal review. Recorded notes are not
+verified transcripts; only answer text is treated as citable evidence. Changed
+answers/case baselines require a fresh reviewed follow-up. No model work starts
+from opening the link, and no thesis edits are accepted automatically.
 
 ## Remaining acceptance and limits
 

@@ -714,7 +714,12 @@ function LabStock({
       if (noteUnsaved && !window.confirm('Leave unsaved note edits?')) e.preventDefault();
     },
     href: `#view=desk&ticker=${encodeURIComponent(ticker)}&section=collection`
-  }, "Open this stock\u2019s browser collection schedule, history & recovery \u2192")), /*#__PURE__*/React.createElement("hr", {
+  }, "Open this stock\u2019s browser collection schedule, history & recovery \u2192")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+    onClick: e => {
+      if (noteUnsaved && !window.confirm('Leave unsaved note edits?')) e.preventDefault();
+    },
+    href: `#view=stockanalysis&ticker=${encodeURIComponent(ticker)}&section=reviews`
+  }, "Connect meeting answers to thesis proposals in the research workbench \u2192")), /*#__PURE__*/React.createElement("hr", {
     style: {
       margin: '24px 0'
     }

@@ -79,10 +79,17 @@ answers and exposes due work. `src/research-workbench.jsx` exposes those records
 under company reviews. These pieces do not by themselves establish a complete
 meeting-answer-to-thesis workflow. Do not build a duplicate workbench.
 
-Remaining engineering audit: trace captured answers and unresolved questions all
-way into versioned evidence/thesis proposals. Identify missing explicit handoffs,
-retain original question/answer/source identities, and make draft creation
-idempotent. Never approve a recap or thesis to demonstrate the path.
+T303 engineering: saved answer follow-ups now submit directly to the existing
+thesis amendment workflow, retaining work revision, question/meeting/answer identity,
+answer hash and separate analyst interpretation. Current work/answer/case checks,
+request replay, source attribution, independent review and uncertain-call reservation
+are implemented. Proposal review exposes the frozen record; application remains an
+explicit investor action. Lab links to this existing workbench.
+
+Remaining: exercise an investor-requested real meeting follow-up through the saved
+proposal and review its factual/investment quality. Unanswered questions still stay
+in due-work rather than becoming fabricated evidence. Validate the full meeting →
+follow-up → proposal journey with real authorized input; synthetic tests are bounded.
 
 ## 7. Consistent visual polish
 
@@ -111,8 +118,8 @@ No paid calls solely for QA; no duplicate Operations worker or API entitlement.
 1. Verify/deploy the bounded Home/company navigation repairs from this audit.
 2. Continue the priority-2 historical evidence integration only with an actual
    permitted schema and field semantics; preserve unresolved gaps otherwise.
-3. Audit/implement the explicit answer-to-proposal handoff in priority 6 while
-   external evidence is unavailable; avoid another cycle of Lab-only cosmetic work.
+3. Complete real-input acceptance of the T303 answer-to-proposal handoff when
+   authorized input is chosen; continue independent workflow engineering meanwhile.
 4. Run the real assignment requested by the investor, if supplied, preserving
    its intended outputs and all approval boundaries. Do not invent a paid test.
 5. Fill this ledger with acceptance evidence and remaining defects. No automatic
