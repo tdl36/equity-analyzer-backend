@@ -37,6 +37,27 @@ collection -> explicit processing approval -> saved output remains unproven;
 no processing is authorized by this audit. Historical reference schema and
 investor acceptance gaps remain unchanged. Preserve backfill synthesis pause.
 
+T327 production verified: Render 6a76fa3283235dddb29bcbc7b3875e701f3dadbd;
+Cloudflare f7103aa2-b7c7-4cd7-86c2-5255094930a5. Exact JS/service-worker bytes
+and HTML marker match. Read-only auth/identity checks passed; Mac health reported
+ok (82.9 seconds). Activity had no unavailable dependencies, retained CVS running,
+reported existing background research/audio truncation, and had no full-note rows.
+
+Existing thesis destinations also returned HTTP 200 with exact ticker/draft IDs:
+ABT pending/non-stale, UNH already approved. Their registered filename/SHA-256 sets
+exactly match their saved assignments (8 and 6 respectively; zero missing/extra).
+These are pre-existing legacy decisions/receipts, not a new processing approval or
+proof of the collection-only handoff. A read during rollout returned transient 502;
+the bounded read was repeated after exact revision verification. No mutation,
+model call or original reprocessing occurred. Logs: /tmp/charlie-T327-{focused,
+backend,frontend,build,ui,deploy,verify,thesis-audit}.log.
+
+Next checkpoint: render the existing exact thesis-review destinations with their
+saved state and test unavailable/slow-response navigation without approving them;
+fix any demonstrated review-delivery issue. Then trace any newly completed existing
+collection into source readiness using read-only evidence. Do not synthesize the
+backfill, duplicate Operations collection, or label the eight priorities complete.
+
 ## T326 — Read-only Home inventory includes full Lab notes
 
 Activity/Home now includes queued/running standalone Lab notes, recovery cases,
