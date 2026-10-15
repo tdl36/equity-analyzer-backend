@@ -12,8 +12,15 @@ and reloads its receipt after an investor action. No approval is performed by th
 worker; investor identity is not exposed by this read response. Original Pipeline
 and stored research are unchanged.
 
-Validation and production verification pending. Next: source-review usability;
-real-run collection/source quality and investor acceptance still need evidence.
+Verified source/backend revision `c99f16466eb7697678c98bbe8799df54fe4a628e`;
+Cloudflare `4a74bde1-ff44-49b1-ad6f-cde18e66a914`. Hosted T272 HTML and exact
+JS/service-worker bytes matched; Mac heartbeat healthy (74.4 seconds old).
+1,532 safe backend tests, 181 frontend tests, compile, model policy and build passed.
+Synthetic 390px/1280px checks verified accepted older-note display and disabled
+repeat acceptance outside the recent list, reload and cross-stock refusal with
+zero write requests. No live research, approvals or paid QA were performed.
+Next: source-review usability; real-run collection/source quality and investor
+acceptance still need evidence.
 
 ## T271 — Exact full-note navigation
 
