@@ -49,6 +49,32 @@ not duplicate its worker. Live processing/investor acceptance, historical refere
 schema and eight-priority acceptance remain open. Original Pipeline and backfill
 synthesis pause are unchanged.
 
+T336 production verified: Render 249f8eb16aa55b54a0d9d752f46695beb45ee995;
+Cloudflare 86b12dfc-5214-4ed1-aa5a-e029bbbed7cc. Exact hosted JS/service-worker
+bytes and HTML marker match. Read-only history endpoint authentication, no-store
+response, empty inventory and existing persisted completed-job/summary receipt
+passed after backend restart. No model call, upload, approval or source body read.
+Activity has no unavailable dependencies; its existing research/audio truncation
+remains and full-note rows remain zero. Initial rollout 502s cleared. Initial agent
+health check was stale; it is not treated as successful validation.
+
+After confirming no current audio jobs or agent synthesis/upload dispatch since
+startup, performed the prescribed local-agent kickstart. The new process completed
+its startup inventory, started its heartbeat and reported healthy at 4.5 seconds.
+Restart log contained no traceback, paid upload start or synthesis dispatch.
+Verification: /tmp/charlie-T336-verify-confirmed.log and
+/tmp/charlie-T336-agent-verify.log; UI fixture and preflight evidence remain above.
+Documentation receipt uses [skip render] to avoid another backend restart.
+
+Fresh post-restart collection snapshot (32 seconds old) has CVS queued at default
+position 3 of 55 eligible requests with one occupied slot; all four saved searches
+remain pending. Queue movement is not source collection or end-to-end evidence.
+Next action: inspect the existing CVS request for genuine preserved-original/import
+receipts when Operations completes it, then exercise the linked source-selection/
+processing-proposal handoff without authorizing generation. Keep the live investor
+approval/accepted-output gap open; continue demonstrated independent engineering
+repairs while waiting. Do not repeat T336 or duplicate collection work.
+
 ## T335 — Explain collection queue eligibility and occupied slots
 
 Critical-path diagnosis used a read-only SQLite connection, not a collector claim:
