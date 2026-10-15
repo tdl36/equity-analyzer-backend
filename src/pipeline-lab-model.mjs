@@ -34,7 +34,8 @@ export function visibleLabDocuments(rows,query,group,sort) {
     });
 }
 
-export function recentLabDocuments(rows, days, now=Date.now()) {
+export function recentLabDocuments(rows, days, now=Date.now(), publishedOnly=false) {
+    if(publishedOnly)rows=rows.filter(r=>r.dateLabel==='Published'&&Number.isFinite(Date.parse(r.date))&&Date.parse(r.date)<=now);
     if(days==='all')return rows;
     const cutoff=now-Number(days)*86400000;
     return rows.filter(r=>Number.isFinite(Date.parse(r.date))&&Date.parse(r.date)>=cutoff&&Date.parse(r.date)<=now);

@@ -155,7 +155,8 @@ function LabStock({
     [checkResult, setCheckResult] = React.useState(null),
     [checking, setChecking] = React.useState(false),
     [pendingImport, setPendingImport] = React.useState(false),
-    [selectedOnly, setSelectedOnly] = React.useState(false);
+    [selectedOnly, setSelectedOnly] = React.useState(false),
+    [publishedOnly, setPublishedOnly] = React.useState(false);
   var lock = React.useRef(false),
     alive = React.useRef(true);
   React.useEffect(() => {
@@ -291,7 +292,7 @@ function LabStock({
       if (alive.current) setBusy(false);
     }
   };
-  var shown = visibleLabDocuments(recentLabDocuments(rows, recency), query, group, sort).filter(r => !selectedOnly || selection[task].includes(r.key)),
+  var shown = visibleLabDocuments(recentLabDocuments(rows, recency, Date.now(), publishedOnly), query, group, sort).filter(r => !selectedOnly || selection[task].includes(r.key)),
     selected = new Set(selection[task]);
   var missing = selection[task].filter(k => !rows.some(r => r.key === k));
   var toggle = key => setSelection(s => ({
@@ -368,6 +369,10 @@ function LabStock({
     value: "name"
   }, "Filename A\u2013Z"))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Types use recorded collection metadata when available; otherwise they are suggested from filenames. Recency uses the labeled date; undated sources remain in \u201CAll available dates\u201D. \u201CAdded\u201D and \u201CFile modified\u201D are not publication dates. Charlie and iCloud copies remain separate until their original bytes can be matched.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
+    checked: publishedOnly,
+    onChange: e => setPublishedOnly(e.target.checked)
+  }), " Use recorded publication dates only"), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("small", null, "Excludes added/modified dates, unknown dates and future dates from this view. Combine with Last 30 days to review recently published evidence. Hidden selections remain selected.")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
     checked: selectedOnly,
     onChange: e => setSelectedOnly(e.target.checked)
   }), " Review selected sources only (", selection[task].length, ")")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, selection[task].filter(k => !shown.some(r => r.key === k)).length, " selected source(s) outside this view, including missing sources. Filters do not change the saved selection.")), /*#__PURE__*/React.createElement("div", {
@@ -379,6 +384,12 @@ function LabStock({
       [task]: [...new Set([...s[task], ...shown.map(r => r.key)])]
     }))
   }, "Select visible (", shown.length, ")"), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !shown.some(r => selected.has(r.key)),
+    onClick: () => setSelection(s => ({
+      ...s,
+      [task]: s[task].filter(k => !shown.some(r => r.key === k))
+    }))
+  }, "Deselect visible"), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => setSelection(s => ({
       ...s,

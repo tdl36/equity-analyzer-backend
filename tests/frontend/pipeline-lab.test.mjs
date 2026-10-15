@@ -53,3 +53,19 @@ test('Lab output route retains the exact note identity across reloads',()=>{
  assert.equal(readRoute('#view=pipelinelab&ticker=ABT&work=labnote:bad').work,undefined);
  assert.equal(readRoute(routeHash('pipeline','ABT','','labnote:'+id)).work,undefined);
 });
+
+
+test('publication-only review excludes recent uploads and preserves the inventory',()=>{
+ const now=Date.parse('2026-10-14');
+ const rows=labDocuments([
+  {id:'thesis_1',filename:'recent.pdf',publishedDate:'2026-10-01'},
+  {id:'thesis_2',filename:'old.pdf',publishedDate:'2025-01-01',createdAt:'2026-10-13'},
+  {id:'thesis_3',filename:'upload.pdf',createdAt:'2026-10-13'},
+  {id:'thesis_4',filename:'invalid.pdf',publishedDate:'invalid'},
+  {id:'thesis_5',filename:'future.pdf',publishedDate:'2027-01-01'}
+ ],[{filename:'modified.pdf',modified:'2026-10-13'}]);
+ assert.deepEqual(recentLabDocuments(rows,'30',now,true).map(r=>r.filename),['recent.pdf']);
+ assert.deepEqual(recentLabDocuments(rows,'all',now,true).map(r=>r.filename),['recent.pdf','old.pdf']);
+ assert.equal(recentLabDocuments(rows,'all',now).length,6);
+ assert.equal(rows.length,6);
+});

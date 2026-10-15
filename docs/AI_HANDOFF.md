@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T273 — Publication-date source review
+
+Lab can now restrict the source view to recorded publication dates, excluding
+upload/modified dates, invalid dates and future dates. Combine with the existing
+recency/type/search filters to review recent publications without treating an old
+newly uploaded report as new evidence. The default inventory view is preserved.
+Deselect visible removes only the displayed task selections, preserving hidden
+and missing selections; neither filter nor selection edits start research or save
+automatically. Original Pipeline and source files are unchanged.
+
+Validation and deployment verification pending. Next: continue source-review and
+collection follow-through usability; real source-quality acceptance remains open.
+
 ## T272 — Revision-specific review receipts
 
 Direct Lab draft reads now include the exact revision's acceptance timestamp (or
