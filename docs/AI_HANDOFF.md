@@ -36,6 +36,22 @@ proposal storage/link path or invent real follow-up evidence. Live collection-on
 processing proof/investor acceptance and historical-reference schema remain open.
 Logs: /tmp/charlie-T332-{frontend,backend,build,ui,deploy,verify}.log.
 
+T332 production verified: Render fc876ea4aa781530652ea767026e10965a3f2cda;
+Cloudflare f8c52ac4-9551-4d06-bb0e-c810f6847dc0. Exact hosted JavaScript,
+service-worker bytes and HTML marker match. Read-only auth/identity guards pass;
+agent healthy (8.2 seconds). Activity reports no unavailable dependencies,
+unchanged research/audio truncation, CVS running and zero full-note rows. No
+collection or research dispatch, investor action or duplicate worker. Local
+fixture server stopped after testing. All intentional changes committed.
+
+Concrete next gap: ResearchWorkbench currently replaces its draft on New work,
+Review/update and Use historical version without a draft recovery copy or dirty
+warning; company remount also loses it. Add scoped unsaved-work recovery and
+explicit replacement handling around that existing workbench, preserving work/
+case revisions and any uncertain save request. Do not auto-save research, approve
+proposals or add another workbench. Empty live due queue cannot supply acceptance
+proof; source-only processing/investor and historical-schema gaps remain open.
+
 ## T331 — Independent unfinished thesis-review and event-note drafts
 
 Switching processing purpose previously reset outputs while carrying the same
