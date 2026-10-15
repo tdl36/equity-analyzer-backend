@@ -199,7 +199,7 @@ export function ActivityWorkspace({
     className: "activity-warning"
   }, "Some activity is unavailable: ", data.unavailable.join(', '), ". This is a partial snapshot."), !!data?.truncated?.length && /*#__PURE__*/React.createElement("p", {
     className: "activity-warning"
-  }, "Showing the first 200 unfinished items in ", data.truncated.join(', '), ". Open that workspace for more."), data && /*#__PURE__*/React.createElement("div", {
+  }, "This snapshot is limited in ", data.truncated.join(', '), ". Counts and search cover loaded items only. Saved research assignments also have a separate history below."), data && /*#__PURE__*/React.createElement("div", {
     className: "activity-health",
     "aria-label": "Collection delivery health"
   }, collectionHealth(data).map(h => /*#__PURE__*/React.createElement("div", {
@@ -238,7 +238,7 @@ export function ActivityWorkspace({
     role: "status"
   }, "Loading activity\u2026"), data && !rows.length && /*#__PURE__*/React.createElement("p", {
     className: "workspace-empty"
-  }, query ? 'No matching work.' : compact ? 'No current unfinished work. Older unresolved records remain in Activity.' : filter === 'focus' ? 'No current decisions or stalled jobs in this snapshot.' : filter === 'processing' ? 'No jobs currently reporting processing.' : filter === 'waiting' ? 'No jobs currently waiting.' : filter === 'older' ? 'No older unfinished records in this snapshot.' : 'No recently finished work in the last 24 hours.'), /*#__PURE__*/React.createElement("div", {
+  }, query ? 'No matching work in the loaded snapshot.' : compact ? 'No current unfinished work in this snapshot. Older unresolved records remain in Activity.' : filter === 'focus' ? 'No current decisions or stalled jobs in this snapshot.' : filter === 'processing' ? 'No jobs currently reporting processing.' : filter === 'waiting' ? 'No jobs currently waiting.' : filter === 'older' ? 'No older unfinished records in this snapshot.' : 'No recently finished work in the last 24 hours.'), /*#__PURE__*/React.createElement("div", {
     className: "activity-list"
   }, rows.map(r => /*#__PURE__*/React.createElement("article", {
     className: 'activity-row activity-' + r.bucket,

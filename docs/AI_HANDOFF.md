@@ -2,6 +2,41 @@
 
 Updated: October 14, 2026
 
+## T327 — Assignment visibility survives background backfill
+
+Home/Activity gives coordinating research assignments separate attention, active
+and recent query budgets from other mp_jobs. Busy evidence/collection queues can
+no longer displace all assignment progress, recovery or recent delivery entries.
+Queries remain bounded and read-only, retain NULL-stage legacy work, and preserve
+existing parent/child deduplication. Recent-result truncation is now reported too.
+The UI explicitly limits counts/search to loaded items; an empty filtered snapshot
+is not a claim that no matching saved work exists. Assignment history remains the
+independent route to older assignments. No shared approval-dashboard expansion.
+
+Read-only live delivery check: ABT recovered one-pager and summary, plus UNH saved
+one-pager, all returned HTTP 200. Saved HTML renders at 390/1280px without page
+horizontal overflow; the UNH embedded image loads. Representative screenshots
+inspected. This establishes route/render availability, not source accuracy,
+investment quality or investor acceptance. Private bodies/screenshots remain in
+restricted /tmp/charlie-output-audit, outside the repository. Live T326 Activity
+included CVS running but reported background research/audio truncation; the
+assignment starvation risk was reproduced with disposable database fixtures,
+not claimed as an observed missing CVS row.
+
+Validation: 22 focused backend tests (including >200 background items in each
+status group, retained assignments, NULL-stage work and unchanged stored rows),
+235 frontend tests, Python compilation and production frontend build pass.
+Synthetic actual-component browser checks at 390/1280px verify partial-snapshot
+warnings, search-empty wording and existing exact-note navigation with GET-only
+fixtures. Full safe backend suite: 1,672 tests passed. Release verification follows below.
+
+Next: verify exact deployed revision/assets and live bounded inventory. Then
+inspect the existing thesis-review destinations for ABT/UNH and source-to-output
+identity continuity without making research decisions. Genuine completed
+collection -> explicit processing approval -> saved output remains unproven;
+no processing is authorized by this audit. Historical reference schema and
+investor acceptance gaps remain unchanged. Preserve backfill synthesis pause.
+
 ## T326 — Read-only Home inventory includes full Lab notes
 
 Activity/Home now includes queued/running standalone Lab notes, recovery cases,

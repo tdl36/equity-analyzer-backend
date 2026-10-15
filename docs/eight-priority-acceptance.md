@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T327 isolates assignment inventory from background backfill budgets and reports
+recent truncation. Existing ABT/UNH saved previews returned HTTP 200 and rendered
+at phone/desktop widths. This is delivery/layout evidence, not investor or new
+collection-to-processing acceptance. All eight certifications remain open.
+
 T326 adds bounded read-only full-note inventory to Home/Activity, with exact
 revision acceptance, conservative parent deduplication and partial/unavailable
 states. Safe backend and synthetic UI tests pass; live journey acceptance stays open.

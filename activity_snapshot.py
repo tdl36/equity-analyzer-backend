@@ -182,17 +182,22 @@ def create_blueprint(get_db):
                     error='NULL::text' if table=='agent_runs' else 'error'
                     # Independent budgets prevent busy queues from hiding blocked work.
                     projection=f'id,{ticker} AS ticker,status,{error} AS error,created_at,{updated} AS updated_at,{extra}'
-                    selected=[]
-                    for condition,params,kind in (
-                        ('status IN %s',(ATTENTION,), 'attention'),
-                        ('status NOT IN %s AND status NOT IN %s',(TERMINAL,ATTENTION), 'active'),
-                    ):
-                        cur.execute(f'SELECT {projection} FROM {table} WHERE {condition} ORDER BY {updated} DESC,id DESC LIMIT 201',params)
-                        group=list(cur.fetchall())
-                        if len(group)>200:truncated.append(label+' ('+kind+')')
-                        selected.extend(group[:200])
-                    cur.execute(f"SELECT {projection} FROM {table} WHERE status IN %s AND {updated}>NOW()-INTERVAL '24 hours' ORDER BY {updated} DESC LIMIT 20",(TERMINAL,))
-                    for r in selected+list(cur.fetchall()):rows.append({**dict(r),'source':table,'label':label,'view':view})
+                    # Coordinated assignments must remain visible even when background
+                    # evidence/collection jobs saturate the shared mp_jobs table.
+                    scopes=[("stage='research_assignment'",'Research assignments'),
+                            ("stage IS DISTINCT FROM 'research_assignment'",label)] if table=='mp_jobs' else [('TRUE',label)]
+                    for scope,scope_label in scopes:
+                        selected=[]
+                        for condition,params,kind,limit in (
+                            ('status IN %s',(ATTENTION,), 'attention',200),
+                            ('status NOT IN %s AND status NOT IN %s',(TERMINAL,ATTENTION), 'active',200),
+                            (f"status IN %s AND {updated}>NOW()-INTERVAL '24 hours'",(TERMINAL,), 'recent',20),
+                        ):
+                            cur.execute(f'SELECT {projection} FROM {table} WHERE ({scope}) AND ({condition}) ORDER BY {updated} DESC,id DESC LIMIT {limit+1}',params)
+                            group=list(cur.fetchall())
+                            if len(group)>limit:truncated.append(scope_label+' ('+kind+')')
+                            selected.extend(group[:limit])
+                        for r in selected:rows.append({**dict(r),'source':table,'label':label,'view':view})
             except Exception:unavailable.append(label)
         try:
             from lab_note_activity import inventory

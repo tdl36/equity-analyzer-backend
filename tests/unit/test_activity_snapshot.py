@@ -81,6 +81,28 @@ class ActivityPostgresTests(unittest.TestCase):
   finally:
    with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'review-%'")
 
+ def test_background_backlogs_cannot_hide_assignment_delivery_or_recovery(self):
+  with self.db(True) as (_,c):
+   for status in ('running','attention','complete'):
+    c.execute("INSERT INTO mp_jobs SELECT 'scope-'||%s||i,'auto_evidence_intake','TEST',%s,NULL,'{\"private\":\"source\"}','{}',NOW(),NOW() FROM generate_series(1,205)i",(status,status))
+    c.execute("INSERT INTO mp_jobs VALUES('scope-assignment-'||%s,'research_assignment','ABT',%s,NULL,'{\"private\":\"source\"}','{}',NOW()-INTERVAL '2 hours',NOW()-INTERVAL '2 hours')",(status,status))
+   # Legacy NULL stages belong to other workflows and must not disappear.
+   c.execute("INSERT INTO mp_jobs VALUES('scope-null',NULL,'TEST','queued',NULL,'{}','{}',NOW(),NOW()+INTERVAL '1 second')")
+   c.execute("SELECT id,status,input,result,updated_at FROM mp_jobs ORDER BY id");before=c.fetchall()
+  try:
+   app=Flask(__name__);app.register_blueprint(create_blueprint(self.db));d=app.test_client().get('/api/activity').json
+   self.assertEqual(d['unavailable'],[])
+   ids=[x['jobId'] for x in d['items']]
+   self.assertEqual(len(ids),len(set(ids)))
+   self.assertTrue({'scope-assignment-running','scope-assignment-attention','scope-assignment-complete','old','scope-null'}<=set(ids))
+   self.assertTrue(all('Research workflows ('+k+')' in d['truncated'] for k in ('active','attention','recent')))
+   self.assertFalse(any(x.startswith('Research assignments') for x in d['truncated']))
+   self.assertNotIn('private',str(d))
+   with self.db() as (_,c):
+    c.execute("SELECT id,status,input,result,updated_at FROM mp_jobs ORDER BY id");self.assertEqual(c.fetchall(),before)
+  finally:
+   with self.db(True) as (_,c):c.execute("DELETE FROM mp_jobs WHERE id LIKE 'scope-%'")
+
  def test_alerts_ignore_unrelated_backlog_and_recovered_child(self):
   with self.db(True) as (_,c):
    c.execute("INSERT INTO mp_jobs SELECT 'alert-noise-'||i,'evidence_amendment','TEST','attention',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,250)i")
@@ -174,7 +196,7 @@ class ActivityPostgresTests(unittest.TestCase):
    with self.db(True) as (_,c):
     c.execute("INSERT INTO mp_jobs SELECT 'alert-attention-'||i,'research_assignment','TEST','attention','Review','{}','{}',NOW(),NOW() FROM generate_series(1,205)i")
    d=app.test_client().get('/api/activity').json
-   self.assertIn('Research workflows (attention)',d['truncated'])
+   self.assertIn('Research assignments (attention)',d['truncated'])
    with self.db() as (_,c):
     c.execute("SELECT status FROM mp_jobs WHERE id='alert-blocked'");self.assertEqual(c.fetchone()['status'],'attention')
   finally:
