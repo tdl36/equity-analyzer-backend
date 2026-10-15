@@ -275,14 +275,24 @@ def create_blueprint(get_db, call_model, get_key, model_identity=lambda: 'defaul
         tk=ticker.strip().upper()
         if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,19}',tk): return jsonify(error='Invalid ticker'),400
         if request.method=='GET':
-            focus=request.args.get('requestId')
-            if focus is not None:
-                try:uuid.UUID(focus)
-                except (ValueError,TypeError,AttributeError):return jsonify(error='Invalid proposal identity'),400
+            focus=request.args.get('requestId');work=request.args.get('workId')
+            if focus is not None and work is not None:return jsonify(error='Choose a proposal or a follow-up identity, not both'),400
+            for identity in (focus,work):
+                if identity is not None:
+                    try:uuid.UUID(identity)
+                    except (ValueError,TypeError,AttributeError):return jsonify(error='Invalid proposal or follow-up identity'),400
+            where=" FROM mp_jobs WHERE ticker=%s AND stage=%s AND COALESCE(input->>'target','thesis')='thesis'"
+            extra={}
             with get_db() as (_,cur):
-                cur.execute("SELECT id,ticker,status,result,error,created_at,updated_at,input->>'commandId' AS command_id,input->'workEvidence' AS work_evidence,input->>'recoverable' AS recoverable,input->>'autoRecoveryAttempts' AS recovery_attempts FROM mp_jobs WHERE ticker=%s AND stage=%s AND COALESCE(input->>'target','thesis')='thesis'" + (" AND id=%s" if focus else "") + " ORDER BY created_at DESC LIMIT 10",(tk,STAGE,focus) if focus else (tk,STAGE))
+                condition=" AND id=%s" if focus else " AND input->'workEvidence'->>'id'=%s" if work else ""
+                cur.execute("SELECT id,ticker,status,result,error,created_at,updated_at,input->>'commandId' AS command_id,input->'workEvidence' AS work_evidence,input->>'recoverable' AS recoverable,input->>'autoRecoveryAttempts' AS recovery_attempts" + where + condition + " ORDER BY created_at DESC,id DESC LIMIT " + ('31' if work else '10'),(tk,STAGE,focus or work) if focus or work else (tk,STAGE))
                 rows=[dict(r) for r in cur.fetchall() or []]
-            response=jsonify(jobs=rows);response.headers['Cache-Control']='no-store';return response
+                if work:
+                    cur.execute("SELECT id,ticker,status" + where + " AND status IN ('queued','running','awaiting_approval') ORDER BY created_at DESC,id DESC LIMIT 1",(tk,STAGE))
+                    active=cur.fetchone()
+                    extra=dict(workId=work,truncated=len(rows)>30,activeProposal=dict(active) if active else None)
+                    rows=rows[:30]
+            response=jsonify(jobs=rows,**extra);response.headers['Cache-Control']='no-store';return response
         return submit(tk, request.get_json(silent=True) or {})
 
     @bp.post('/api/research/investment-case/<ticker>/proposals')

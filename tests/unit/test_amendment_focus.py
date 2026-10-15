@@ -20,6 +20,7 @@ class FocusTests(unittest.TestCase):
                 assert sql.startswith('SELECT ')
                 self.cursor=parent.db.execute(sql.replace('%s','?'),args)
             def fetchall(self):return self.cursor.fetchall()
+            def fetchone(self):return self.cursor.fetchone()
         @contextmanager
         def db(commit=False):
             self.assertFalse(commit)
@@ -53,3 +54,31 @@ class FocusTests(unittest.TestCase):
     def test_malformed_identity_rejected(self):
         for value in ['','bad','%27%20OR%201=1']:
             self.assertEqual(self.read(identity=value).status_code,400)
+
+    def test_followup_lookup_finds_older_links_and_separate_active_company_job(self):
+        work='33333333-3333-4333-8333-333333333333'
+        self.db.execute("UPDATE mp_jobs SET status='failed'")
+        self.db.execute("UPDATE mp_jobs SET status='awaiting_approval' WHERE id=?",(JOB,))
+        for id,ticker,body,stage in [
+            ('old-linked','ABT',{'workEvidence':{'id':work,'revision':1}},'evidence_amendment'),
+            ('other-company','CVS',{'workEvidence':{'id':work,'revision':1}},'evidence_amendment'),
+            ('other-target','ABT',{'target':'investment_case','workEvidence':{'id':work,'revision':1}},'evidence_amendment'),
+            ('other-stage','ABT',{'workEvidence':{'id':work,'revision':1}},'research_assignment')]:
+            self.add(id,ticker,'2020-01-01',body,stage)
+        r=self.client.get('/api/research/amendments/ABT?workId='+work)
+        self.assertEqual(r.status_code,200);d=r.json
+        self.assertEqual([j['id'] for j in d['jobs']],['old-linked'])
+        self.assertEqual(d['workId'],work);self.assertFalse(d['truncated'])
+        self.assertEqual(d['activeProposal']['id'],JOB)
+        self.assertEqual(r.headers['Cache-Control'],'no-store')
+        self.model.assert_not_called();self.key.assert_not_called()
+    def test_followup_history_is_bounded_with_explicit_truncation(self):
+        work='33333333-3333-4333-8333-333333333333'
+        for i in range(31):self.add(f'linked-{i:02}','ABT','2020-01-01',{'workEvidence':{'id':work,'revision':i+1}})
+        d=self.client.get('/api/research/amendments/ABT?workId='+work).json
+        self.assertEqual(len(d['jobs']),30);self.assertTrue(d['truncated'])
+        d=self.client.get('/api/research/amendments/ABT?workId='+JOB).json
+        self.assertEqual(d['jobs'],[]);self.assertFalse(d['truncated'])
+    def test_ambiguous_and_malformed_followup_filters_are_rejected(self):
+        for query in ['workId=','workId=bad','workId='+JOB+'&requestId='+JOB]:
+            self.assertEqual(self.client.get('/api/research/amendments/ABT?'+query).status_code,400)

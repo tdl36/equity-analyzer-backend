@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T316 — Follow-up proposal links and atomic history navigation
+
+Meeting-answer follow-ups now retrieve their own proposal history independently
+of the company's ten recent jobs, preserving each saved follow-up revision and an
+exact review link. The read is bounded to 30 with explicit truncation. A separate
+company-active-proposal lookup checks all dates and prevents an unrelated active
+proposal from being misidentified as this follow-up's result. Empty, failed and
+identity-mismatched reads stay distinct; failed refreshes retain saved links while
+blocking new submission. Reads never authorize processing or accept research.
+
+The full-app journey exposed a shared routing defect: native hash/popstate events
+under the legacy React root committed view/section/work changes separately, adding
+mixed-destination history entries. Those restore updates are now batched. A single
+Back/Forward restores the originating company review or exact saved proposal,
+including after reload. No execution worker or original Pipeline was changed.
+
+Validation: 29 focused backend tests, 1,632 safe backend tests, 215 frontend tests,
+Python compilation and production build pass. Full-app synthetic 390/1280px checks
+cover follow-up revision/identity, older links, active-company separation, empty vs
+error, reload and back/forward with zero API writes. The earlier Activity exact-link
+and rejected-mock-decision regression also passes at both widths. Production
+verification follows; no real proposal was submitted, dismissed or accepted.
+
+Next critical path: recheck the existing genuine collection-only assignment's saved
+stage once, without waking/restarting collection, then inspect exact-byte receipts
+and processing-proposal readiness if it completed. Investor-specific processing
+approval remains separate. Independent job-recovery gap: meeting-answer proposal
+submission identity currently survives only in memory; persist the exact unresolved
+intent across reload and reconcile it without dispatching another paid comparison.
+Reuse the existing proposal endpoint, work revision and review route. Shared Ready
+expansion still follows genuine connected-journey proof; all broader acceptance
+gaps remain in the eight-priority ledger.
+
 ## T315 — Preserve rejected review-action messages
 
 Follow-up to the T314 exact evidence-proposal navigation fix: focused read errors

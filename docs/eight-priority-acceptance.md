@@ -118,6 +118,11 @@ request replay, source attribution, independent review and uncertain-call reserv
 are implemented. Proposal review exposes the frozen record; application remains an
 explicit investor action. Lab links to this existing workbench.
 
+T316 links each recorded-answer follow-up to its exact saved thesis proposal,
+including older records, and repairs mixed-route browser history. Bounded history,
+company-active separation and mobile/desktop reload/back-forward have synthetic
+evidence; no genuine proposal was generated or accepted in these checks.
+
 Remaining: exercise an investor-requested real meeting follow-up through the saved
 proposal and review its factual/investment quality. Unanswered questions still stay
 in due-work rather than becoming fabricated evidence. Validate the full meeting →

@@ -101,7 +101,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-15T315';
+        const BUILD_VERSION = '2026-10-15T316';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -10125,8 +10125,13 @@ Regulatory, execution, or macro risks that could derail the thesis:
             useEffect(() => {
                 const restore = () => {
                     const route = readRoute(window.location.hash);
-                    setWorkspaceTicker(route.ticker);
-                    openWorkspaceCompany(route.ticker, route.view, route.section || '', route.work || '');
+                    // Native history events are not automatically batched by this
+                    // legacy React root. Publish one destination, never a mixed
+                    // old-view/new-section route that creates phantom Back entries.
+                    ReactDOM.unstable_batchedUpdates(() => {
+                        setWorkspaceTicker(route.ticker);
+                        openWorkspaceCompany(route.ticker, route.view, route.section || '', route.work || '');
+                    });
                 };
                 window.addEventListener('popstate', restore);
                 window.addEventListener('hashchange', restore);
