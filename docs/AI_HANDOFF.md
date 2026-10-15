@@ -35,6 +35,30 @@ request-specific processing authorization and investor acceptance remain necessa
 for live proof; historical valuation still needs permitted schema/security semantics.
 No paid QA, automatic synthesis, investor action or duplicate collection worker.
 
+T334 production verified: Render a217fb4ab04a440ffc3c81e3c9079d941e8f5fe8;
+Cloudflare f4b9a4da-152d-4ec5-a735-22c51b9e3cc6. Exact hosted JavaScript,
+service-worker bytes and HTML marker match. Read-only auth/identity guards pass;
+agent health ok (19 seconds). Activity has no unavailable dependencies, unchanged
+research/audio truncation, CVS running and zero full-note rows. No live work save,
+processing approval or investor acceptance occurred.
+
+Critical-path read at 22:56 UTC: CVS collection-only assignment
+6cdf8f71-0e5c-49c4-838a-525c0731a105 remains running with its linked collection
+queued and zero source receipts. The retained cloud command is applied; the Mac
+snapshot includes the exact linked request, no issue and a recent worker-awake
+report. This narrows the wait beyond cloud delivery; it does not prove browser
+collection progress or identify its cause. Focused assignment/control GETs did not
+wake, claim, retry or dispatch collection. Metadata log: /tmp/charlie-T334-journey.log.
+
+Next concrete action: inspect existing collector queue eligibility, fair-claim order
+and active lease metadata for this acknowledged request. Determine whether it is
+legitimately waiting behind work or blocked; preserve active leases and frozen
+requests. Do not duplicate Operations, restart/claim work or infer an import failure
+from zero receipts. If a code defect is demonstrated, repair/test it; otherwise
+record the exact dependency and continue substantive authorized engineering.
+The acceptance ledger's obsolete workspace-first next-step list now follows the
+agreed critical-path sequence. All eight certifications and live proof stay open.
+
 ## T333 — Recoverable unfinished research-workbench edits
 
 The existing workbench now retains a bounded company/API-scoped browser-session

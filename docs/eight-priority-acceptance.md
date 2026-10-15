@@ -233,14 +233,22 @@ No paid calls solely for QA; no duplicate Operations worker or API entitlement.
 
 ## Next execution order
 
-1. Continue Home/company acceptance beyond the shipped navigation repairs and
-   T304 Lab selection recovery: saved-object back/forward, keyboard focus, long
-   content and unavailable-service states. Preserve the synthesis pause.
-2. Continue the priority-2 historical evidence integration only with an actual
-   permitted schema and field semantics; preserve unresolved gaps otherwise.
-3. Complete real-input acceptance of the T303 answer-to-proposal handoff when
-   authorized input is chosen; continue independent workflow engineering meanwhile.
-4. Run the real assignment requested by the investor, if supplied, preserving
-   its intended outputs and all approval boundaries. Do not invent a paid test.
-5. Fill this ledger with acceptance evidence and remaining defects. No automatic
-   conversion of unresolved external/provider/investor dependencies to “done”.
+Follow `charlie-finish-sequence.md`; this order supersedes the earlier workspace-first
+list. T334 reconciled this ledger after the bounded workspace recovery repairs.
+
+1. Close/prove the existing collection-to-processing handoff for one stock, keeping
+   longitudinal thesis review and event debrief distinct. Inspect genuine receipts
+   and source readiness; require request-specific investor processing authorization.
+   Preserve legacy collection-only authorization and frozen selections.
+2. Repair demonstrated source-to-output defects. Track discovery coverage, accepted-
+   thesis evidence and newly available evidence separately. Preserve saved output
+   links, partial progress and uncertain-call recovery. Do not make a paid QA run.
+3. Expand the shared approval view only after that connected-journey proof. Reuse
+   existing coordinator/workers; processing approval and research acceptance differ.
+4. While external evidence is unavailable, continue independent substantive gaps:
+   historical valuation only with permitted reference schema/security semantics,
+   then saved-object Home/company reconciliation and real output quality checks.
+   Do not let further cosmetic work displace a demonstrated critical-path defect.
+5. Record real authorized follow-up/assignment delivery and investor review in this
+   ledger. Synthetic tests, deployed code and legacy output rendering are separate
+   evidence; unresolved provider/investor dependencies do not become “done”.
