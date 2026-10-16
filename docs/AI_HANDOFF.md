@@ -25,6 +25,18 @@ and continue through the existing Operations collector, exact-byte source receip
 selected processing proposal, explicit authorization and saved drafts. Shared
 approval expansion and all eight acceptance certifications remain open.
 
+T378 production verified: Render `77f62f5e27fdb03127764a473ab184f943f80b83`,
+Cloudflare `19f9c309-abd4-4c85-904e-6d2768cc3d06`. Hosted JS/service-worker
+bytes and HTML match. Exact assignment authentication/identity and preparation/
+readiness guards pass. These are read-only deployment checks; interruption handling
+is validated with synthetic tests, not a deliberately induced production failure.
+CVS remains attention, collection queued, zero verified originals; saved Mac report
+is 2026-10-16T09:55:40.191385+00:00. No resume, new collector, proposal approval or
+paid generation was invoked. Next: reconcile the existing CVS coordinator/Operations
+interruption and continue the authorized collection into a selected processing
+proposal. Real processing requires request-specific approval; live journey and
+investor acceptance remain open.
+
 ## T377 — Retain unfinished assignment intent across company navigation
 
 The direct assignment form previously kept purpose, dates, output choices and focus
