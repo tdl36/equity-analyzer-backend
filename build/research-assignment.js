@@ -324,7 +324,7 @@ function AssignmentWorkspace({
     "aria-label": "End-to-end research"
   }, focusId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("button", {
     onClick: onClearFocus
-  }, "All assignments for ", ticker, " / Start new research")), savedSubmission && /*#__PURE__*/React.createElement("section", {
+  }, "\u2190 All saved packages for ", ticker)), savedSubmission && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Recover assignment submission"
   }, /*#__PURE__*/React.createElement("h4", null, "Resolve a saved submission"), /*#__PURE__*/React.createElement("p", null, savedSubmission.researchPurpose?.kind === 'event_note' ? 'Event note' : savedSubmission.researchPurpose?.kind === 'thesis_review' ? 'Thesis review' : 'Legacy research', " \xB7 ", savedSubmission.ticker, " \xB7 ", savedSubmission.since, "\u2013", savedSubmission.until, " \xB7 ", outputNames(savedSubmission.outputs), ". A browser interruption left this request unresolved; this does not mean research failed. The exact request is retained across reloads in this browser tab."), /*#__PURE__*/React.createElement("p", null, "Request ", savedSubmission.requestId), /*#__PURE__*/React.createElement("button", {
     disabled: busy,

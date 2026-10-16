@@ -213,7 +213,7 @@ export function InvestmentCase({
   }))), /*#__PURE__*/React.createElement("button", {
     disabled: busy || dirty || !ticker.trim(),
     onClick: load
-  }, "Open investment case"))), dirty && /*#__PURE__*/React.createElement("p", null, "Save your edits before switching companies. To discard them, use ", /*#__PURE__*/React.createElement("button", {
+  }, initialTab === 'stock-analysis' ? 'Open company research' : 'Open investment case'))), dirty && /*#__PURE__*/React.createElement("p", null, "Save your edits before switching companies. To discard them, use ", /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => {
       setDirty(false);

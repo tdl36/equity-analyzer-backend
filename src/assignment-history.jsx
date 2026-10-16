@@ -3,11 +3,11 @@ import {historyPage,appendHistory} from './assignment-history-model.mjs';
 import {activityAge} from './activity-model.mjs';
 import {routeHash} from './workspace-model.mjs';
 
-export function AssignmentHistory({api,ticker=''}) {
- return <HistoryBrowser key={api+'|'+ticker} api={api} ticker={ticker}/>;
+export function AssignmentHistory({api,ticker='',expanded=false}) {
+ return <HistoryBrowser key={api+'|'+ticker} api={api} ticker={ticker} expanded={expanded}/>;
 }
-function HistoryBrowser({api,ticker}) {
- const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState(''),[filter,setFilter]=React.useState('');
+function HistoryBrowser({api,ticker,expanded}) {
+ const [open,setOpen]=React.useState(expanded),[query,setQuery]=React.useState(''),[filter,setFilter]=React.useState('');
  const [state,setState]=React.useState({rows:[],cursor:null,loaded:false,busy:false});
  const generation=React.useRef(0),active=React.useRef(null),locked=React.useRef(false);
  async function load(more=false) {
@@ -32,9 +32,11 @@ function HistoryBrowser({api,ticker}) {
  },[api,open,filter]);
  const statuses={complete:'Finished · review saved outputs',completed:'Finished · review saved outputs',attention:'Needs attention',running:'In progress',queued:'Waiting',cancelled:'Stopped',stopped:'Stopped'};
  return <section className="activity-archive" aria-label="Saved assignment archive">
-  <button onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{open?'Close assignment archive':ticker?`Find older ${ticker} assignments`:'Find older assignments'}</button>
+  <h3>{ticker?`${ticker} saved research packages`:'Saved research packages'}</h3>
+  <p>Open an existing package to review its available one-pager, summary and thesis changes. Collection-only requests contain sources; unfinished requests show progress.</p>
+  <button onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{open?'Hide saved packages':'Show saved packages'}</button>
   {open&&<>
-   <h3>{ticker?`${ticker} saved assignments`:'Saved assignments'}</h3><p>{ticker?'Browse all saved dates for this company.':'Browse across dates and companies.'} Finished work still requires your review.</p>
+   <p>{ticker?'Browse all saved dates for this company.':'Browse across dates and companies.'} Finished work still requires your review.</p>
    {!ticker&&<form className="activity-toolbar" onSubmit={e=>{e.preventDefault();const value=query.trim().toUpperCase();if(value===filter)load();else setFilter(value);}}>
     <label>Company ticker <input value={query} maxLength={30} onChange={e=>setQuery(e.target.value)} placeholder="All companies" aria-label="Archive company ticker" pattern="[A-Za-z0-9.\-]*"/></label>
     <button type="submit" disabled={state.busy}>Find assignments</button>
@@ -45,7 +47,7 @@ function HistoryBrowser({api,ticker}) {
    {state.rows.map(row=><article className="activity-row" key={row.id}>
     <div className="activity-company"><strong>{row.ticker}</strong><small>{statuses[row.status]||'Inspect saved status'}</small></div>
     <div className="activity-detail"><small>Created {activityAge(row.created_at)} · Updated {activityAge(row.updated_at)}</small></div>
-    <a className="activity-open" href={routeHash('stockanalysis',row.ticker,'stock-analysis','assignment:'+row.id)}>Open saved assignment ↗<span className="sr-only"> {row.ticker}</span></a>
+    <a className="activity-open" href={routeHash('stockanalysis',row.ticker,'stock-analysis','assignment:'+row.id)}>Open package →<span className="sr-only"> {row.ticker}</span></a>
    </article>)}
    {state.cursor&&<button disabled={state.busy} onClick={()=>load(true)}>{state.error?'Retry older assignments':'Load older assignments'}</button>}
    {state.error&&!state.cursor&&<button disabled={state.busy} onClick={()=>load()}>Retry archive</button>}

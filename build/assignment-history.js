@@ -4,19 +4,22 @@ import { activityAge } from './activity-model.mjs';
 import { routeHash } from './workspace-model.mjs';
 export function AssignmentHistory({
   api,
-  ticker = ''
+  ticker = '',
+  expanded = false
 }) {
   return /*#__PURE__*/React.createElement(HistoryBrowser, {
     key: api + '|' + ticker,
     api: api,
-    ticker: ticker
+    ticker: ticker,
+    expanded: expanded
   });
 }
 function HistoryBrowser({
   api,
-  ticker
+  ticker,
+  expanded
 }) {
-  var [open, setOpen] = React.useState(false),
+  var [open, setOpen] = React.useState(expanded),
     [query, setQuery] = React.useState(''),
     [filter, setFilter] = React.useState('');
   var [state, setState] = React.useState({
@@ -95,10 +98,10 @@ function HistoryBrowser({
   return /*#__PURE__*/React.createElement("section", {
     className: "activity-archive",
     "aria-label": "Saved assignment archive"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("h3", null, ticker ? `${ticker} saved research packages` : 'Saved research packages'), /*#__PURE__*/React.createElement("p", null, "Open an existing package to review its available one-pager, summary and thesis changes. Collection-only requests contain sources; unfinished requests show progress."), /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(v => !v),
     "aria-expanded": open
-  }, open ? 'Close assignment archive' : ticker ? `Find older ${ticker} assignments` : 'Find older assignments'), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, ticker ? `${ticker} saved assignments` : 'Saved assignments'), /*#__PURE__*/React.createElement("p", null, ticker ? 'Browse all saved dates for this company.' : 'Browse across dates and companies.', " Finished work still requires your review."), !ticker && /*#__PURE__*/React.createElement("form", {
+  }, open ? 'Hide saved packages' : 'Show saved packages'), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, ticker ? 'Browse all saved dates for this company.' : 'Browse across dates and companies.', " Finished work still requires your review."), !ticker && /*#__PURE__*/React.createElement("form", {
     className: "activity-toolbar",
     onSubmit: e => {
       e.preventDefault();
@@ -129,7 +132,7 @@ function HistoryBrowser({
   }, /*#__PURE__*/React.createElement("small", null, "Created ", activityAge(row.created_at), " \xB7 Updated ", activityAge(row.updated_at))), /*#__PURE__*/React.createElement("a", {
     className: "activity-open",
     href: routeHash('stockanalysis', row.ticker, 'stock-analysis', 'assignment:' + row.id)
-  }, "Open saved assignment \u2197", /*#__PURE__*/React.createElement("span", {
+  }, "Open package \u2192", /*#__PURE__*/React.createElement("span", {
     className: "sr-only"
   }, " ", row.ticker)))), state.cursor && /*#__PURE__*/React.createElement("button", {
     disabled: state.busy,

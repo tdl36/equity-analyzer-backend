@@ -1,6 +1,6 @@
 // Charlie - Equity Analyzer Service Worker
 // BUILD_VERSION is updated on each deploy to trigger cache invalidation
-const BUILD_VERSION = '20261016-378';
+const BUILD_VERSION = '20261016-379';
 const CACHE_NAME = 'charlie-' + BUILD_VERSION;
 
 const STATIC_ASSETS = [

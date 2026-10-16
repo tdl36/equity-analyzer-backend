@@ -292,7 +292,11 @@ export function StockAnalysis({
     className: "sa-heading"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("small", null, "CHARLIE / STOCK RESEARCH STUDIO"), /*#__PURE__*/React.createElement("h3", null, "Understand the business.", /*#__PURE__*/React.createElement("br", null), "Test the investment case."), /*#__PURE__*/React.createElement("p", null, "Structured research, a source-linked visual, and a record of what changed.")), /*#__PURE__*/React.createElement("div", {
     className: "sa-company"
-  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), /*#__PURE__*/React.createElement("section", {
+  }, /*#__PURE__*/React.createElement("strong", null, ticker), /*#__PURE__*/React.createElement("span", null, revision ? 'Case baseline R' + revision : 'No saved case baseline'))), !assignmentFocus && /*#__PURE__*/React.createElement(AssignmentHistory, {
+    api: api,
+    ticker: ticker,
+    expanded: true
+  }), /*#__PURE__*/React.createElement("section", {
     "aria-label": "Saved assignments"
   }, /*#__PURE__*/React.createElement(ResearchAssignment, {
     focusId: assignmentFocus,
@@ -305,10 +309,7 @@ export function StockAnalysis({
       setSelected(id);
       setReload(x => x + 1);
     }
-  })), /*#__PURE__*/React.createElement(AssignmentHistory, {
-    api: api,
-    ticker: ticker
-  }), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
+  })), !assignmentFocus && /*#__PURE__*/React.createElement(React.Fragment, null, error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error, " ", /*#__PURE__*/React.createElement("button", {
     onClick: () => setReload(x => x + 1)

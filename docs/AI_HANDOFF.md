@@ -2,6 +2,25 @@
 
 Updated: October 14, 2026
 
+## T379 — Make saved research packages visible on the normal company route
+
+Stock Analysis now opens the existing read-only assignment archive above the
+research controls, headed COMPANY saved research packages. Each row links directly
+to its exact package with Open package; older pages remain accessible. Package
+review has an explicit All saved packages for COMPANY return action. The company
+picker now says Open company research in this workspace. Collection-only and
+unfinished requests are described separately from available research outputs.
+No new inventory service, worker or generation action was introduced.
+
+Validation: all 298 frontend tests and production build pass. New synthetic browser
+checks at 390/1280 verify initially visible packages, exact package links, older
+pagination, company isolation and failed-read recovery using GET fixtures only.
+Backend code is unchanged; no paid QA or investor approval performed. This addresses
+the user's demonstrated navigation failure, not analytical/investor acceptance.
+Next: verify hosted T379 and the ordinary ABT company entry; finish review of the
+existing recovered ABT package. CVS collection and the newer explicitly approved
+processing journey remain open. The recurring improvement automation stays deleted.
+
 ## T378 — Preserve saved assignment outcomes after coordinator interruption
 
 The coordinator's outer error handler could demote a completed or failed assignment
