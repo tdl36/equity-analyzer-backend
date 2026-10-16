@@ -34,6 +34,13 @@ repair existing nonempty provenance under this release. The shared approval
 expansion, historical reference schema and eight acceptance certifications remain
 open. Do not repeat T350–T358 saved-output/source-recovery repairs.
 
+T358 production verified: Render `ae781040f7ff40effbb290ec54dca3ab55f2d955`,
+Cloudflare `f2e0a474-1dbf-4734-80ad-aeb77ac24774`. Hosted JS/service-worker exact
+bytes and T358 HTML match. Original-import route rejects GET with 405 and an
+unauthenticated empty POST with 401 before import. Lab ABT configuration GET passes.
+Positive metadata repair remains synthetic; no production metadata/original changes,
+research calls, approvals or agent restart occurred. Log: /tmp/charlie-T358-verify.log.
+
 ## T357 — Verify assignment meeting destinations before exposing outputs
 
 Command assignment inspection previously trusted preparation.input.meetingId and

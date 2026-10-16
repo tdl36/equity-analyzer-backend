@@ -8,6 +8,8 @@ T358 preserves validated document type, author evidence and event topic when the
 existing explicit repair path fills empty original metadata. New imports and
 repairs retain identical provenance; nonempty metadata and originals stay protected.
 Regression/replay/input checks pass synthetically; no production repair was made.
+Exact release and hosted import authentication verified; no new collection,
+processing authorization or investor acceptance evidence is implied.
 
 T357 verifies command assignment → preparation → meeting company identity before
 exposing sources, versions and navigation; ambiguous links remain explicit.
