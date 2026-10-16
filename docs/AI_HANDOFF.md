@@ -2,6 +2,44 @@
 
 Updated: October 14, 2026
 
+## T347 — Edit recovery opens the confirmed immutable revision
+
+Critical-path saved-output repair: full-note edit saves formerly ignored the write
+receipt, removed both browser recovery copies and opened the latest revision. A
+lost-response replay after another edit could therefore display someone else's
+later revision; a follow-up read failure could remove the only local recovery copy.
+The existing save now verifies note identity, expected successor revision, draft
+status and replay flag, then reads that exact revision and verifies its title/text
+before clearing local recovery. Read or receipt failures preserve the frozen edit
+identity and text. No alternate revision is selected; supplementary history stays
+independent. Navigation while confirmation is outstanding retains the submission.
+
+A definitive write rejection preserves the original baseline in local recovery
+before releasing the frozen submission. Recovering an older edit while viewing a
+newer note cannot silently turn it into an edit against that newer baseline.
+Investor explicitly opens the original revision to compare/copy/correct it; normal
+server conflict protection remains. A read failure after a successful write is not
+classified as a rejected write. Existing generation/acceptance endpoints and original
+Pipeline are unchanged; automatic synthesis remains paused. No backend runtime or
+agent change, no paid calls, no live edits or investor acceptance.
+
+Validation: 11 focused frontend tests, 265 full frontend and 1,768 safe backend
+tests pass. Actual-component synthetic browser fixtures at 390/1280px verify wrong
+receipts/text, failed exact read (including HTTP 409), same-body replay despite a
+newer revision, original conflict baseline and navigation during confirmation.
+Previous T346 history/read/edit-buffer regression fixtures also pass. No overflow
+or browser errors; screenshots inspected. Fixture saves are simulated, never live.
+Logs: /tmp/charlie-T347-{focused,frontend,backend,ui,regression,build}.log.
+
+Latest focused live read at 02:13 UTC: CVS running, linked collection queued,
+zero source receipts, collection-only true, existing browser worker awake. This is
+not a collection/import or approved processing completion. Next verify exact
+release and hosted read-only contracts. Then trace genuine collected receipts into
+a selected processing proposal when available; processing waits for investor
+request-specific authorization. All eight acceptance certifications and historical
+reference-schema gap remain open. Do not repeat completed edit/history audits or
+expand the dashboard before the connected-journey proof.
+
 ## T346 — Exact Lab notes remain readable during history outages
 
 Critical-path saved-output repair from the T345 reproduction: the focused full-note

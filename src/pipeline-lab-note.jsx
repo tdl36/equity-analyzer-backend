@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {checkedNote,checkedNoteHistory} from './pipeline-lab-note-model.mjs';
+import {checkedNote,checkedNoteHistory,confirmedNoteEdit} from './pipeline-lab-note-model.mjs';
 import NoteProvenance from './lab-note-provenance';
 import {readEditBuffer,writeEditBuffer} from './pipeline-lab-edit-buffer.mjs';
 const reasons={parent_stopped:"The parent assignment was stopped. No further note batches will start. An already dispatched call may finish; saved replies and drafts are retained.",provider_outcome_unknown:'Provider outcome is uncertain. Do not start a replacement: inspect the saved call before spending again.',preflight_failed:'Credentials, budget, input size or token-count service need attention. No new generation was dispatched by this preflight.',worker_interrupted:'The worker stopped or lost its lease. Reconcile saved progress before continuing.',source_check_failed:'A frozen original is missing, changed or cannot be represented. Restore the exact original or review a new selection.',saved_reply_needs_review:'The reply was saved but could not be interpreted safely. It will not be regenerated automatically.',intermediate_reply_truncated:'A saved batch reached its output limit. Further generation stopped.',merge_context_exceeds_bound:'The merged note exceeds its input bound. Further generation stopped.'};
@@ -33,18 +33,21 @@ function LabNoteWorkspace({api,ticker,selection,read,renderHtml,focusId='',onUns
   }catch(e){if(current(token)&&historyToken===historyRequest.current)setHistoryError(e.message);}
   finally{if(current(token)&&historyToken===historyRequest.current)setHistoryLoading(false);}
  };
+ const displayNote=(d,token)=>{
+  if(!current(token))return;
+  setText(d.markdown);setTitle(d.title);setEditing(false);setDraft(d);
+  setHistory([]);setNextBefore(null);setHistoryError('');
+  // History is supplementary; it cannot hide or replace an exact saved draft.
+  void loadHistory(d.noteId,token);
+  requestAnimationFrame(()=>{if(current(token))review.current?.scrollIntoView({block:'start'});});
+ };
  const open=async(id,revision)=>{
   if(!alive.current)return;
   const token=++noteRequest.current;historyRequest.current++;
   setNoteTarget({id,revision});setNoteLoading(true);setError('');setHistoryLoading(false);
   try{
    const d=checkedNote(await read(api,`/api/pipeline-lab/notes/${encodeURIComponent(id)}${revision!==undefined?'?revision='+revision:''}`),id,ticker,revision);
-   if(!current(token))return;
-   setText(d.markdown);setTitle(d.title);setEditing(false);setDraft(d);
-   setHistory([]);setNextBefore(null);setHistoryError('');
-   // History is supplementary; it cannot hide or replace an exact saved draft.
-   void loadHistory(id,token);
-   requestAnimationFrame(()=>{if(current(token))review.current?.scrollIntoView({block:'start'});});
+   displayNote(d,token);
   }catch(e){if(current(token))setError(e.status===404?'The requested note revision is unavailable. No other note was substituted.':e.message);}
   finally{if(current(token))setNoteLoading(false);}
  };
@@ -52,7 +55,31 @@ function LabNoteWorkspace({api,ticker,selection,read,renderHtml,focusId='',onUns
  const older=()=>{if(!historyLoading&&draft)void loadHistory(draft.noteId,noteRequest.current,nextBefore);};
  React.useEffect(()=>{setPendingEdit(false);setLocalRecovery(null);setCompareEdits(false);setBufferError('');if(!draft)return;try{const raw=sessionStorage.getItem(key+':edit:'+draft.noteId);if(!raw){try{const buffer=readEditBuffer(sessionStorage,bufferKey(draft.noteId));if(buffer){if(buffer.revision===draft.revision){setTitle(buffer.title);setText(buffer.markdown);setEditing(true);}else setLocalRecovery(buffer);}}catch(e){setLocalRecovery({unreadable:true});setBufferError(e.message);}return;}const body=JSON.parse(raw);if(!body||typeof body.eventId!=='string'||!Number.isInteger(body.expectedRevision)||typeof body.title!=='string'||typeof body.markdown!=='string')throw Error('Pending edit is unreadable. Preserve this browser session for recovery.');setPendingEdit(true);setTitle(body.title);setText(body.markdown);setEditing(true);}catch(e){setPendingEdit(true);setError(e.message);}},[key,draft]);
  const start=()=>action(async()=>{let body=JSON.parse(sessionStorage.getItem(key)||'null');if(!body){if(!selection)throw Error('Save and check note sources first.');body={requestId:crypto.randomUUID(),revision:selection.revision,digest:selection.digest,allowPdfText};sessionStorage.setItem(key,JSON.stringify(body));}if(sessionStorage.getItem(key)!==JSON.stringify(body))throw Error('Could not preserve the submission identity. Nothing was sent.');setPending(true);try{await post(`/api/pipeline-lab/note-jobs/${ticker}`,body);sessionStorage.removeItem(key);setPending(false);await load();}catch(e){if([400,409].includes(e.status)){sessionStorage.removeItem(key);setPending(false);}throw e;}});
- const save=()=>action(async()=>{const editKey=key+':edit:'+draft.noteId;let body=JSON.parse(sessionStorage.getItem(editKey)||'null');if(!body){body={eventId:crypto.randomUUID(),expectedRevision:draft.revision,title,markdown:text};sessionStorage.setItem(editKey,JSON.stringify(body));}if(sessionStorage.getItem(editKey)!==JSON.stringify(body))throw Error('Could not preserve the edit identity. Nothing was sent.');setPendingEdit(true);try{await post(`/api/pipeline-lab/notes/${draft.noteId}/revisions`,body);sessionStorage.removeItem(editKey);sessionStorage.removeItem(bufferKey(draft.noteId));setPendingEdit(false);await open(draft.noteId);await load();}catch(e){if([400,409].includes(e.status)){sessionStorage.removeItem(editKey);setPendingEdit(false);}throw e;}});
+ const save=()=>action(async()=>{
+  const id=draft.noteId,token=noteRequest.current,editKey=key+':edit:'+id;
+  let body=JSON.parse(sessionStorage.getItem(editKey)||'null');
+  if(!body){body={eventId:crypto.randomUUID(),expectedRevision:draft.revision,title,markdown:text};sessionStorage.setItem(editKey,JSON.stringify(body));}
+  if(sessionStorage.getItem(editKey)!==JSON.stringify(body))throw Error('Could not preserve the edit identity. Nothing was sent.');
+  setPendingEdit(true);
+  let saved;
+  try{saved=await confirmedNoteEdit({post,read:path=>read(api,path),id,ticker,body});}
+  catch(e){
+   if(current(token)&&e.editRejected){
+    // Preserve the original baseline, especially when recovery opened a newer note.
+    const recovery={revision:body.expectedRevision,title:body.title,markdown:body.markdown};
+    writeEditBuffer(sessionStorage,bufferKey(id),recovery);
+    sessionStorage.removeItem(editKey);setPendingEdit(false);setEditing(false);
+    setLocalRecovery(recovery);setCompareEdits(false);
+   }
+   throw e;
+  }
+  if(!current(token))return;
+  // A verified immutable version now holds this exact text centrally. A failed
+  // read, mismatched receipt or navigation never clears the frozen submission.
+  sessionStorage.removeItem(bufferKey(id));sessionStorage.removeItem(editKey);
+  setPendingEdit(false);setNoteTarget({id,revision:saved.revision});
+  displayNote(saved,token);await load();
+ });
  const download=format=>action(async()=>{const r=await fetch(api+`/api/pipeline-lab/notes/${draft.noteId}/export?revision=${draft.revision}&format=${format}`);if(!r.ok){const d=await r.json();throw Error(d.error||'Export unavailable.');}const url=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=url;a.download=`${ticker}-Lab-note-v${draft.revision}.${format}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});
  const prose=value=>renderHtml?<div dangerouslySetInnerHTML={{__html:renderHtml(value)}}/>:<div style={{whiteSpace:'pre-wrap'}}>{value}</div>;
  return <section className="workspace-panel" style={{marginTop:24}} aria-label="Full Lab research notes"><p className="workspace-eyebrow">FULL RESEARCH NOTE · VERSIONED DRAFT</p><h3>Write, review and retain your research</h3><p>Uses your checked note selection and a frozen copy of the existing thesis. The approved research model may make up to eight batch calls, capped at 32,000 output tokens each. Central credentials and the monthly budget apply. Generation spends credits; acceptance is a separate investor action.</p>

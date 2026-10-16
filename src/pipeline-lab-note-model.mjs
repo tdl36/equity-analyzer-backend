@@ -26,3 +26,23 @@ export function checkedNoteHistory(value,id,ticker,before=null) {
   throw Error('Version history has an invalid continuation. The open note is unchanged.');
  return value;
 }
+
+// Confirm the immutable edit receipt and its exact saved text before clearing recovery.
+export async function confirmedNoteEdit({post,read,id,ticker,body}) {
+ let receipt;
+ try { receipt=await post(`/api/pipeline-lab/notes/${encodeURIComponent(id)}/revisions`,body); }
+ catch(error) {
+  // Only a definitive rejection of the write releases its frozen submission.
+  // A read failure after a successful write must retain that same identity.
+  const failure=new Error(error.message);
+  failure.editRejected=[400,409].includes(error.status);
+  throw failure;
+ }
+ if(!receipt||receipt.noteId!==id||!revisionNumber(receipt.revision)||
+    receipt.revision!==body.expectedRevision+1||receipt.status!=='draft'||typeof receipt.replayed!=='boolean')
+  throw Error('The edit receipt does not confirm the submitted revision. Your frozen edit is retained for reconciliation.');
+ const saved=checkedNote(await read(`/api/pipeline-lab/notes/${encodeURIComponent(id)}?revision=${receipt.revision}`),id,ticker,receipt.revision);
+ if(saved.title!==body.title.trim()||saved.markdown!==body.markdown)
+  throw Error('The saved revision does not match the submitted text. Your frozen edit is retained for reconciliation.');
+ return saved;
+}

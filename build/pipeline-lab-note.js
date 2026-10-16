@@ -1,6 +1,6 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
-import { checkedNote, checkedNoteHistory } from './pipeline-lab-note-model.mjs';
+import { checkedNote, checkedNoteHistory, confirmedNoteEdit } from './pipeline-lab-note-model.mjs';
 import NoteProvenance from './lab-note-provenance';
 import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
 var reasons = {
@@ -150,6 +150,23 @@ function LabNoteWorkspace({
       if (current(token) && historyToken === historyRequest.current) setHistoryLoading(false);
     }
   };
+  var displayNote = (d, token) => {
+    if (!current(token)) return;
+    setText(d.markdown);
+    setTitle(d.title);
+    setEditing(false);
+    setDraft(d);
+    setHistory([]);
+    setNextBefore(null);
+    setHistoryError('');
+    // History is supplementary; it cannot hide or replace an exact saved draft.
+    void loadHistory(d.noteId, token);
+    requestAnimationFrame(() => {
+      if (current(token)) review.current?.scrollIntoView({
+        block: 'start'
+      });
+    });
+  };
   var open = async (id, revision) => {
     if (!alive.current) return;
     var token = ++noteRequest.current;
@@ -163,21 +180,7 @@ function LabNoteWorkspace({
     setHistoryLoading(false);
     try {
       var d = checkedNote(await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(id)}${revision !== undefined ? '?revision=' + revision : ''}`), id, ticker, revision);
-      if (!current(token)) return;
-      setText(d.markdown);
-      setTitle(d.title);
-      setEditing(false);
-      setDraft(d);
-      setHistory([]);
-      setNextBefore(null);
-      setHistoryError('');
-      // History is supplementary; it cannot hide or replace an exact saved draft.
-      void loadHistory(id, token);
-      requestAnimationFrame(() => {
-        if (current(token)) review.current?.scrollIntoView({
-          block: 'start'
-        });
-      });
+      displayNote(d, token);
     } catch (e) {
       if (current(token)) setError(e.status === 404 ? 'The requested note revision is unavailable. No other note was substituted.' : e.message);
     } finally {
@@ -255,7 +258,9 @@ function LabNoteWorkspace({
     }
   });
   var save = () => action(async () => {
-    var editKey = key + ':edit:' + draft.noteId;
+    var id = draft.noteId,
+      token = noteRequest.current,
+      editKey = key + ':edit:' + id;
     var body = JSON.parse(sessionStorage.getItem(editKey) || 'null');
     if (!body) {
       body = {
@@ -268,20 +273,44 @@ function LabNoteWorkspace({
     }
     if (sessionStorage.getItem(editKey) !== JSON.stringify(body)) throw Error('Could not preserve the edit identity. Nothing was sent.');
     setPendingEdit(true);
+    var saved;
     try {
-      await post(`/api/pipeline-lab/notes/${draft.noteId}/revisions`, body);
-      sessionStorage.removeItem(editKey);
-      sessionStorage.removeItem(bufferKey(draft.noteId));
-      setPendingEdit(false);
-      await open(draft.noteId);
-      await load();
+      saved = await confirmedNoteEdit({
+        post,
+        read: path => read(api, path),
+        id,
+        ticker,
+        body
+      });
     } catch (e) {
-      if ([400, 409].includes(e.status)) {
+      if (current(token) && e.editRejected) {
+        // Preserve the original baseline, especially when recovery opened a newer note.
+        var recovery = {
+          revision: body.expectedRevision,
+          title: body.title,
+          markdown: body.markdown
+        };
+        writeEditBuffer(sessionStorage, bufferKey(id), recovery);
         sessionStorage.removeItem(editKey);
         setPendingEdit(false);
+        setEditing(false);
+        setLocalRecovery(recovery);
+        setCompareEdits(false);
       }
       throw e;
     }
+    if (!current(token)) return;
+    // A verified immutable version now holds this exact text centrally. A failed
+    // read, mismatched receipt or navigation never clears the frozen submission.
+    sessionStorage.removeItem(bufferKey(id));
+    sessionStorage.removeItem(editKey);
+    setPendingEdit(false);
+    setNoteTarget({
+      id,
+      revision: saved.revision
+    });
+    displayNote(saved, token);
+    await load();
   });
   var download = format => action(async () => {
     var r = await fetch(api + `/api/pipeline-lab/notes/${draft.noteId}/export?revision=${draft.revision}&format=${format}`);

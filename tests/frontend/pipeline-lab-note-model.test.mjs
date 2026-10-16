@@ -28,3 +28,40 @@ test('wrong note company duplicate or out-of-page history cannot replace metadat
   assert.throws(()=>checkedNoteHistory({...value,...patch},'one','ABT'));
  assert.throws(()=>checkedNoteHistory(value,'one','ABT',3));
 });
+
+const {confirmedNoteEdit}=await import('../../src/pipeline-lab-note-model.mjs');
+const body={eventId:'stable-edit',expectedRevision:1,title:'  Edited  ',markdown:'Frozen edit text'};
+const receipt={noteId:'one',revision:2,status:'draft',replayed:false};
+const edited={...note,title:'Edited',markdown:body.markdown};
+test('edit reconciliation reads the receipt revision even when newer edits exist',async()=>{
+ for(const replayed of [false,true]){
+  const calls=[];
+  const result=await confirmedNoteEdit({id:'one',ticker:'ABT',body,
+   post:async(path,value)=>{calls.push(path);assert.equal(value,body);return {...receipt,replayed};},
+   read:async path=>{calls.push(path);return edited;}});
+  assert.equal(result,edited);
+  assert.deepEqual(calls,['/api/pipeline-lab/notes/one/revisions','/api/pipeline-lab/notes/one?revision=2']);
+ }
+});
+test('invalid edit receipts cannot clear recovery or request another saved note',async()=>{
+ for(const patch of [{noteId:'other'},{revision:3},{revision:'2'},{status:'accepted'},{replayed:undefined}]){
+  await assert.rejects(confirmedNoteEdit({id:'one',ticker:'ABT',body,
+   post:async()=>({...receipt,...patch}),read:async()=>assert.fail('No read after invalid receipt')}),/receipt/);
+ }
+});
+test('saved edit text and exact revision are verified before confirmation',async()=>{
+ for(const patch of [{markdown:'Someone else’s edit'},{title:'Different'},{revision:3},{ticker:'CVS'},{noteId:'other'}]){
+  await assert.rejects(confirmedNoteEdit({id:'one',ticker:'ABT',body,
+   post:async()=>receipt,read:async()=>({...edited,...patch})}));
+ }
+});
+test('only definitive write rejection releases an edit, never subsequent read failure',async()=>{
+ for(const status of [400,409,500,undefined]){
+  const error=Object.assign(new Error('Synthetic failure'),{status});
+  await assert.rejects(confirmedNoteEdit({id:'one',ticker:'ABT',body,
+   post:async()=>{throw error;},read:async()=>assert.fail('No read after rejected write')}),
+   e=>e.editRejected===[400,409].includes(status));
+  await assert.rejects(confirmedNoteEdit({id:'one',ticker:'ABT',body,
+   post:async()=>receipt,read:async()=>{throw error;}}),e=>!e.editRejected);
+ }
+});

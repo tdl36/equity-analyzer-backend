@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T347 confirms the exact saved edit revision and text before releasing local recovery;
+rejected older edits retain their original baseline. These are synthetic recovery
+checks, not live note edits, processing proof or investor acceptance.
+
 T346 validates exact full-note/revision reads and keeps saved notes visible during
 history outages, preserving local edits and uncertain-save buffers. Failure/recovery
 checks are synthetic; no real full-note processing or investor acceptance occurred.
