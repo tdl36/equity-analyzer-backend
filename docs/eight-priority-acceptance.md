@@ -7,7 +7,8 @@ None of the eight priorities is certified complete merely by this audit.
 T360 carries known text truncation and omitted spreadsheet sheets through new
 full-note proposal readiness, frozen execution and saved draft review. Legacy
 frozen plans retain prior representations/warnings. Synthetic end-to-end storage
-and replay pass; no real generation or investor acceptance is implied.
+and replay pass; no real generation or investor acceptance is implied. Exact hosted
+revision/assets and unfinished-collection/authentication read guards verified.
 
 T359 rejects duplicate original bytes in every new processing proposal, including
 collection-only selections without optional wider-library fields. Synthetic tests

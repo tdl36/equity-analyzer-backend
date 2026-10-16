@@ -39,6 +39,16 @@ zero receipts; Operations owns browser collection. Do not substitute more harden
 releases for this missing live proof. Shared approval expansion, historical schema
 and all eight acceptance certifications remain open.
 
+T360 production verified: Render `bfe00b0d57dcdd157b3df62fbf3603c74773f938`,
+Cloudflare `2063532d-340e-421a-9221-77d21b4eb160`. Hosted JS/service-worker exact
+bytes and HTML marker match. Authenticated unfinished-collection library/source/
+proposal reads remain blocked; unauthenticated library access is rejected. Activity
+read passed. Truncation disclosure, assignment execution and frozen legacy replay
+are synthetically tested; no production note/proposal was generated or approved.
+Release checkpoint complete. Next remains genuine collection receipts, investor
+source selection/processing authorization, saved outputs and research review.
+Verification logs: /tmp/charlie-T360-{deploy,verify}.log.
+
 ## T359 — Reject duplicate original bytes in every new processing proposal
 
 The new-proposal save path checked duplicate SHA-256 values only when the optional
