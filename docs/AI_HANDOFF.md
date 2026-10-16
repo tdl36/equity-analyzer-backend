@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T384 — Retain completed package without background polling errors
+
+Focused terminal assignments stop polling after their confirmed saved read. This
+prevents later background timeouts from obscuring a successfully opened package.
+A failed assignment read has a visible retry; interrupted editor JSON bodies now
+produce a recoverable message instead of an undefined-field exception. 302 frontend
+tests, build, and 390/1280 browser fixtures pass, including a synthetic timer tick
+that makes no additional assignment request after terminal completion. Backend
+unchanged. T383 was verified on Render 69413e8c19cebaf389e3b85aab1e99fdb6a07040
+and Cloudflare cf4d8785-3f32-4812-8921-ffc06fa56773 with exact asset bytes.
+The real ABT package and one-pager opened in the existing browser; slow asset/body
+transfers also occurred. Next: verify T384 and finish live editor/navigation checks.
+
 ## T383 — Prevent background reads starving Stock Analysis
 
 Research-page GETs now have a separate bounded two-request lane from the four

@@ -11,10 +11,11 @@ export function PackageEditor({job,api}) {
  const dirty=!!data&&(JSON.stringify(analysis)!==JSON.stringify(data.draft.package.analysis)||Object.entries(words).some(([id,v])=>v!==data.edition.record.claims.find(c=>c.correctionId===id)?.proposal.statement));
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  React.useEffect(()=>{if(!dirty&&!attempt.current)return;const warn=e=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
- async function call(path,body) {const r=await fetch(api+path,{...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),signal:AbortSignal.timeout(60000)});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Unable to save. Your edits are retained; retry the same save.');return d;}
+ async function call(path,body) {const r=await fetch(api+path,{...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),signal:AbortSignal.timeout(60000)});let d;try{d=await r.json();}catch{throw Error('The editor response was interrupted. Your saved package and edits are unchanged. Try opening the editor again.');}if(!r.ok)throw Error(d.error||'Unable to save. Your edits are retained; retry the same save.');return d;}
  async function act(fn){if(locked.current)return;locked.current=true;setBusy(true);setError('');try{await fn();}catch(e){if(live.current)setError(e.message);}finally{locked.current=false;if(live.current)setBusy(false);}}
  async function load(){
   const [draft,pack]=await Promise.all([call('/api/thesis-imports/'+packageRef.thesisDraftId),call(base+'/onepager-editions')]);
+  if(!Array.isArray(pack.editions)||!draft.package)throw Error('The editor response is incomplete. Your saved package is unchanged. Try opening the editor again.');
   const edition=pack.editions.find(e=>e.id===packageRef.editionId);
   if(!edition||draft.id!==packageRef.thesisDraftId||draft.ticker!==job.ticker||pack.assignmentId!==job.id||pack.runId!==job.result.reportId)throw Error('The saved package could not be matched. Reload the assignment.');
   if(!live.current)return;

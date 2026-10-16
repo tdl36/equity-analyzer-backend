@@ -51,7 +51,12 @@ export function PackageEditor({
       }),
       signal: AbortSignal.timeout(60000)
     });
-    var d = await r.json().catch(() => ({}));
+    var d;
+    try {
+      d = await r.json();
+    } catch {
+      throw Error('The editor response was interrupted. Your saved package and edits are unchanged. Try opening the editor again.');
+    }
     if (!r.ok) throw Error(d.error || 'Unable to save. Your edits are retained; retry the same save.');
     return d;
   }
@@ -71,6 +76,7 @@ export function PackageEditor({
   }
   async function load() {
     var [draft, pack] = await Promise.all([call('/api/thesis-imports/' + packageRef.thesisDraftId), call(base + '/onepager-editions')]);
+    if (!Array.isArray(pack.editions) || !draft.package) throw Error('The editor response is incomplete. Your saved package is unchanged. Try opening the editor again.');
     var edition = pack.editions.find(e => e.id === packageRef.editionId);
     if (!edition || draft.id !== packageRef.thesisDraftId || draft.ticker !== job.ticker || pack.assignmentId !== job.id || pack.runId !== job.result.reportId) throw Error('The saved package could not be matched. Reload the assignment.');
     if (!live.current) return;

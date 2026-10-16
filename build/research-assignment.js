@@ -77,6 +77,7 @@ function AssignmentWorkspace({
     meetingType
   } = formRecovery.form;
   var [setPurpose, setEventTitle, setEventDate, setCollectionLimit, setCollectionOnly, setFullNote, setNotePdfText, setSince, setUntil, setChosen, setHorizon, setInstruction, setVisualFundamentals, setMeetingDate, setMeetingType] = ['purpose', 'eventTitle', 'eventDate', 'collectionLimit', 'collectionOnly', 'fullNote', 'notePdfText', 'since', 'until', 'chosen', 'horizon', 'instruction', 'visualFundamentals', 'meetingDate', 'meetingType'].map(formRecovery.edit);
+  var [listReload, setListReload] = React.useState(0);
   var [jobs, setJobs] = React.useState([]),
     [loaded, setLoaded] = React.useState(false),
     [busy, setBusy] = React.useState(false),
@@ -144,17 +145,19 @@ function AssignmentWorkspace({
   }, [api, !!origin, !!labSelection]);
   React.useEffect(() => {
     var live = true,
-      inflight = false;
+      inflight = false,
+      finished = false;
     generation.current++;
     setJobs([]);
     setLoaded(false);
     setPreview(null);
     var load = async () => {
-      if (inflight) return;
+      if (inflight || finished) return;
       inflight = true;
       try {
         var d = await request(listPath);
         var rows = assignmentRows(d, ticker);
+        finished = !!focusId && rows.length === 1 && ['complete', 'completed', 'cancelled', 'stopped'].includes(rows[0].status);
         if (live) {
           setJobs(rows);
           setLoaded(true);
@@ -177,7 +180,7 @@ function AssignmentWorkspace({
       generation.current++;
       clearInterval(timer);
     };
-  }, [api, ticker, focusId]);
+  }, [api, ticker, focusId, listReload]);
   var collectionCallback = React.useRef(onCollectionComplete),
     seenCollections = React.useRef(null);
   collectionCallback.current = onCollectionComplete;
@@ -338,7 +341,9 @@ function AssignmentWorkspace({
     })
   }, "Retry exact saved request"), /*#__PURE__*/React.createElement("p", null, "Retrying uses the same identity and cannot restart an existing assignment. Existing failed research stages still require their separate recovery controls.")), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, error), /*#__PURE__*/React.createElement("p", {
+  }, "Saved assignments could not be refreshed. Your loaded package is retained. ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setListReload(x => x + 1)
+  }, "Retry loading saved assignments")), /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, message), focusId && !loaded && !error && /*#__PURE__*/React.createElement("p", {
     role: "status"
