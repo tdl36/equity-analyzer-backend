@@ -24,6 +24,15 @@ Real collection receipts and request-specific processing authorization remain op
 Operations owns browser coverage reconciliation. Engineering and synthetic proof
 do not close the eight-priority investor/live acceptance ledger.
 
+T364 production verified: Render `0a03c0945d7fa506c62959d060fc924e4088f1f0`,
+Cloudflare `d0648601-ba2e-4851-b756-40d0a4c98fa9`. Hosted JS/service-worker
+bytes and HTML match. Read-only CVS remains running / queued with zero verified
+sources. Invalid-ID/authentication and all three unfinished-parent preparation
+guards pass; two transient 502 read responses recovered on bounded read-only
+retry. No coordinator wake, production write, approval or paid call was used.
+Next checkpoint remains genuine collection receipts → explicitly approved selected
+proposal → saved drafts. All eight live/investor acceptance certifications stay open.
+
 ## T363 — Supplemental source ambiguity is detected before proposal approval
 
 A source selected by supplemental document ID could save in a processing proposal

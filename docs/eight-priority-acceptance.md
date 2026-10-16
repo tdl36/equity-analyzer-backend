@@ -8,6 +8,8 @@ T364 verifies selected storage IDs before first full-note enqueue, including old
 Lab selections without a frozen representation plan. Synthetic replacement/partial
 identity rejection and source-to-draft/frozen-replay checks pass. Legacy hash-only
 receipts remain supported. No new live generation or investor acceptance is implied.
+Exact hosted revision/assets and unfinished-parent/auth read guards verified.
+CVS remains queued with zero verified source receipts.
 
 T363 detects supplemental filename ambiguity before saving a processing proposal,
 preventing an existing late approval failure. Synthetic preservation, scoped identity,
