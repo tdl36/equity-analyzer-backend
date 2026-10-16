@@ -40,6 +40,25 @@ acceptance is claimed; historical schema and all eight acceptance certifications
 remain open. Backfill synthesis remains paused. Agent source and original Pipeline
 unchanged; no restart required. Local CLI loads the updated module on invocation.
 
+T340 production verified: Render f5c5ee64c43c84832f00d397bbe1528f14ac4aac;
+Cloudflare 9b25e355-7105-4d56-8d9c-21c2e99867d1. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy (1.2s), no restart required. Read-only
+source/proposal authentication and scope checks pass. Activity has no unavailable
+dependencies, unchanged research/audio truncation and zero full-note rows.
+Verification: /tmp/charlie-T340-verify.log. Local claim recovery is proven only
+with isolated CLI/concurrency fixtures; no live claim was made for validation.
+
+Post-release read-only local ledger has the new table but zero attempt receipts:
+Operations adoption is not yet demonstrated. Latest cloud snapshot reports CVS
+queued at position 51 with four pending searches and zero source receipts, but is
+199 seconds old and therefore stale under the 180-second collection threshold.
+Do not present that position as current or treat healthy agent heartbeat as fresh
+collection delivery. Next: verify fresh collection sync and receipt-protocol use by
+the existing worker, then follow genuine CVS original/import receipts into selected
+processing approval. No live queue, owner, source or approval was changed here.
+Live journey, investor acceptance and historical schema remain open. Docs-only
+receipt uses [skip render]; unrelated dirty files preserved.
+
 ## T339 — Event debriefs retain event-specific evidence from the saved report
 
 Critical-path purpose separation: event summary-note derivatives previously reused
