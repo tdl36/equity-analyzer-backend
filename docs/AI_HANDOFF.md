@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T352 — Independent saved meeting context recovery
+
+MeetingSession no longer couples answer, version-history and quality reads through
+one Promise.all. Each section loads independently, reports its own failure and
+retries only its own read. Successfully loaded context remains visible on refresh
+failure; answer editors and local drafts remain mounted during auxiliary retries.
+Meeting/pack scope keys and request sequencing discard late old reads; confirmed
+answer saves invalidate older in-flight answer reads. These are read-only context
+changes, preserving T351's exact answer-save and investor approval gates.
+
+Read responses now disclose meeting identity; versions disclose meeting IDs and
+30-item truncation. Quality can select an exact saved question-set ID rather than
+silently following latest; the frontend validates the exact meeting/pack. Source
+counts explicitly refer to currently attached meeting documents, not an invented
+historical inventory. Existing latest-quality reads remain supported. Private
+no-store applies throughout meeting context. No originals, jobs or decisions changed.
+
+Validation: 7 focused disposable PostgreSQL tests, 1,792 backend / 271 frontend
+safe tests, touched Python compilation and production build pass. Actual-component
+synthetic browser checks at 390/1280px: history/quality outage with available answers,
+per-section retries without extra answer reads, retained draft after answer refresh
+failure, mismatched quality rejection, late old-meeting answer isolation and GET-only
+behavior. No overflow/browser errors; phone screenshot inspected. Logs:
+/tmp/charlie-T352-{focused,backend,frontend,build,ui}.log. No production answer edits.
+
+Next: verify exact release and hosted meeting/pack-scoped reads, then reconcile Home
+and company meeting-work destinations against saved jobs/outputs. T350 version
+inspection, T351 answer-save recovery and T352 auxiliary read recovery should not
+be repeated. Genuine collection-to-approved-processing proof still needs source
+receipts and request-specific investor approval. Historical schema and all eight
+acceptance certifications remain open; defer shared-dashboard expansion.
+
 ## T351 — Exact recorded-answer capture and conflict recovery
 
 Follow-through audit found that the old answer POST reported success for missing
