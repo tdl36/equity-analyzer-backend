@@ -1,4 +1,6 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
+import { checkedNote, checkedNoteHistory } from './pipeline-lab-note-model.mjs';
 import NoteProvenance from './lab-note-provenance';
 import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
 var reasons = {
@@ -11,7 +13,12 @@ var reasons = {
   intermediate_reply_truncated: 'A saved batch reached its output limit. Further generation stopped.',
   merge_context_exceeds_bound: 'The merged note exceeds its input bound. Further generation stopped.'
 };
-export default function LabNote({
+export default function LabNote(props) {
+  return /*#__PURE__*/React.createElement(LabNoteWorkspace, _extends({
+    key: JSON.stringify([props.api, props.ticker, props.focusId || ''])
+  }, props));
+}
+function LabNoteWorkspace({
   api,
   ticker,
   selection,
@@ -25,7 +32,7 @@ export default function LabNote({
     [history, setHistory] = React.useState([]),
     [nextBefore, setNextBefore] = React.useState(null),
     [error, setError] = React.useState(''),
-    [busy, setBusy] = React.useState(false),
+    [actionBusy, setBusy] = React.useState(false),
     [text, setText] = React.useState(''),
     [title, setTitle] = React.useState(''),
     [editing, setEditing] = React.useState(false),
@@ -35,6 +42,23 @@ export default function LabNote({
   var [localRecovery, setLocalRecovery] = React.useState(null),
     [bufferError, setBufferError] = React.useState(''),
     [compareEdits, setCompareEdits] = React.useState(false);
+  var [noteLoading, setNoteLoading] = React.useState(false),
+    [noteTarget, setNoteTarget] = React.useState(null),
+    [historyLoading, setHistoryLoading] = React.useState(false),
+    [historyError, setHistoryError] = React.useState('');
+  var busy = actionBusy || noteLoading,
+    alive = React.useRef(true),
+    noteRequest = React.useRef(0),
+    historyRequest = React.useRef(0);
+  React.useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      noteRequest.current++;
+      historyRequest.current++;
+    };
+  }, []);
+  var current = token => alive.current && token === noteRequest.current;
   var bufferKey = id => key + ':unsaved:' + id;
   var change = (nextTitle, nextText) => {
     setTitle(nextTitle);
@@ -67,7 +91,9 @@ export default function LabNote({
   var review = React.useRef(null);
   var lock = React.useRef(false),
     key = 'charlie-lab-full-note:' + api + ':' + ticker;
-  var load = () => read(api, `/api/pipeline-lab/note-jobs/${ticker}`).then(d => setJobs(d.jobs));
+  var load = () => read(api, `/api/pipeline-lab/note-jobs/${ticker}`).then(d => {
+    if (alive.current) setJobs(d.jobs);
+  });
   React.useEffect(() => {
     var live = true;
     var refresh = () => read(api, `/api/pipeline-lab/note-jobs/${ticker}`).then(d => {
@@ -88,17 +114,17 @@ export default function LabNote({
     };
   }, [api, ticker]);
   var action = async fn => {
-    if (lock.current) return;
+    if (lock.current || !alive.current) return;
     lock.current = true;
     setBusy(true);
     setError('');
     try {
       await fn();
     } catch (e) {
-      setError(e.message);
+      if (alive.current) setError(e.message);
     } finally {
       lock.current = false;
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   };
   var post = (path, body) => read(api, path, {
@@ -108,54 +134,62 @@ export default function LabNote({
     },
     body: JSON.stringify(body)
   });
+  var loadHistory = async (id, token, before = null) => {
+    var historyToken = ++historyRequest.current;
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      var h = checkedNoteHistory(await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(id)}/history?limit=50${before ? '&before=' + before : ''}`), id, ticker, before);
+      if (current(token) && historyToken === historyRequest.current) {
+        setHistory(previous => before ? [...previous, ...h.versions] : h.versions);
+        setNextBefore(h.nextBefore);
+      }
+    } catch (e) {
+      if (current(token) && historyToken === historyRequest.current) setHistoryError(e.message);
+    } finally {
+      if (current(token) && historyToken === historyRequest.current) setHistoryLoading(false);
+    }
+  };
   var open = async (id, revision) => {
-    var d = await read(api, `/api/pipeline-lab/notes/${id}${revision ? '?revision=' + revision : ''}`);
-    if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
-    setText(d.markdown);
-    setTitle(d.title);
-    setEditing(false);
-    setDraft(d);
-    if (draft?.noteId !== id || !revision) {
-      var h = await read(api, `/api/pipeline-lab/notes/${id}/history?limit=50`);
-      setHistory(h.versions);
-      setNextBefore(h.nextBefore || null);
+    if (!alive.current) return;
+    var token = ++noteRequest.current;
+    historyRequest.current++;
+    setNoteTarget({
+      id,
+      revision
+    });
+    setNoteLoading(true);
+    setError('');
+    setHistoryLoading(false);
+    try {
+      var d = checkedNote(await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(id)}${revision !== undefined ? '?revision=' + revision : ''}`), id, ticker, revision);
+      if (!current(token)) return;
+      setText(d.markdown);
+      setTitle(d.title);
+      setEditing(false);
+      setDraft(d);
+      setHistory([]);
+      setNextBefore(null);
+      setHistoryError('');
+      // History is supplementary; it cannot hide or replace an exact saved draft.
+      void loadHistory(id, token);
+      requestAnimationFrame(() => {
+        if (current(token)) review.current?.scrollIntoView({
+          block: 'start'
+        });
+      });
+    } catch (e) {
+      if (current(token)) setError(e.status === 404 ? 'The requested note revision is unavailable. No other note was substituted.' : e.message);
+    } finally {
+      if (current(token)) setNoteLoading(false);
     }
   };
   React.useEffect(() => {
-    if (!focusId) return;
-    var live = true;
-    setDraft(null);
-    setError('');
-    var inspect = async () => {
-      try {
-        var d = await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(focusId)}`);
-        if (d.ticker !== ticker) throw Error('This note belongs to a different stock. Open its original company link.');
-        var h = await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(focusId)}/history?limit=50`);
-        if (live) {
-          setText(d.markdown);
-          setTitle(d.title);
-          setHistory(h.versions);
-          setNextBefore(h.nextBefore || null);
-          setEditing(false);
-          setDraft(d);
-          requestAnimationFrame(() => review.current?.scrollIntoView({
-            block: 'start'
-          }));
-        }
-      } catch (e) {
-        if (live) setError(e.status === 404 ? 'The linked note has no saved draft yet, or is unavailable. Check its assignment progress; no other note was substituted.' : e.message);
-      }
-    };
-    inspect();
-    return () => {
-      live = false;
-    };
-  }, [api, ticker, focusId]);
-  var older = () => action(async () => {
-    var h = await read(api, `/api/pipeline-lab/notes/${draft.noteId}/history?limit=50&before=${nextBefore}`);
-    setHistory(previous => [...new Map([...previous, ...h.versions].map(v => [v.revision, v])).values()].sort((a, b) => b.revision - a.revision));
-    setNextBefore(h.nextBefore || null);
-  });
+    if (focusId) void open(focusId);
+  }, [focusId]);
+  var older = () => {
+    if (!historyLoading && draft) void loadHistory(draft.noteId, noteRequest.current, nextBefore);
+  };
   React.useEffect(() => {
     setPendingEdit(false);
     setLocalRecovery(null);
@@ -296,10 +330,17 @@ export default function LabNote({
   }, pending ? 'Reconcile same submission' : 'Generate full note draft'), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => action(load)
-  }, "Refresh saved notes")), !selection && !pending && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Choose Note sources, save your settings and check originals to enable generation. Previous notes remain available below.")), error && /*#__PURE__*/React.createElement("p", {
+  }, "Refresh saved notes")), !selection && !pending && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Choose Note sources, save your settings and check originals to enable generation. Previous notes remain available below.")), noteLoading && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Opening the exact saved note\u2026"), error && /*#__PURE__*/React.createElement("p", {
     role: "alert",
     className: "workspace-error"
-  }, error), jobs.map(job => /*#__PURE__*/React.createElement("article", {
+  }, error, noteTarget && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || pendingEdit,
+    onClick: () => {
+      if (!unsaved || window.confirm('Leave these edits in browser-session recovery and retry opening the saved note?')) action(() => open(noteTarget.id, noteTarget.revision));
+    }
+  }, "Retry saved note")), jobs.map(job => /*#__PURE__*/React.createElement("article", {
     key: job.noteId,
     style: {
       borderTop: '1px solid #8884',
@@ -343,7 +384,7 @@ export default function LabNote({
     key: h.revision,
     value: h.revision
   }, "Revision ", h.revision, " \xB7 ", new Date(h.createdAt).toLocaleString()))), nextBefore && /*#__PURE__*/React.createElement("button", {
-    disabled: busy || editing || pendingEdit,
+    disabled: busy || historyLoading || editing || pendingEdit,
     onClick: older
   }, "Load older revisions"), /*#__PURE__*/React.createElement("button", {
     disabled: busy,
@@ -366,7 +407,14 @@ export default function LabNote({
       setTitle(draft.title);
       setEditing(!editing);
     }
-  }, editing ? 'Discard unsaved edits' : 'Edit draft')), /*#__PURE__*/React.createElement("details", {
+  }, editing ? 'Discard unsaved edits' : 'Edit draft')), historyLoading && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading revision history; the exact saved note remains available."), historyError && /*#__PURE__*/React.createElement("div", {
+    role: "alert"
+  }, /*#__PURE__*/React.createElement("p", null, "Revision history unavailable: ", historyError), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || historyLoading,
+    onClick: () => loadHistory(draft.noteId, noteRequest.current, nextBefore)
+  }, "Retry revision history")), /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Quality and source checks"), /*#__PURE__*/React.createElement("ul", null, draft.qualityIssues.map((q, i) => /*#__PURE__*/React.createElement("li", {
     key: i
@@ -488,7 +536,7 @@ export default function LabNote({
   }, /*#__PURE__*/React.createElement("summary", null, c.period, " \xB7 ", c.kind, " segment figures"), /*#__PURE__*/React.createElement("p", null, "Model-produced values; verify units and source figures before use."), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Segment"), /*#__PURE__*/React.createElement("th", null, "Value"))), /*#__PURE__*/React.createElement("tbody", null, c.data.map(r => /*#__PURE__*/React.createElement("tr", {
     key: r.segment
   }, /*#__PURE__*/React.createElement("td", null, r.segment), /*#__PURE__*/React.createElement("td", null, r.value.toLocaleString()))))))), /*#__PURE__*/React.createElement("p", null, "Acceptance records this exact Lab revision. It does not change the current thesis or original Pipeline notes. Source caveats remain in the history and exports."), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || editing || pendingEdit || draft.acceptance?.revision === draft.revision,
+    disabled: busy || editing || pendingEdit || draft.acceptance === undefined || draft.acceptance?.revision === draft.revision,
     onClick: () => {
       if (window.confirm(`Accept revision ${draft.revision} as your reviewed Lab research note?`)) action(async () => {
         await post(`/api/pipeline-lab/notes/${draft.noteId}/accept`, {

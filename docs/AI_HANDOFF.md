@@ -2,6 +2,46 @@
 
 Updated: October 14, 2026
 
+## T346 — Exact Lab notes remain readable during history outages
+
+Critical-path saved-output repair from the T345 reproduction: the focused full-note
+reader formerly withheld an otherwise successful note until its history request
+succeeded, and only checked the returned ticker. It now validates exact noteId,
+ticker, positive revision, explicitly requested revision and acceptance revision
+before displaying content. Missing acceptance is shown as unavailable and cannot
+enable acceptance. Mismatched reads retain an explicit error and exact read retry;
+no replacement note or revision is selected.
+
+The saved note publishes before supplementary version history. History has its own
+loading/error/retry state; retries do not replace the draft or touch local edits.
+History pages validate note/company identity, descending revisions and the exact
+continuation; failed pages retain their cursor. Scoped component identity plus
+request generations prevent late note/history replies from entering another
+company/focused note. Read actions are disabled during an exact-note change. Local
+unsaved buffers, frozen uncertain-edit requests and their explicit reconcile action
+remain intact. No processing, acceptance, mutation endpoint, worker, source policy
+or original Pipeline changes; synthesis remains paused.
+
+Validation: seven focused frontend model/buffer tests; actual component fixtures at
+390/1280px reproduce and verify history failure/retry, wrong note identity, wrong
+requested revision, late note and late history across company changes, local edits
+surviving history retry and frozen uncertain-save text remaining read-only. All
+fixture requests are GET-only; no overflow or browser errors; screenshots inspected.
+Acceptance was never performed. No live full-note rows exist for live saved-note
+acceptance; this validation is synthetic and must remain labeled as such.
+Full suites: 1,768 backend and 261 frontend tests pass; production build passes.
+No Python runtime code changed.
+Logs: /tmp/charlie-T346-{focused,frontend,backend,build,ui}.log.
+
+CVS read-only check at 02:02 UTC: linked collection queued, zero source receipts,
+collection-only true, existing worker awake. This is not collection or processing
+proof. Next: verify exact deployed revision and read-only note/history endpoint
+contracts, then continue the genuine collection/import-to-approved-processing
+journey when evidence and investor authorization exist. Inspect remaining note
+history paging/recovery boundaries with concrete fixtures if live evidence remains
+unavailable. All eight live/investor certifications and the historical schema gap
+remain open; defer broad dashboard/cosmetic expansion.
+
 ## T345 — Saved one-pager links survive an investor edition decision
 
 Critical-path delivery audit found that AssignmentReview always called the pending
