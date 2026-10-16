@@ -2,6 +2,29 @@
 
 Updated: October 14, 2026
 
+## T378 — Preserve saved assignment outcomes after coordinator interruption
+
+The coordinator's outer error handler could demote a completed or failed assignment
+to attention when connection/ownership cleanup failed after a successful save. It
+could also replace a specific attention reason and rewrite an old result snapshot.
+Interruption recording now reacquires existing worker ownership and atomically marks
+only queued/running assignments as attention, without rewriting saved results. If
+recording itself fails, the tick can still inspect its remaining selected jobs.
+Logs retain exception class only, not potentially private exception details.
+
+Validation: 3 focused disposable-database regressions, all 1858 safe backend and
+298 frontend tests, Python compilation and production build pass. Tests reproduce
+post-save state corruption, preserve terminal/attention outcomes, respect another
+worker's ownership, retain saved progress and continue after unavailable interruption
+bookkeeping without leaking exception contents. This is synthetic recovery proof.
+No live job was resumed, processing approved or paid call retried.
+
+Next: verify hosted T378. This does not establish the root cause of the live CVS
+OperationalError or resume its collection-only request. Reconcile that interruption
+and continue through the existing Operations collector, exact-byte source receipts,
+selected processing proposal, explicit authorization and saved drafts. Shared
+approval expansion and all eight acceptance certifications remain open.
+
 ## T377 — Retain unfinished assignment intent across company navigation
 
 The direct assignment form previously kept purpose, dates, output choices and focus

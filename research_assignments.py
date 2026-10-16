@@ -54,6 +54,16 @@ class Coordinator:
     def store(self,ident,state,status,error=None):
         with self.db(True) as (_,cur):
             cur.execute("UPDATE mp_jobs SET result=%s::jsonb,status=%s,error=%s,updated_at=NOW() WHERE id=%s AND stage=%s AND status!='cancelled'",(json.dumps(state),status,error,ident,STAGE))
+    def record_interruption(self,ident,error_type):
+        # advance() may have committed completion before connection/lock cleanup
+        # failed. Reacquire ownership and never rewrite a saved result snapshot.
+        from amendment_ownership import worker_session
+        with worker_session(self.db,'assignment:'+ident) as acquired:
+            if not acquired:return
+            with self.db(True) as (_,cur):
+                cur.execute("UPDATE mp_jobs SET status='attention',error=%s,updated_at=NOW() WHERE id=%s AND stage=%s AND status IN ('queued','running')",
+                    ('Coordinator interrupted. Saved stages remain; check service health and resume. '+error_type,ident,STAGE))
+
     def wake(self):
         if not self.lock.acquire(False):return
         def work():
@@ -66,8 +76,9 @@ class Coordinator:
                         except Exception as exc:
                             # Provider/DB exception text may contain private inputs.
                             self.app.logger.warning('Research assignment tick failed: %s',type(exc).__name__)
-                            row=self.read(ident)
-                            if row:self.store(ident,obj(row['result']),'attention','Coordinator interrupted. Saved stages remain; check service health and resume. '+type(exc).__name__)
+                            try:self.record_interruption(ident,type(exc).__name__)
+                            except Exception as recovery_exc:
+                                self.app.logger.warning('Research assignment interruption could not be recorded: %s',type(recovery_exc).__name__)
             finally:self.lock.release()
         threading.Thread(target=work,daemon=True,name='research-assignment').start()
     def call(self,endpoint,method='GET',body=None,**params):

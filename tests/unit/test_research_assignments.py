@@ -432,6 +432,57 @@ class AssignmentPostgresTests(unittest.TestCase):
         with patch.object(self.co,'invoke',side_effect=AssertionError('No replay')):
             self.assertEqual(self.client.post(path,json={'acknowledgeRetry':True,'expectedRevision':current}).status_code,409)
 
+    def test_interruption_after_saved_completion_preserves_terminal_and_attention_states(self):
+        from types import SimpleNamespace
+        from psycopg2 import OperationalError
+        self.start(['summary_note'])
+        saved={'step':'Saved result must remain','sources':[{'filename':'one.txt','sha256':self.sha}]}
+        for status in ('complete','cancelled','failed','attention'):
+            with self.subTest(status=status):
+                with self.db(True) as (_,cur):
+                    cur.execute("UPDATE mp_jobs SET status='running',updated_at='1900-01-01' WHERE id=%s",(self.ident,))
+                def interrupted(ident):
+                    if ident!=self.ident:return
+                    self.co.store(ident,saved,status,'Existing reason')
+                    raise OperationalError('PRIVATE synthetic connection detail')
+                with patch.object(self.co,'advance',side_effect=interrupted),patch('research_assignments.threading.Thread',side_effect=lambda target,**kw:SimpleNamespace(start=target)):
+                    with self.assertLogs(self.app.logger,level='WARNING') as logs:Coordinator.wake(self.co)
+                row=self.co.read(self.ident)
+                self.assertEqual(row['status'],status);self.assertEqual(row['result'],saved);self.assertEqual(row['error'],'Existing reason')
+                self.assertNotIn('PRIVATE',' '.join(logs.output));self.assertFalse(self.co.lock.locked())
+
+    def test_interruption_keeps_latest_progress_and_respects_active_owner(self):
+        from amendment_ownership import worker_session
+        self.start(['summary_note']);state={'step':'Latest saved progress','sources':[]}
+        self.co.store(self.ident,state,'running')
+        before=self.co.read(self.ident)
+        with worker_session(self.db,'assignment:'+self.ident) as acquired:
+            self.assertTrue(acquired)
+            self.co.record_interruption(self.ident,'OperationalError')
+            self.assertEqual(before,self.co.read(self.ident))
+        self.co.record_interruption(self.ident,'OperationalError')
+        after=self.co.read(self.ident)
+        self.assertEqual(after['result'],state);self.assertEqual(after['input'],before['input'])
+        self.assertEqual(after['status'],'attention');self.assertIn('OperationalError',after['error'])
+        self.assertFalse(self.submits)
+
+    def test_unavailable_interruption_record_does_not_abort_remaining_tick_or_leak_details(self):
+        from types import SimpleNamespace
+        from psycopg2 import OperationalError
+        self.start(['summary_note'])
+        other=str(uuid.uuid4())
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET updated_at='1900-01-01' WHERE id=%s",(self.ident,))
+            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input,result,updated_at) VALUES(%s,'research_assignment',%s,'queued','{}','{}','1900-01-02')",(other,self.ticker))
+        visited=[]
+        def advance(ident):
+            visited.append(ident)
+            if ident==self.ident:raise OperationalError('PRIVATE tick detail')
+        with patch.object(self.co,'advance',side_effect=advance),patch.object(self.co,'record_interruption',side_effect=OperationalError('PRIVATE recovery detail')),patch('research_assignments.threading.Thread',side_effect=lambda target,**kw:SimpleNamespace(start=target)):
+            with self.assertLogs(self.app.logger,level='WARNING') as logs:Coordinator.wake(self.co)
+        self.assertIn(other,visited);self.assertNotIn('PRIVATE',' '.join(logs.output));self.assertFalse(self.co.lock.locked())
+        self.assertFalse(self.submits)
+
     def test_stop_before_mac_receipt_creates_durable_cancel(self):
         self.start();self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,200)
         self.assertEqual(self.advance()['status'],'cancelled');self.assertEqual(self.submits,{})
