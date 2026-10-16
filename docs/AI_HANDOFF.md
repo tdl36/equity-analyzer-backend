@@ -2,6 +2,19 @@
 
 Updated: October 14, 2026
 
+## T385 — Do not block startup on optional external assets
+
+Google font CSS is nonblocking; the sanitizer CDN script is asynchronous (existing
+renderers fail closed to escaped text until it is available). Removed the duplicate
+blocking PDF module tag; the existing bounded dynamic import remains. The shell
+shows Loading Charlie rather than an empty page while the application downloads.
+The browser fixture deliberately leaves all external requests pending and proves
+the application entrypoint still executes. 302 frontend tests and build pass.
+T384 exact JS/service-worker bytes and Render 22afc14841c039039db8843cdb1e80daba3b84d1
+were verified; Cloudflare 7625535a-5ed3-40ff-b5cf-de6acceb1f96. Slow asset transfers
+and blank browser startup were observed separately from the corrected request queue.
+Next: verify T385 and actual ABT ordinary navigation/package/editor without paid calls.
+
 ## T384 — Retain completed package without background polling errors
 
 Focused terminal assignments stop polling after their confirmed saved read. This

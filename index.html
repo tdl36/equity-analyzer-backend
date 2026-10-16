@@ -104,7 +104,7 @@
          Roboto / system stacks here — the aesthetic collapses without them. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Archivo:wdth,wght@75..125,400..900&family=Caveat:wght@500;700&family=Fraunces:opsz,wght@9..144,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Spectral:ital,wght@0,400;0,600;1,400&family=Zilla+Slab:wght@400;600;700&display=swap">
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Archivo:wdth,wght@75..125,400..900&family=Caveat:wght@500;700&family=Fraunces:opsz,wght@9..144,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Spectral:ital,wght@0,400;0,600;1,400&family=Zilla+Slab:wght@400;600;700&display=swap">
 
     <link rel="stylesheet" href="/dist/tailwind.css">
 
@@ -118,8 +118,7 @@
     </style>
     
     <!-- React and dependencies -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
     <script>
         // Load pdf.js and set worker (with 8s timeout)
         window.pdfjsReady = Promise.race([
@@ -278,7 +277,7 @@
     </style>
 </head>
 <body style="margin: 0;">
-    <div id="root"></div>
+    <div id="root"><p role="status" style="font:18px Calibri,sans-serif;padding:24px;background:#fff;color:#000">Loading Charlie…</p></div>
     <script defer src="/dist/app.js"></script>
     
     <!-- Service Worker Registration -->
