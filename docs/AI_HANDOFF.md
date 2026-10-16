@@ -31,6 +31,19 @@ the main milestone. Operations owns browser coverage reconciliation. Continue on
 demonstrated delivery repairs while that evidence is unavailable; shared approval
 expansion, historical-security reference evidence and all eight certifications remain open.
 
+T370 production verified: Render `29ab12c27a817a00c9fc81d0719fac2ea0a4c45b`,
+Cloudflare `1771c262-3324-4ef6-9768-1b2e5d5642f7`. Hosted JS/service-worker
+bytes and HTML match. Existing ABT original and illustrated-render reads succeed;
+repeated original bytes match, the assignment remains unchanged, and authentication
+is enforced. The probe was corrected to expect ABT's existing infographic renderer
+when a financial snapshot is present, rather than the plain renderer. Outage and
+rejected-edition behavior remains synthetic/disposable-DB evidence, not a live outage.
+CVS remains running / collection queued / zero verified sources; processing
+preparation stays guarded. No new research, source mutation or investor decision.
+Next: genuine source receipts and selected processing authorization remain the
+critical milestone. Continue demonstrated delivery gaps independently; do not expand
+the shared approval dashboard or close acceptance before the connected journey proof.
+
 ## T369 — Exact note-job progress is accessible beyond the recent list
 
 Direct full-note links previously opened only the draft reader, while progress and
