@@ -40,6 +40,26 @@ collection-to-approved-processing journey still requires source receipts and
 request-specific investor authorization. Historical schema and all eight acceptance
 certifications remain open. Operations collector and synthesis pause are unchanged.
 
+T351 production verified: Render 8e1592e5ac9f0e9caf8240d6754963c1e9e0f610;
+Cloudflare 86a05b29-4a1c-4dca-9eaa-3d4f1a2ac384. Hosted JS/service-worker exact
+bytes and HTML T351 match. Existing answer inventories for meetings 24/25/26
+contain 28/11/12 records respectively, no duplicate question-text groups in these
+three samples. One exact answer per meeting matched its existing inventory text,
+identity and status in memory; private no-store, unauthenticated 401, wrong meeting
+and missing answer 404 verified. No private text was logged and no POST was sent.
+The first live verification read for meeting 25 returned 500; the subsequent bounded
+read-only verification passed all three without another error. Logs:
+/tmp/charlie-T351-{deploy,verify,verify-retry,journey}.log. Write/concurrency/lost-
+response behavior remains synthetic validation, not live investor answer capture.
+
+Durable next: isolate MeetingSession's answers/versions/quality reads. Its current
+Promise.all makes an auxiliary quality/history failure hide otherwise available
+answers, with no per-section retry. Preserve correctly scoped saved content and
+local answer recovery; reject stale cross-meeting responses. Then reconcile exact
+Home/company meeting destinations. Do not repeat T350/T351 completed audits. CVS
+still needs genuine receipts and investor-approved processing before shared approval
+dashboard expansion or end-to-end certification.
+
 ## T350 — Inspect exact saved meeting versions from assignments
 
 Read-only live checks confirmed the three recovered historical command links open

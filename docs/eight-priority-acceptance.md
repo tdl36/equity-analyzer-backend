@@ -7,7 +7,8 @@ None of the eight priorities is certified complete merely by this audit.
 T351 protects recorded-answer saves with exact identity, concurrent-edit checks,
 verified receipts and browser-session recovery. Repeated legacy question records
 require explicit selection rather than inferred version ownership. Synthetic write/
-recovery tests pass; no live answer edit or research approval was performed.
+recovery tests pass; scoped hosted reads matched retained answers in three meetings
+and refused wrong identities. No live answer edit or research approval was performed.
 
 T350 adds exact saved meeting-version inspection from historical assignments,
 including retained passages and explicit missing-evidence labels. Read-only live
