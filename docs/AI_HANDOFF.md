@@ -34,6 +34,30 @@ be repeated. Genuine collection-to-approved-processing proof still needs source
 receipts and request-specific investor approval. Historical schema and all eight
 acceptance certifications remain open; defer shared-dashboard expansion.
 
+T352 production verified: Render 2e9bc875c26ee231b71ba67ce12ae152d75cd1e7;
+Cloudflare d5e00a39-65f3-40bb-a70a-7386ee12622d. Hosted JS/service-worker bytes
+and HTML T352 match. Live read-only scoped answers/history for meetings 24/25/26
+returned matching meeting identities and private no-store headers. Exact quality
+reads matched both retained meeting-24 versions (14 questions each), meeting-25 v1
+(11) and meeting-26 v1 (12), with current-inventory limitations disclosed. Wrong
+meeting, missing pack, invalid selector and unauthenticated reads refused as expected.
+No POST, generation or investor decision. Final verifier exited successfully; an
+initial local verifier variable-shadowing error was corrected before rerunning.
+Logs: /tmp/charlie-T352-{deploy,verify-final,journey,next-links}.log.
+
+CVS at 03:33 UTC remains queued/collection-only with zero source receipts; collector
+snapshot is fresh but is not browser-completion evidence. Read-only Activity contains
+zero current mp_jobs meeting-work entries and no unavailable inventory sections.
+Code inspection identifies a specific next audit: activity_snapshot's mp_jobs
+projection omits input.meetingId; activityDestination sends command_meeting to the
+general command workspace and pipeline to its generic view. Trace those saved-job
+identities and implement exact safe destinations where available, retaining honest
+fallbacks. There is no current live Activity row proving this navigation gap, so
+use synthetic route checks plus retained exact meeting records and state that limit.
+Do not repeat the completed T350–T352 meeting content/recovery audits. All eight
+acceptance certifications, historical valuation schema and the genuine approved
+collection-to-processing journey remain open.
+
 ## T351 — Exact recorded-answer capture and conflict recovery
 
 Follow-through audit found that the old answer POST reported success for missing

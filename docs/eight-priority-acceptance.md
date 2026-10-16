@@ -6,7 +6,8 @@ None of the eight priorities is certified complete merely by this audit.
 
 T352 isolates answer/history/quality failures and retries, preserves local drafts,
 and binds quality checks to the displayed saved pack. Synthetic outage/navigation
-checks pass; this is recovery engineering, not investor or end-to-end acceptance.
+checks pass; hosted scoped reads verified four retained pack versions and identity
+guards. This is recovery engineering, not investor or end-to-end acceptance.
 
 T351 protects recorded-answer saves with exact identity, concurrent-edit checks,
 verified receipts and browser-session recovery. Repeated legacy question records
