@@ -8,6 +8,7 @@ T359 rejects duplicate original bytes in every new processing proposal, includin
 collection-only selections without optional wider-library fields. Synthetic tests
 prove rejection, original preservation, distinct-source success and unchanged
 exact replay of frozen legacy proposals. No production processing was authorized.
+Exact hosted revision/assets and unfinished-collection/auth read guards verified.
 CVS remains queued with zero receipts at 05:19 UTC; live journey proof is open.
 
 T358 preserves validated document type, author evidence and event topic when the

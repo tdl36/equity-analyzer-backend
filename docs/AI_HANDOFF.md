@@ -29,6 +29,16 @@ start another worker. Shared dashboard expansion waits for the connected journey
 historical reference schema and all eight acceptance certifications remain open.
 Do not repeat T350–T359 output/source-recovery repairs as new completion evidence.
 
+T359 production verified: Render `0e6c9ba11aa2d1015efa020216227d4b1b8fe0a8`,
+Cloudflare `3d312260-ada2-4e21-bbb4-7d134c0b95fd`. Hosted JS/service-worker bytes
+and HTML release marker match. Authenticated reads confirm unfinished CVS cannot
+expose processing library/sources/proposals; unauthenticated library read is
+rejected. Activity read passed. Positive duplicate/replay behavior remains
+synthetically validated; no production proposal, approval or generation occurred.
+Release checkpoint complete; next action is the genuine collection-to-processing
+journey above, with collection receipts and investor authorization still absent.
+Verification: /tmp/charlie-T359-{deploy,verify}.log.
+
 ## T358 — Preserve source provenance during explicit metadata repair
 
 The original-import endpoint's explicit restoreEmptyMetadata path previously
