@@ -42,6 +42,25 @@ history paging/recovery boundaries with concrete fixtures if live evidence remai
 unavailable. All eight live/investor certifications and the historical schema gap
 remain open; defer broad dashboard/cosmetic expansion.
 
+T346 verified production receipt: Render 8e52324530236e7892f4316fee41e82f3e06c65a;
+Cloudflare 90cb48c4-4c4f-4023-b697-5fce2d69fbe2. Hosted JS/service-worker bytes
+and HTML T346 marker match. Agent healthy (3.5s heartbeat age); agent unchanged,
+no restart. Read-only authentication, missing-original, collection, proposal and
+saved-history guards pass. Exact missing-note refusal and empty-history identity
+contract verified without creating a draft. Activity unavailable [], unchanged
+research/audio truncation, zero full-note inventory. Log: /tmp/charlie-T346-verify.log.
+
+Additional GET-only component paging fixture passes: an older-history page failure
+keeps the note visible; retry requests the same cursor and appends revisions once.
+Log: /tmp/charlie-T346-paging.log. This is synthetic proof, not investor acceptance.
+
+Next checkpoint: genuine CVS collection/import and explicit processing approval
+remain the critical-path evidence gap (latest read-only snapshot: queued, zero
+receipts). Do not repeat completed history paging work or expand the dashboard.
+If collection evidence is still unavailable, inspect saved-edit receipt reconciliation
+and revision lifecycle for a concrete recoverability defect; preserve uncertain paid
+outcomes and investor decisions. All eight acceptance certifications remain open.
+
 ## T345 — Saved one-pager links survive an investor edition decision
 
 Critical-path delivery audit found that AssignmentReview always called the pending
