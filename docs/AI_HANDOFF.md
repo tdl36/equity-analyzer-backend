@@ -43,6 +43,34 @@ identity handling with failure fixtures before changing it. No live full-note ro
 are present to claim acceptance. Historical reference schema and all eight acceptance
 certifications remain open; broad dashboard work stays deferred.
 
+T345 verified production receipt: Render c2076cdc4ec420ba430fa29a40d8c3833b202cc4;
+Cloudflare 3d34748b-7547-4216-bdef-1d1ee177c382. Hosted JS/service-worker bytes and
+HTML release marker match. Agent healthy with 87.5s heartbeat age; no agent source
+change/restart. Read-only authentication/source/proposal/history guards pass. Activity
+unavailable [], unchanged research/audio truncation and zero full-note inventory.
+Logs: /tmp/charlie-T345-{deploy,verify}.log.
+
+Live ABT saved edition 6a8c989e-4ca2-45e8-8b57-273480bb31bd opens through /view
+with HTTP 200, exact assignment/report/ticker identity, pending status and private
+no-store caching. HTML is byte-identical to the T344 saved pending preview; no
+research wording or decision changed. Unauthenticated view is refused. Log:
+/tmp/charlie-T345-live.log. Accepted transitions remain synthetic-only; no live
+investor or full end-to-end acceptance occurred.
+
+Next actionable engineering defect reproduced during rollout, not yet fixed:
+`src/pipeline-lab-note.jsx` focused-read effect waits for version history before
+showing a successful exact note. A history outage hides the saved note. It also
+checks ticker but not returned noteId; a synthetic different note from the same
+company is displayed. Reproduction uses actual component with GET-only isolated
+fixtures: /tmp/charlie-note-followup-entry.jsx, /tmp/charlie-note-followup.py and
+/tmp/charlie-note-followup.log. Fix exact note/revision identity validation and
+independent history availability; retain local unsaved/uncertain-edit buffers, block
+late selection responses and never infer acceptance. No live notes exist to claim
+this failure occurred in production. Do not repeat discovery; use these fixtures.
+Continue checking genuine collection/import readiness without duplicating Operations.
+All eight live/investor acceptance certifications and permitted historical-reference
+schema remain open. Docs-only receipt uses [skip render]; inherited dirt preserved.
+
 ## T344 — Recovery edition exports retain the actual review decision
 
 Saved-output audit found that the recovery layout was available on the accepted
