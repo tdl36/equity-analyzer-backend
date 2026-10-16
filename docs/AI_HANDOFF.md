@@ -33,6 +33,18 @@ explicit processing authorization → saved drafts journey when Operations suppl
 verified receipts. Shared-dashboard expansion and eight-priority acceptance remain
 open. This increment advances recovery authorization, not live collection proof.
 
+T376 production verified: Render `2e9884a8c991d865c6723311b4ec96b97afc210c`,
+Cloudflare `562c404f-9bab-456c-b4d4-26d6f12c07c7`. Hosted JS/service-worker
+bytes and HTML match; exact assignment/authentication/readiness scope guards pass.
+The live assignment read includes its saved-state retry receipt. Retry behavior is
+proved by synthetic tests only; no production resume or approval was invoked.
+Focused read-only CVS assignment: running collection: queued verified sources: 0
+Saved stage: Waiting for browser collection worker reported issue present: True Mac report: 2026-10-16T09:37:49.163919+00:00
+Next: existing Operations completes collection, then verify actual originals and
+review a selected processing proposal before request-specific authorization. The
+connected journey and investor acceptance remain open. No uncertain paid call was
+replayed, no new collector started, and no shared dashboard expansion was made.
+
 ## T375 — Keep assignment-to-Operations navigation scoped to the requested company
 
 CollectionCloud retained its initial company filter when the existing mounted view
