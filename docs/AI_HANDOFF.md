@@ -33,6 +33,15 @@ independent demonstrated output-access defects; do not repeat T350–T356 fixes 
 expand the shared approval dashboard before the real connected-journey proof.
 Historical schema and all eight acceptance certifications remain open.
 
+T356 release verified: code revision `3d87f784581a1a3fa932e26d4fd594485f8eb1e7`,
+Cloudflare `238c6da9-986c-42c4-8a86-56e29fd8e56c`. Exact Render revision,
+hosted JS/service-worker bytes and T356 HTML verified. Read-only live reconciliation
+found zero eligible dated meetings in October 16–22 among 30 saved meetings;
+this verifies the current empty agenda, not positive live navigation. Positive
+links, failed reads and recovery remain synthetic checks. Unfinished CVS processing
+reads still return 409 and unauthenticated reads 401. No research, approvals,
+collection dispatch, agent changes or restart. Log: /tmp/charlie-T356-verify.log.
+
 ## T355 — Restore selected historical sources without paging
 
 Processing proposals now re-read previously selected supplemental metadata by exact

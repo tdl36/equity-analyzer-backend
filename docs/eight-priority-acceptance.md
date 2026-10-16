@@ -7,7 +7,10 @@ None of the eight priorities is certified complete merely by this audit.
 T356 unifies Home and Activity on the existing dated meeting agenda, removing
 stale cancelled/completed Home entries and false empty states after failed reads.
 Synthetic desktop/mobile exact-link, outage and recovery checks pass. This advances
-Home reconciliation, not collection-to-processing or investor acceptance.
+Home reconciliation, not collection-to-processing or investor acceptance. Exact
+hosted release verified. Live agenda matches zero eligible dated meetings among
+30 saved records for October 16–22; positive navigation/outage cases remain
+synthetic. All eight acceptance certifications remain open.
 
 T355 restores selected historical-source metadata directly, without manually
 paging the library. Missing/restricted records and failed or stale reads cannot
