@@ -15,6 +15,16 @@ were verified; Cloudflare 7625535a-5ed3-40ff-b5cf-de6acceb1f96. Slow asset trans
 and blank browser startup were observed separately from the corrected request queue.
 Next: verify T385 and actual ABT ordinary navigation/package/editor without paid calls.
 
+T385 release verified: Render be58864713ba95bd81a4b3f7635e540acdded4a0 and
+Cloudflare 706a001e-6708-4b43-afeb-2224f65a6df9, exact JS/service-worker bytes.
+The live ordinary ABT page displayed its saved package; following Open package
+loaded Ready for your review with all three deliverable tabs. The earlier T383
+live check also rendered the full pending one-pager. Some browser API/body and
+asset transfers still stalled or reset while direct backend reads returned quickly;
+do not claim all intermittent connectivity is resolved. No paid generation or
+investor decisions occurred. Next: finish latest-release live preview/editor checks
+and investigate persistent transfer failures if they recur outside deployment.
+
 ## T384 — Retain completed package without background polling errors
 
 Focused terminal assignments stop polling after their confirmed saved read. This
