@@ -296,6 +296,27 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(self.client.get(path).status_code,409)
         self.assertEqual(self.client.get(path+'?render=original').data,original.data)
 
+    def test_original_visual_survives_report_and_renderer_outages_without_mutation(self):
+        self.start(['visual']);self.collected();self.advance()
+        before=self.co.read(self.ident)
+        path='/api/research/assignments/'+self.ident+'/artifact/visual'
+        original=before['result']['artifacts']['visual']['html'].encode()
+        for failure in ('report_status','report_exception','renderer_exception'):
+            with self.subTest(failure=failure):
+                mock=patch.object(self.co,'invoke',return_value=({'error':'private diagnostic'},503)) if failure=='report_status' else patch.object(self.co,'invoke',side_effect=RuntimeError('private diagnostic')) if failure=='report_exception' else patch('research_onepager.render',side_effect=RuntimeError('private diagnostic'))
+                with mock as dependency:
+                    response=self.client.get(path)
+                    self.assertEqual(response.status_code,409 if failure=='report_status' else 503)
+                    self.assertIn('original saved output',response.json['error'])
+                    self.assertNotIn('private diagnostic',response.get_data(as_text=True))
+                    dependency.reset_mock()
+                    saved=self.client.get(path+'?render=original')
+                    self.assertEqual(saved.status_code,200);self.assertEqual(saved.data,original)
+                    self.assertEqual(saved.headers['Cache-Control'],'no-store')
+                    dependency.assert_not_called()
+                self.assertEqual(self.co.read(self.ident),before)
+                self.assertEqual(len(self.submits),1)
+
     def test_public_visual_supplement_preserves_research_and_replays_without_network(self):
         self.start(['visual']);self.collected();self.advance()
         before=self.co.read(self.ident)['result'];f={'version':2,'asOf':'2026-10-10','annuals':[]}

@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T370 — Saved original one-pagers stay reachable during render outages
+
+A visual preview previously depended on reading and re-rendering its saved report,
+even when the original HTML remained available. Raw-output review now explicitly
+opens the original saved output or returns to the report-based render. The displayed
+mode and original-download filename identify the choice; no automatic substitution
+occurs. Originals exclude later layout changes, financial supplements and investor
+editions. Versioned investor-edition review retains its exact identity/status checks
+and has no fallback that could conceal a rejected or unavailable edition.
+
+History preview/export now actually fetch the original visual bytes and label them
+accordingly. Report or renderer failure returns a bounded actionable error without
+private exception details. Original reads bypass those dependencies and never
+mutate saved outputs, dispatch research or accept an investor decision.
+
+Validation: 58 focused backend and 9 focused frontend tests; all 1841 backend
+and 286 frontend tests, compilation and production build pass. Disposable-DB tests
+cover unavailable/throwing report reads and renderer failure, exact original bytes,
+unchanged assignment and no duplicate research. Synthetic Chrome checks at 390/1280
+cover explicit original access/download, return to rendering, assignment changes,
+rejected-edition isolation and no overflow, page errors or writes. Phone render
+inspected. These are delivery checks, not real-source quality or investor acceptance.
+
+Next: verify T370 hosting and read-only existing-output access. Genuine collection
+receipts → selected proposal → explicit processing approval → saved drafts remains
+the main milestone. Operations owns browser coverage reconciliation. Continue only
+demonstrated delivery repairs while that evidence is unavailable; shared approval
+expansion, historical-security reference evidence and all eight certifications remain open.
+
 ## T369 — Exact note-job progress is accessible beyond the recent list
 
 Direct full-note links previously opened only the draft reader, while progress and

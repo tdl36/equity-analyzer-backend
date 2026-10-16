@@ -518,9 +518,12 @@ class Coordinator:
             # starting research, or mutating the investor's thesis.
             if kind=='visual' and request.args.get('render')!='original':
                 state=obj(row['result'])
-                report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=state.get('reportId')))
-                if code!=200 or report.get('status')!='complete':
-                    return jsonify(error='Saved report unavailable. Original export remains accessible with render=original.'),409
-                from research_onepager import render
-                output=render(report,{**obj(row['input']),'_visualFundamentals':state.get('visualFundamentals')})
+                try:
+                    report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=state.get('reportId')))
+                    if code!=200 or report.get('status')!='complete':
+                        return jsonify(error='The saved report is unavailable. You can open the original saved output separately.'),409
+                    from research_onepager import render
+                    output=render(report,{**obj(row['input']),'_visualFundamentals':state.get('visualFundamentals')})
+                except Exception:
+                    return jsonify(error='This one-pager could not be rendered from the saved report. You can open the original saved output separately.'),503
             return Response(output,mimetype='text/html',headers={'Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; sandbox"})

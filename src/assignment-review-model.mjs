@@ -9,11 +9,18 @@ export function assignmentLabNote(job) {
  return {saved,status,href:id?routeHash('pipelinelab',job.ticker,'','labnote:'+id):null};
 }
 
+// Explicit historical access: never a substitute for an investor-review edition.
+export function originalArtifactUrl(job, artifact) {
+ return artifact.kind==='visual'
+  ? '/api/research/assignments/'+encodeURIComponent(job.id)+'/artifact/visual?render=original'
+  : artifact.url;
+}
+
 export function reviewDocuments(job) {
  const s=job.result||{},p=s.reviewPackage,base='/api/research/assignments/'+encodeURIComponent(job.id);
  const docs=[];
  if(p?.editionId)docs.push({id:'visual',label:'One-pager',url:base+'/onepager-editions/'+encodeURIComponent(p.editionId)+'/view?layout=recovery',json:true,editionId:p.editionId});
- else {const a=s.artifacts?.find(a=>a.kind==='visual');if(a)docs.push({id:'visual',label:'One-pager',url:a.url});}
+ else {const a=s.artifacts?.find(a=>a.kind==='visual');if(a)docs.push({id:'visual',label:'One-pager',url:a.url,originalUrl:originalArtifactUrl(job,a)});}
  if(p)docs.push({id:'stock_summary',label:'Stock summary',url:base+'/review-package/summary'});
  else {const a=s.artifacts?.find(a=>a.kind==='stock_summary');if(a)docs.push({id:'stock_summary',label:'Stock summary',url:a.url});}
  const thesis=p?.thesisDraftId||s.thesisDraftId||s.separateThesisProposal?.id;

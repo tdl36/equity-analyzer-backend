@@ -1,3 +1,4 @@
+import { originalArtifactUrl } from './assignment-review-model.mjs';
 import { ProcessingProposals } from './processing-proposals';
 import { labAssignmentDelivery } from './lab-assignment-delivery.mjs';
 import { assignmentRows } from './assignment-list.mjs';
@@ -359,14 +360,14 @@ export function ResearchAssignment({
         expectedRetrievedAt: j.result.visualFundamentals?.retrievedAt
       });
       setPreview(null);
-      return 'Public financial history and market snapshot saved. Preview or export the illustrated version. No model calls were made.';
+      return 'Public financial history and market snapshot saved. Use Refresh saved version in the one-pager review to see the updated render. History retains the original output. No model calls were made.';
     })
   }, j.result.visualFundamentals?.gaps?.length ? 'Retry missing public data' : 'Add financial charts & market data'), j.result.artifacts?.some(a => a.kind === 'visual') && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       var g = generation.current;
       var a = j.result.artifacts.find(a => a.kind === 'visual');
-      var r = await fetch(api + a.url, {
+      var r = await fetch(api + originalArtifactUrl(j, a), {
         signal: AbortSignal.timeout(30000)
       });
       if (!r.ok) throw Error('Preview unavailable. Saved original remains available.');
@@ -375,22 +376,22 @@ export function ResearchAssignment({
         id: j.id,
         html
       });
-      return 'Visual draft opened below.';
+      return 'Original automated output opened below. Later layout changes, financial supplements and investor editions are not included.';
     })
-  }, j.result.reviewPackage ? 'Preview original visual' : 'Preview visual one-pager'), j.result.reportId && /*#__PURE__*/React.createElement("button", {
+  }, "Preview original saved visual"), j.result.reportId && /*#__PURE__*/React.createElement("button", {
     onClick: () => onReport(j.result.reportId)
   }, "Open research report"), j.result.artifacts?.map(a => /*#__PURE__*/React.createElement("button", {
     key: a.kind,
     disabled: busy,
     onClick: () => mutate(async () => {
-      var r = await fetch(api + a.url, {
+      var r = await fetch(api + originalArtifactUrl(j, a), {
         signal: AbortSignal.timeout(30000)
       });
       if (!r.ok) throw Error('Output could not be loaded. Saved output remains in the assignment.');
       downloadText(await r.text(), `${ticker}-${a.kind}-${j.id.slice(0, 8)}.html`);
       return 'Draft exported as printable HTML.';
     })
-  }, "Export ", j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.labNoteId && /*#__PURE__*/React.createElement("a", {
+  }, "Export ", a.kind === 'visual' || j.result.reviewPackage ? 'original ' : '', outputs.find(x => x[0] === a.kind)?.[1])), j.result.labNoteId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('pipelinelab', ticker, '', 'labnote:' + j.result.labNoteId)
   }, "Review full Lab note \xB7 ", j.result.labNoteStatus), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
@@ -398,7 +399,7 @@ export function ResearchAssignment({
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
   }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", {
     className: "sa-visual-preview"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("p", null, "Original automated output, preserved as delivered. Later layout changes, financial supplements and investor editions are not included."), /*#__PURE__*/React.createElement("button", {
     onClick: () => setPreview(null)
   }, "Close preview"), /*#__PURE__*/React.createElement("iframe", {
     title: `${ticker} visual one-pager preview`,

@@ -64,3 +64,14 @@ test('assignment review opens its exact meeting version, keeping current workspa
  for(const change of [{assignmentId:'other'},{reportId:'other'}])assert.throws(()=>checkedAssignmentMeeting({...response,...change},job));
  assert.throws(()=>checkedAssignmentMeeting(response,{...job,result:{...job.result,meetingQuestionSetId:undefined}}));
 });
+
+import {originalArtifactUrl} from '../../src/assignment-review-model.mjs';
+test('original access is explicit and limited to raw saved visual artifacts',()=>{
+ const job={id:'job',ticker:'ABT',result:{artifacts:[{kind:'visual',url:'/rendered'},{kind:'summary_note',url:'/note'}]}};
+ const [visual,note]=reviewDocuments(job);
+ assert.equal(visual.url,'/rendered');assert.equal(visual.originalUrl,'/api/research/assignments/job/artifact/visual?render=original');
+ assert.equal(note.originalUrl,undefined);assert.equal(originalArtifactUrl(job,job.result.artifacts[1]),'/note');
+ const edition=reviewDocuments({...job,result:{...job.result,reviewPackage:{editionId:'edition'}}})[0];
+ assert.equal(edition.originalUrl,undefined);assert.equal(edition.json,true);
+ assert.match(originalArtifactUrl({id:'a/b'},job.result.artifacts[0]),/a%2Fb\/artifact/);
+});
