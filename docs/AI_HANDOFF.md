@@ -42,6 +42,38 @@ must remain explicit rather than inferred complete. All eight acceptance items a
 historical valuation reference-schema gap stay open; original Pipeline and backfill
 synthesis pause unchanged.
 
+T348 verified production receipt: Render 33c60320924dde74c5c26c1e812d8184073d0d20;
+Cloudflare 1c80e868-43e2-46dd-be7b-84ece71d7d09. Hosted JS/service-worker bytes
+and HTML T348 marker match. Agent healthy (111.8s heartbeat age), unchanged and not
+restarted. Authentication/missing-identity checks include the command workspace;
+existing original/library/proposal/note checks pass. Activity unavailable [], same
+research/audio truncation and zero full-note inventory. Read-only live workspace
+checks after rollout match expected status; no real failure scenario or acceptance
+was exercised. Logs: /tmp/charlie-T348-{deploy,verify,live-after}.log. A transient
+502 during rollout cleared; no write or paid retry occurred.
+
+Concrete next delivery defect found: all four retained research command rows have
+an exact refreshRequestId but no collection entry in the current cloud snapshot.
+Read-only local SQLite exact-ID lookups find MDT 0678a3f3-085e-54cd-a04d-fc61a9a161f8
+cancelled; MDT 674d1597-fd47-55fe-87b5-cdf7f12f254d, ABT
+85b20347-e848-55d8-902b-5ea5324a36a0 and ABT b2714bc9-8cd0-5ae9-b3f6-f28b37b0499e
+complete. These are command IDs; their linked refresh IDs were used for lookup.
+No source bodies were logged and no Collector instantiated. Current workspace
+reports collection pending for missing snapshots, even for these terminal records.
+collection_refresh.status retains unresolved work but only the latest 50 terminal
+requests; assignment_workspace reads only that rolling snapshot. Log:
+/tmp/charlie-T348-snapshot-audit.log.
+
+Next independent engineering: inspect/implement durable exact-request terminal
+collection receipts through the existing sync and scoped read path, so rolling
+snapshot eviction cannot turn saved historical delivery into waiting work. Preserve
+unknown status when no receipt exists; never infer completion from a report or
+same-ticker record. Reconcile the four exact local terminal records via the existing
+sync only if supported; do not change frozen authorization, create a duplicate
+worker, or re-collect originals. Test retention beyond 50, restart/replay and exact
+identity separation. Current CVS collection-to-processing proof still waits for
+genuine source receipts and request-specific investor processing approval.
+
 ## T347 — Edit recovery opens the confirmed immutable revision
 
 Critical-path saved-output repair: full-note edit saves formerly ignored the write
