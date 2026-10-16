@@ -34,6 +34,21 @@ Next: verify hosted T377. Continue the real Operations collection into exact-byt
 receipts, selected processing proposal, request-specific approval and saved drafts.
 Broader shared-dashboard work and all eight acceptance certifications remain open.
 
+T377 production verified: Render `dc95405f0a5d8b9d7c465d9ad2fadc191a2c71fc`,
+Cloudflare `9361c173-0695-41be-b82a-56cf240d7bc1`. Hosted JS/service-worker
+bytes and HTML match; exact assignment/authentication/readiness scope guards pass.
+Form recovery and submission cleanup have synthetic browser proof; production
+verification used only deployment checks and existing saved-state reads.
+Focused read-only CVS assignment: attention collection: queued verified sources: 0
+Saved stage: Waiting for browser collection worker reported issue present: True Mac report: 2026-10-16T09:55:40.191385+00:00
+A separate exact read reports Coordinator interrupted / OperationalError. Saved
+stages remain; no resume was requested. Reconcile coordinator/service health before
+continuing this existing collection-only assignment through Operations.
+Next: the existing Operations worker supplies completed verified originals, followed
+by source selection, an explicitly authorized processing proposal and saved-output
+review. No new collector, live assignment, processing approval or paid retry was
+started. The connected journey and investor acceptance remain open.
+
 ## T376 — Bind paid-retry acknowledgment to one saved assignment state
 
 A synthetic reproduction found that the assignment list shared one acknowledgment
