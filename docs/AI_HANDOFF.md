@@ -34,6 +34,23 @@ live authorized processing journey remain open. Pre-release audio inventory empt
 Activity has no unavailable dependencies but retains research/audio truncation.
 Agent code unchanged; no restart needed. Backfill synthesis remains paused.
 
+T338 production verified: Render b70921c723b6967b1792f0059eed799fdace62ac;
+Cloudflare 3cba5fc0-d1ef-423b-8b74-87839a491195. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy (110.4s), no restart required. Read-only
+source/proposal authentication and scope guards pass; Activity has no unavailable
+dependencies, unchanged research/audio truncation and zero full-note rows. A transient
+backend 502 during deployment cleared before exact-revision/read-only checks passed.
+No live stop was sent: cancellation recovery is isolated synthetic proof, not a
+real provider outcome. Verification: /tmp/charlie-T338-verify.log.
+
+Latest read-only CVS snapshot (age 4s when read) is queued at default position 1;
+all four searches remain pending. Queue movement is not source evidence. Next:
+inspect existing collection original/import receipts when available, then connect
+the selected evidence to a proposal without approving processing. Continue substantive
+recovery/delivery work while external evidence is pending; shared dashboard expansion
+still waits for connected-journey proof. All eight acceptance certifications remain
+open. This docs-only receipt uses [skip render]; unrelated dirty files preserved.
+
 ## T337 — Keep older processing proposals and uncertain save receipts reachable
 
 Critical-path handoff recovery: the proposal list previously returned only the
