@@ -19,6 +19,18 @@ investor acceptance. Next: verify T380 deployment, then link the refreshed ABT
 thesis and edition and read back all three review items. Private content stays
 outside the repository.
 
+T380 verified on Render `cb90f41472d02283695835b5777ac9fad1ef8543` and
+Cloudflare `d0efc7e8-ace2-4363-8c92-759faa6d1b0e`; hosted version and exact
+frontend/service-worker bytes match. ABT's existing assignment now links pending
+thesis `ad7e3586-bf4e-4877-ae04-6800994444b8` and pending one-pager
+`947dc199-e8be-4ef9-bb5f-54d8810ca508`. All three live review endpoints were
+read back: matching refreshed IDs, current pending thesis, revised narrative,
+no named brokers or drafting prefixes outside evidence metadata. Earlier package
+and original artifacts are preserved. This is an editorial refresh of existing
+evidence, not new research, current-price refresh or investor acceptance.
+Next: investor review of the connected ABT package; do not claim the eight
+acceptance priorities or a new automated end-to-end journey are complete.
+
 ## T379 — Make saved research packages visible on the normal company route
 
 Stock Analysis now opens the existing read-only assignment archive above the
