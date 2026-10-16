@@ -33,6 +33,21 @@ must finish its pending original export before this request can collect. Genuine
 completed receipts → selected proposal → explicit processing authorization → saved
 drafts → investor review remains open, as do the eight acceptance certifications.
 
+T374 production verified: Render `6690af2b70d62962743f6bf7574469ec3ccc27f9`,
+Cloudflare `86bf86f8-aa21-4c0c-8862-3cd6b5c1fd8e`. Hosted JS/service-worker
+bytes and HTML match; exact assignment/authentication/readiness scope guards pass.
+One transient read-only 502 recovered. CVS remains running / collection queued /
+zero verified originals, with a reported collection issue. Its stored step at the
+verification read predates deployment and still says Collecting and verifying
+originals; the new waiting label applies on the coordinator's next natural update.
+No worker was forced awake to rewrite it. The UI panel derives queued directly from
+the reported collection state, including existing saved records. Positive UI behavior
+is synthetic; hosted source/state reads and deployment identity are live evidence.
+The earlier active/collecting report did not establish a verified search or download.
+Next: Operations completes the blocking original export, then actual CVS receipts
+can be reviewed. No live processing or investor decision was made; the connected
+collection-to-approved-output milestone and acceptance ledger remain open.
+
 ## T373 — Verify proposal recovery before submission and after receipt
 
 Processing-proposal submission previously trusted sessionStorage writes/removals
