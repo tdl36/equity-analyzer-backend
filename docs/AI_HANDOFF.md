@@ -2,6 +2,45 @@
 
 Updated: October 14, 2026
 
+## T339 — Event debriefs retain event-specific evidence from the saved report
+
+Critical-path purpose separation: event summary-note derivatives previously reused
+whole-stock summary sections, dropping saved earnings/results, expectations and
+follow-up questions. New event debriefs organize supported frozen-report claims
+into developments/context, results/expectations, potential implications, risks/
+uncertainties and follow-up/monitoring. Existing citation identity, passage-match
+and review checks remain required. No estimates, comparisons, model calls or thesis
+changes are added. Historical context is not mislabeled as occurring on event day.
+
+Event headings distinguish the identified event date from collection/context dates
+and omit the stock-wide investment horizon. Thesis-like source fields are labeled
+potential implications requiring a separate proposal and investor approval. Report
+field order keeps result labels/values together independent of citation arrival
+order. Missing supported coverage stays explicit; a bounded 40-field section
+reports omissions and directs the investor to the saved full report. This is an
+output-display bound, not a collection or processing-source limit. Full original
+hashes, frozen source roles/dates and extraction limitations remain available.
+Legacy/longitudinal layouts and already stored artifacts are not rewritten.
+
+Validation: 54 focused tests, 1,716 full safe backend tests, 252 frontend tests,
+Python compilation and production build pass. Before-change synthetic regressions
+reproduced omitted event evidence. Final tests cover missing/mismatched/rejected
+claims, no inferred consensus, citation order, disclosed display omissions, escaping,
+legacy compatibility and immutable inputs. Phone/desktop synthetic HTML checks at
+390/1280px cover populated/empty event notes, source appendix and readable black
+Calibri text with no overflow; screenshots inspected. One new ordering assertion
+initially matched CSS 1100px instead of a claim value; corrected to rendered claim
+markup and reran focused/full suites. No live research or investor approval.
+Logs: /tmp/charlie-T339-{before,focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify exact hosted release, then inspect CVS's existing collection/import
+receipts. Latest read moved from queued to collecting; all four search tasks still
+pending, no completed originals or processing readiness claimed. Continue the
+selected-source proposal handoff when real receipts arrive. Shared dashboard
+expansion waits for connected-journey proof. Historical-reference schema and all
+eight live/investor acceptance certifications remain open. Backfill synthesis
+remains paused. Agent and original Pipeline unchanged; no restart required.
+
 ## T338 — Durable stop intent and verified child-stop receipts
 
 Critical-path job recovery: assignment Stop previously ignored a rejected child
