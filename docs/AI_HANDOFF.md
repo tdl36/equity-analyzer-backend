@@ -41,6 +41,39 @@ CVS still requires genuine collected source receipts and request-specific invest
 processing approval; all eight certifications and historical reference-schema gap
 remain open.
 
+T349 production and live repair verified: Render
+7b73223daa26d3bd2d620633b16d17b2fcad3206; Cloudflare
+b3f78cb3-8b8b-4f21-b8b0-7d4cc140aed0. Hosted JS/service-worker bytes and
+HTML T349 marker match. Read-only original/library/proposal/note/command workspace
+authentication and missing-identity checks pass. Activity unavailable [], unchanged
+research/audio truncation and zero full-note inventory. Logs:
+/tmp/charlie-T349-{deploy,verify}.log.
+
+Fresh pre-restart pipeline read found zero running jobs (including agent research).
+Changed agent restarted with launchctl; PID 12085, last exit 0. New stderr had no
+warnings/errors/tracebacks; post-restart health ok, heartbeat age 77.3s. The existing
+serial collection sync, without a manual sync dispatch or new worker, backfilled
+all four exact historical command links: MDT 0678a3f3-085e-54cd-a04d-fc61a9a161f8
+cancelled -> overall attention; MDT 674d1597-fd47-55fe-87b5-cdf7f12f254d and ABT
+85b20347-e848-55d8-902b-5ea5324a36a0 / b2714bc9-8cd0-5ae9-b3f6-f28b37b0499e
+complete -> overall delivered. Their retained meeting version counts are 0/1/1/2.
+Each hosted receipt matched the command's refresh ID and ticker, was marked
+historical/display-only, contained no source/config/result payload, and retained
+private no-store reads. Log: /tmp/charlie-T349-history-live.log.
+
+This is live historical-status recovery, not a new collection, exact-byte source
+import, processing run or investor decision. At 02:54 UTC CVS remained queued,
+zero source receipts, collection-only true and browser worker awake. Log:
+/tmp/charlie-T349-journey.log. Original research and synthesis pause unchanged.
+
+Next: continue the genuine CVS collection-to-selected-processing handoff when
+receipts exist; no generation without request-specific approval. Historical status
+repair is complete; do not repeat it. While that live evidence is pending, reconcile
+the three now-visible historical command outputs' meeting destinations and saved
+versions using exact read-only links, preserving their source context and existing
+research. Wider live workspace/output quality and all eight acceptance certifications
+remain open; do not treat historical status repair as end-to-end acceptance.
+
 ## T348 — Current assignment delivery cannot hide behind older outputs
 
 Existing command/meeting assignment workspace delivery omitted the collector's

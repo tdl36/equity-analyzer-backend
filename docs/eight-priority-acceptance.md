@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T349 retains display-only exact-request collection terminal receipts through the
 existing sync, including bounded legacy backfill. Missing historical evidence stays
 unknown. Synthetic retention/replay/isolation tests pass; processing and research
-acceptance gates remain separate and open.
+acceptance gates remain separate and open. Live normal-agent sync recovered four
+exact historical command statuses (three complete, one cancelled), retaining their
+outputs. This is historical-status recovery, not new collection-to-processing proof.
 
 T348 repairs existing command/meeting assignment delivery status: collector auth/
 attention blockers are visible, and older saved reports or question versions do not
