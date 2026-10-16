@@ -114,7 +114,8 @@ def create_blueprint(get_db):
             # Exact topic links only; do not infer that another same-ticker recap belongs to this task.
             for j in jobs:
                 result=obj(j['result']) if j.get('result') else {}
-                rid=result.get('refreshRequestId');j['collection']=next((r for r in snapshot.get('requests',[]) if r['id']==rid),None)
+                from collection_history import lookup
+                rid=result.get('refreshRequestId');j['collection']=lookup(cur,snapshot,rid,j['ticker'])
                 topic=result.get('topic');j['reports']=[]
                 cur.execute("SELECT status,result,error FROM mp_jobs WHERE stage='command_proposal_dispatch' AND input->>'commandId'=%s ORDER BY created_at DESC LIMIT 1",(j['id'],));dispatch=cur.fetchone();j['proposalAutomation']=dict(dispatch) if dispatch else None
                 cur.execute("SELECT id,status,error FROM mp_jobs WHERE stage='evidence_amendment' AND input->>'commandId'=%s ORDER BY created_at DESC LIMIT 1",(j['id'],));proposal=cur.fetchone();j['proposal']=dict(proposal) if proposal else None

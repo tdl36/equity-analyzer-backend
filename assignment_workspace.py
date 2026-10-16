@@ -9,10 +9,11 @@ def delivery_contract(payload, command, collection, source_reuse, prep, versions
     failed={'failed','error','blocked','cancelled','canceled','needs_attention','attention','needs_auth','attention_required','needs_review','dismissed','reverted','stopped'}
     collection=collection or {};prep=prep or {};proposal=proposal or {};dispatch=dispatch or {}
     collected=bool(source_reuse or collection.get('status')=='complete')
+    collection_unknown=not source_reuse and not collection and command.get('status') in ('applied','done')
     collection_detail=collection.get('issue') or command.get('error') or (
         'AlphaSense sign-in needs attention. Open signed-in Chrome and inspect Collection controls; saved originals are retained.'
-        if collection.get('status')=='needs_auth' else collection.get('status') or 'Waiting for the Mac collection snapshot')
-    steps=[stage('collection','Source collection','delivered' if collected else 'attention' if collection.get('status') in failed or command.get('status') in failed else 'pending',
+        if collection.get('status')=='needs_auth' else collection.get('status') or ('Collection status is unavailable in the current snapshot and saved receipts. Completion or continued collection cannot be inferred.' if collection_unknown else 'Waiting for the Mac collection snapshot'))
+    steps=[stage('collection','Source collection','delivered' if collected else 'attention' if collection.get('status') in failed or command.get('status') in failed else 'unknown' if collection_unknown else 'pending',
                  'Saved sources reused' if source_reuse else collection_detail)]
     # Rows are newest-first. Earlier saved outputs remain available, but cannot
     # establish delivery of the current attempt.
@@ -31,7 +32,7 @@ def delivery_contract(payload, command, collection, source_reuse, prep, versions
         status=proposal.get('status')
         steps.append(stage('proposal','Thesis change proposal','delivered' if status in ('awaiting_approval','applied') else 'attention' if status in failed or dispatch.get('status') in failed else 'pending',
                            'Ready for your review; no automatic thesis acceptance' if status=='awaiting_approval' else 'Applied by analyst decision' if status=='applied' else proposal.get('error') or dispatch.get('error') or 'No reviewable proposal saved yet'))
-    state='delivered' if all(s['state']=='delivered' for s in steps) else 'attention' if any(s['state']=='attention' for s in steps) else 'in_progress'
+    state='delivered' if all(s['state']=='delivered' for s in steps) else 'attention' if any(s['state']=='attention' for s in steps) else 'unknown' if any(s['state']=='unknown' for s in steps) else 'in_progress'
     return {'state':state,'steps':steps,'delivered':sum(s['state']=='delivered' for s in steps),'expected':len(steps)}
 
 def routes(bp,get_db):
@@ -45,7 +46,8 @@ def routes(bp,get_db):
             if not row:return jsonify(error='Assignment not found'),404
             command=dict(row);payload=obj(row['input']).get('payload',{});result=obj(row['result']) or {}
             cur.execute("SELECT value FROM app_settings WHERE key='collection_control_snapshot'");snapshot=cur.fetchone();snapshot=obj(snapshot['value']) if snapshot else {}
-            collection=next((r for r in snapshot.get('requests',[]) if r['id']==result.get('refreshRequestId')),None)
+            from collection_history import lookup
+            collection=lookup(cur,snapshot,result.get('refreshRequestId'),command['ticker'])
             cur.execute('SELECT value FROM app_settings WHERE key=%s',('source_shortlist:'+cid,));selection=cur.fetchone()
             cur.execute("SELECT id,status,error,input,result,created_at,updated_at FROM mp_jobs WHERE stage='command_meeting' AND input->>'commandId'=%s",(cid,));prep=cur.fetchone()
             documents=[];versions=[];meeting=None

@@ -85,6 +85,12 @@ def create_blueprint(get_db, is_agent):
             if request.method=='POST':
                 data=request.get_json(silent=True)
                 if not isinstance(data,dict) or not isinstance(data.get('snapshot'),dict) or not isinstance(data.get('receipts',[]),list) or len(json.dumps(data))>5000000:return jsonify(error='Invalid collection sync payload.'),400
+                if not isinstance(data['snapshot'].get('requests',[]),list):return jsonify(error='Invalid collection request snapshot.'),400
+                history=data.get('terminalReceipts',[])
+                if not isinstance(history,list) or len(history)>50:return jsonify(error='Invalid collection history batch.'),400
+                from collection_history import remember,record_history_checks
+                remember(cur,data['snapshot'].get('requests',[]))
+                record_history_checks(cur,history)
                 cur.execute('INSERT INTO app_settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()',(KEY,json.dumps(data['snapshot'])))
                 for receipt in data.get('receipts',[])[:10]:
                     if not isinstance(receipt,dict) or receipt.get('status') not in ('applied','failed'):continue
@@ -96,5 +102,6 @@ def create_blueprint(get_db, is_agent):
             cur.execute('SELECT value FROM app_settings WHERE key=%s',(SOURCE_KEY,));row=cur.fetchone();sources=decode(row['value']) if row else DEFAULT
             cur.execute("SELECT value FROM app_settings WHERE key LIKE 'source_shortlist:%' ORDER BY updated_at DESC LIMIT 100")
             shortlists=[dict(decode(r['value']),revision=revision(decode(r['value']))) for r in cur.fetchall()]
-            return jsonify(commands=commands,sourcePolicy=sources,sourceShortlists=shortlists)
+            from collection_history import requested_history
+            return jsonify(commands=commands,sourcePolicy=sources,sourceShortlists=shortlists,historyRequests=requested_history(cur))
     return bp

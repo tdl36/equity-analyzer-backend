@@ -1069,6 +1069,7 @@ def sync_collection_control():
     """Apply bounded, durable mobile commands through the existing local manager."""
     from charlie_collector import Collector
     from collection_refresh import RefreshManager
+    from collection_history import local_history
     response=requests.get(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),timeout=15)
     if response.status_code==404:return  # Backend may still be deploying.
     response.raise_for_status()
@@ -1087,7 +1088,7 @@ def sync_collection_control():
             except ValueError as exc:
                 if 'Another collection operation' in str(exc):break
                 receipts.append({'id':row['id'],'status':'failed','error':str(exc)[:2000]})
-        result=requests.post(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),json={'snapshot':manager.status(),'receipts':receipts},timeout=15)
+        result=requests.post(f"{CHARLIE_API}/api/agent/collection-control",headers=_agent_headers(),json={'snapshot':manager.status(),'receipts':receipts,'terminalReceipts':local_history(collector.db,sync.get('historyRequests',[]))},timeout=15)
         result.raise_for_status()
     finally:collector.db.close()
     # The backend rate-limits prospective event scans; this uses the existing Mac heartbeat.

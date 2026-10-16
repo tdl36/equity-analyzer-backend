@@ -45,11 +45,13 @@ export function AssignmentWorkspace({
     className: "assignment-brief"
   }, /*#__PURE__*/React.createElement("summary", null, "Full assignment and focus areas"), /*#__PURE__*/React.createElement("p", null, data.assignment.instruction)), /*#__PURE__*/React.createElement("p", null, data.assignment.since, " through ", data.assignment.until), data.delivery && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Assignment delivery"
-  }, /*#__PURE__*/React.createElement("h4", null, data.delivery.state === 'delivered' ? 'Outputs delivered' : data.delivery.state === 'attention' ? 'Needs attention' : 'Work in progress', " \xB7 ", data.delivery.delivered, "/", data.delivery.expected, " stages delivered"), /*#__PURE__*/React.createElement("ol", null, data.delivery.steps.map(step => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("h4", null, data.delivery.state === 'delivered' ? 'Outputs delivered' : data.delivery.state === 'attention' ? 'Needs attention' : data.delivery.state === 'unknown' ? 'Status needs verification' : 'Work in progress', " \xB7 ", data.delivery.delivered, "/", data.delivery.expected, " stages delivered"), /*#__PURE__*/React.createElement("ol", null, data.delivery.steps.map(step => /*#__PURE__*/React.createElement("li", {
     key: step.key
   }, /*#__PURE__*/React.createElement("strong", null, step.label, " \xB7 ", step.state), /*#__PURE__*/React.createElement("p", null, step.detail)))), /*#__PURE__*/React.createElement("p", null, "Delivery means saved in Charlie. It does not mean emailed, approved, or applied to your thesis.")), (data.collection?.issue || data.preparation?.error || data.command.error) && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, data.collection?.issue || data.preparation?.error || data.command.error), data.collection?.sourceProgress && /*#__PURE__*/React.createElement("details", {
+  }, data.collection?.issue || data.preparation?.error || data.command.error), data.collection?.historicalReceipt && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Historical collector receipt: ", data.collection.status, ". This records collection status only; original-byte verification and processing approval remain separate."), data.collection?.sourceProgress && /*#__PURE__*/React.createElement("details", {
     open: true
   }, /*#__PURE__*/React.createElement("summary", null, "Collection progress"), /*#__PURE__*/React.createElement("p", null, (data.collection.sourceProgress.documents.handed_off || 0) + (data.collection.sourceProgress.documents.duplicate || 0), " originals saved to iCloud \xB7 ", data.collection.sourceProgress.documents.staged || 0, " awaiting handoff \xB7 ", data.collection.sourceProgress.documents.held || 0, " held"), data.collection.sourceProgress.tasks.map(t => /*#__PURE__*/React.createElement("p", {
     key: t.kind

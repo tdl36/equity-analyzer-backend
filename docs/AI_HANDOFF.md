@@ -2,6 +2,45 @@
 
 Updated: October 14, 2026
 
+## T349 — Durable display-only collection history
+
+Repairs the four historical command delivery gaps identified in T348. Existing
+agent collection sync now retains minimal immutable terminal receipts in app_settings
+by exact refresh request ID, with ticker, status and request-created timestamp.
+No source bodies/configuration/results or processing authorization are copied.
+Current snapshots take precedence; command/meeting inspection and command lists
+fall back only to a matching ticker/ID receipt. Historical status is explicitly
+labelled and cannot stand in for source-byte verification or investor approval.
+The coordinated assignment worker's processing gates are not changed.
+
+Existing sync GET requests up to 50 linked command histories lacking a terminal
+receipt. The same agent loop performs exact local SQLite reads and returns only
+complete/cancelled metadata. Missing/active rows return unavailable; check timestamps
+rotate them behind unchecked rows without inventing completion or starving history.
+The backend accepts backfill only for exact retained command links. Repeated syncs
+preserve the first terminal receipt. No new worker, collection attempt, generation,
+original import, queue command, frozen authorization or research decision is added.
+
+An acknowledged command with neither current nor retained collection evidence is
+now explicitly unknown / Status needs verification, not waiting or delivered.
+Existing draft outputs remain available. Original Pipeline and synthesis pause stay.
+
+Validation: 31 focused tests cover >50 eviction, immutable replay, request/ticker
+isolation, read-only lookup, bounded exact local reads, unknown-history rotation,
+agent authentication, batch bounds and unchanged jobs. Full safe suites: 1,781
+backend and 265 frontend pass. Touched Python compilation passes. Actual-component
+fixtures at 390/1280px use backend-generated complete/cancelled/unknown receipts,
+label historical limitations, preserve outputs and have no overflow/browser errors.
+Screenshots inspected. These are synthetic receipts, not new collection proof.
+Logs: /tmp/charlie-T349-{focused,backend,frontend,build,ui}.log.
+
+Next: deploy and verify exact revision, safely restart the changed agent, observe
+existing sync backfill and confirm the four exact historical workspace reads.
+Do not infer acceptance or current original availability from terminal status.
+CVS still requires genuine collected source receipts and request-specific investor
+processing approval; all eight certifications and historical reference-schema gap
+remain open.
+
 ## T348 — Current assignment delivery cannot hide behind older outputs
 
 Existing command/meeting assignment workspace delivery omitted the collector's

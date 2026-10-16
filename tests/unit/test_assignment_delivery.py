@@ -75,3 +75,11 @@ class DeliveryTests(unittest.TestCase):
         result=self.run_contract(collection=None,command={'status':'failed','error':'Command was not acknowledged'})
         self.assertEqual(result['state'],'attention')
         self.assertEqual(result['steps'][0]['detail'],'Command was not acknowledged')
+
+    def test_missing_acknowledged_collection_is_unknown_not_waiting_or_complete(self):
+        result=self.run_contract(collection=None,command={'status':'applied'},reports=[{'has_report':True}])
+        self.assertEqual(result['state'],'unknown')
+        self.assertEqual(result['steps'][0]['state'],'unknown')
+        self.assertIn('cannot be inferred',result['steps'][0]['detail'])
+        self.assertEqual(result['delivered'],1)
+        self.assertEqual(self.run_contract(collection=None,command={'status':'queued'})['steps'][0]['state'],'pending')

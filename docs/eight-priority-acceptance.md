@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T349 retains display-only exact-request collection terminal receipts through the
+existing sync, including bounded legacy backfill. Missing historical evidence stays
+unknown. Synthetic retention/replay/isolation tests pass; processing and research
+acceptance gates remain separate and open.
+
 T348 repairs existing command/meeting assignment delivery status: collector auth/
 attention blockers are visible, and older saved reports or question versions do not
 prove current-attempt delivery. Synthetic branch checks pass; live acceptance stays open.
