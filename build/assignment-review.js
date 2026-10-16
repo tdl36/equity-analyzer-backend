@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { reviewDocuments, assignmentLabNote } from './assignment-review-model.mjs';
+import { reviewDocuments, assignmentLabNote, verifiedReviewPage } from './assignment-review-model.mjs';
 import { HistoricalReview } from './historical-review';
 import { downloadText } from './stock-analysis-model.mjs';
 export function AssignmentReview({
@@ -11,13 +11,16 @@ export function AssignmentReview({
     signature = JSON.stringify(docs),
     [selected, setSelected] = React.useState(docs[0]?.id),
     [retry, setRetry] = React.useState(0),
-    [page, setPage] = React.useState({}),
+    [loadedPage, setPage] = React.useState({}),
     frame = React.useRef(null);
   var doc = docs.find(d => d.id === selected) || docs[0];
+  var pageKey = JSON.stringify([api, job.id, job.ticker, job.result?.reportId, signature, doc?.id]),
+    page = loadedPage.key === pageKey ? loadedPage : {};
   React.useEffect(() => {
     var live = true;
     var controller = new AbortController();
     setPage({
+      key: pageKey,
       loading: !!doc?.url
     });
     if (doc?.url) (async () => {
@@ -25,14 +28,21 @@ export function AssignmentReview({
         var r = await fetch(api + doc.url, {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)])
         });
-        if (!r.ok) throw Error('This saved document could not be opened. Retry loading; no research will be started.');
-        var html = doc.json ? (await r.json()).html : await r.text();
-        if (!html) throw Error('The saved preview is unavailable.');
+        if (!r.ok) {
+          var failure = await r.json().catch(() => null);
+          throw Error(failure?.error || 'This saved document could not be opened. Retry loading; no research will be started.');
+        }
+        var saved = doc.json ? verifiedReviewPage(await r.json(), doc, job) : {
+          html: await r.text()
+        };
+        if (!saved.html) throw Error('The saved preview is unavailable.');
         if (live) setPage({
-          html
+          key: pageKey,
+          ...saved
         });
       } catch (e) {
         if (live) setPage({
+          key: pageKey,
           error: e.message
         });
       }
@@ -41,7 +51,7 @@ export function AssignmentReview({
       live = false;
       controller.abort();
     };
-  }, [api, job.id, signature, doc?.id, retry]);
+  }, [pageKey, retry]);
   if (!docs.length && !note) return null;
   return /*#__PURE__*/React.createElement("section", {
     className: "assignment-review",
@@ -84,7 +94,10 @@ export function AssignmentReview({
     href: doc.href
   }, doc.actionLabel)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "review-toolbar"
-  }, /*#__PURE__*/React.createElement("strong", null, doc?.label), /*#__PURE__*/React.createElement("span", null, "Saved preview \xB7 no generation"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("strong", null, doc?.label), /*#__PURE__*/React.createElement("span", null, page.status === 'accepted' ? 'Investor-accepted edition' : page.status === 'pending' ? 'Pending edition — review required' : 'Saved preview', " \xB7 no generation"), /*#__PURE__*/React.createElement("button", {
+    disabled: page.loading,
+    onClick: () => setRetry(x => x + 1)
+  }, "Refresh saved version"), /*#__PURE__*/React.createElement("button", {
     disabled: !page.html,
     onClick: () => downloadText(page.html, `${job.ticker}-${doc.id}-review.html`)
   }, "Download"), /*#__PURE__*/React.createElement("button", {

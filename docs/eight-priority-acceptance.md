@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T345 repairs the saved one-pager link across pending and accepted editorial decisions,
+with exact identity checks and no fallback to another edition. T344 repairs accepted
+recovery rendering and frozen source provenance. Decision transitions are synthetic
+validation only; no investor or full collection-to-processing acceptance is claimed.
+
 T343 isolates one-pager public-data and local rendering failures from other
 requested drafts. Explicit recovery preserves completed outputs and shared source/
 report gates. Synthetic partial-delivery tests pass; live acceptance remains open.

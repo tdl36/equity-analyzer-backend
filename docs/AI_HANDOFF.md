@@ -2,6 +2,47 @@
 
 Updated: October 14, 2026
 
+## T345 — Saved one-pager links survive an investor edition decision
+
+Critical-path delivery audit found that AssignmentReview always called the pending
+preview endpoint for a recovered edition. That endpoint correctly refuses decided
+editions, so an eventual investor acceptance would break the saved-output link even
+after T344 repaired accepted recovery rendering. A new exact-edition read-only /view
+route resolves that edition's retained decision under the existing shared locks:
+pending stays pending, accepted uses validated accepted evidence, rejected is refused
+with an explicit reason. It never selects a newer edition or changes the accepted
+head. Existing pending-preview and accepted-export restrictions remain intact;
+source bytes, usage policy, report/baseline and decision integrity are rechecked.
+
+AssignmentReview uses the stable route, validates edition/assignment/report/ticker/
+layout/status before showing or downloading HTML, and shows pending vs accepted
+status. Refresh saved version is read-only. Response state is keyed to its exact
+request; an old page cannot be shown/downloaded after company or tab changes, and
+late responses cannot overwrite the next selection. Read failures/rejections remain
+visible with retry. No processing, acceptance, schema migration, collector, paid
+call or thesis change is added. Original Pipeline and backfill pause unchanged.
+
+Validation: 33 focused backend edition tests and 7 focused frontend tests. Disposable
+PostgreSQL tests cover pending-to-accepted reads, historical accepted editions after
+a successor, rejected versions, scoped identity, no read commits/schema creation,
+source/decision drift, complete recovery-layout transitions and unchanged research.
+Synthetic component checks at 390/1280px cover pending/accepted refresh, rejected and
+mismatched replies, delayed company switches, tab switching, disabled stale download
+and GET-only/no-overflow behavior. Screenshots inspected. All acceptance transitions
+are synthetic; no live decision was recorded.
+Full safe suite: 1,768 backend and 256 frontend tests pass; Python compilation
+and production build pass.
+Logs: /tmp/charlie-T345-{focused,frontend-focused,backend,frontend,build,ui}.log.
+
+Next: verify the exact deployment and existing ABT pending edition through the new
+stable route. CVS at 01:43 UTC remains queued, zero source receipts; this is not
+live collection-to-processing proof. After genuine collection/import and explicit
+processing authorization, trace that assignment into saved review outputs. While
+waiting, inspect full Lab note exact-read versus history availability and revision
+identity handling with failure fixtures before changing it. No live full-note rows
+are present to claim acceptance. Historical reference schema and all eight acceptance
+certifications remain open; broad dashboard work stays deferred.
+
 ## T344 — Recovery edition exports retain the actual review decision
 
 Saved-output audit found that the recovery layout was available on the accepted

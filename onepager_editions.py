@@ -131,7 +131,12 @@ def create_blueprint(get_db, investor_identity=lambda: None):
     def export(aid, eid):
         return render_version(aid, eid, True)
 
-    def render_version(aid, eid, exporting):
+    @bp.get('/api/research/assignments/<aid>/onepager-editions/<eid>/view')
+    def view(aid, eid):
+        # Stable saved-output link: resolve only this edition's retained decision.
+        return render_version(aid, eid, False, viewing=True)
+
+    def render_version(aid, eid, exporting, viewing=False):
         try:
             aid, eid = str(uuid.UUID(aid)), str(uuid.UUID(eid))
             layout = request.args.get('layout', 'illustrated')
@@ -149,9 +154,13 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                     return jsonify(error='Saved assignment not found.'), 404
                 assignment = dict(assignment)
                 parent, decisions = read_lineage(cur, aid)
-                if exporting and decisions.get(eid, {}).get('action') != 'accept':
+                decision = decisions.get(eid)
+                accepted = bool(decision and decision.get('action') == 'accept')
+                if viewing and decision and not accepted:
+                    raise ValueError('This edition was rejected or has an unavailable decision. Inspect its saved review; no other edition was substituted.')
+                if exporting and not accepted:
                     raise ValueError('Only an explicitly accepted edition can be exported.')
-                if not exporting and eid in decisions:
+                if not exporting and not viewing and eid in decisions:
                     raise ValueError('This edition already has an investor decision. Pending preview is unavailable; inspect its saved review.')
                 cur.execute("SELECT to_regclass('onepager_editions') AS name")
                 if not cur.fetchone()['name']:
@@ -201,7 +210,7 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                 from research_review_brief import render as recovery
                 from research_infographic import render as illustrated
                 financials = result.get('visualFundamentals')
-                context = (accepted_evidence(run, assignment, record, corrections, documents, financials, decision=decisions[eid]) if exporting else
+                context = (accepted_evidence(run, assignment, record, corrections, documents, financials, decision=decisions[eid]) if accepted else
                            pending_evidence(run, assignment, record, corrections, documents, financials, parent_id=parent))
                 html = (recovery(run, assignment['input'], preview=context) if layout == 'recovery' else illustrated(run, assignment['input'], financials, preview=context) if layout == 'illustrated'
                         else brief(run, assignment['input'], preview=context))
@@ -212,8 +221,9 @@ def create_blueprint(get_db, investor_identity=lambda: None):
                     response.headers['X-Content-Type-Options'] = 'nosniff'
                     return response
                 return jsonify(id=eid, assignmentId=aid, runId=str(rid), ticker=run['ticker'],
-                               status='pending', layout=layout, html=html,
-                               caveat='Pending preview only. Source bytes and usage restrictions rechecked; claim meaning still requires investor review. Original outputs remain unchanged.')
+                               status='accepted' if accepted else 'pending', layout=layout, html=html,
+                               caveat=('Investor-accepted editorial edition. Acceptance does not certify source accuracy or approve a thesis. Original outputs remain unchanged.' if accepted else
+                                       'Pending preview only. Source bytes and usage restrictions rechecked; claim meaning still requires investor review. Original outputs remain unchanged.'))
         except (ValueError, TypeError, AttributeError, KeyError) as exc:
             return jsonify(error=str(exc)), 409
     return bp

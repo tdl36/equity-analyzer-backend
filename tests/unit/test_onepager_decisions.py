@@ -217,3 +217,93 @@ class DecisionPersistenceTests(unittest.TestCase):
         self.assertEqual(client.post(path+'/decision',json={**self.decision,'investorId':'forged'}).status_code,409)
         self.assertEqual(client.post(path+'/decision',json={**self.decision,'action':'reject'}).status_code,200)
         self.assertEqual(client.get(path+'/export').status_code,409)
+
+    def test_stable_view_tracks_exact_decision_without_writing_or_weakening_routes(self):
+        from flask import Flask
+        from onepager_editions import create_blueprint
+        commits=[]
+        @contextmanager
+        def observed(commit=False):
+            commits.append(commit)
+            with self.db(commit) as pair: yield pair
+        app=Flask(__name__);app.register_blueprint(create_blueprint(observed))
+        client=app.test_client();path=self.url+'/'+EID
+        pending=client.get(path+'/view?layout=brief')
+        self.assertEqual(pending.status_code,200,pending.json)
+        self.assertEqual(pending.json['status'],'pending')
+        self.assertIn('Pending editorial preview',pending.json['html'])
+        with self.db() as (_,c):
+            c.execute("SELECT to_regclass('onepager_decisions') AS name");self.assertIsNone(c.fetchone()['name'])
+        self.submit()
+        accepted=client.get(path+'/view?layout=brief')
+        self.assertEqual(accepted.status_code,200,accepted.json)
+        self.assertEqual(accepted.json['status'],'accepted')
+        self.assertEqual(accepted.json['id'],EID)
+        self.assertEqual(accepted.json['assignmentId'],AID)
+        self.assertIn('Investor-accepted editorial edition',accepted.json['html'])
+        self.assertEqual(accepted.headers['Cache-Control'],'private, no-store')
+        self.assertNotIn('Content-Disposition',accepted.headers)
+        self.assertEqual(client.get(path+'/preview').status_code,409)
+        self.assertEqual(client.get(path+'/view?accepted=true').status_code,400)
+        self.assertEqual(client.get(path.replace(AID,OTHER)+'/view').status_code,404)
+        self.assertFalse(any(commits))
+        with self.db() as (_,c):
+            c.execute('SELECT state FROM stock_analysis_runs');self.assertEqual(c.fetchone()['state'],self.run['state'])
+            c.execute('SELECT result FROM mp_jobs');self.assertEqual(c.fetchone()['result'],self.assignment['result'])
+            c.execute('SELECT count(*) AS n FROM onepager_decisions');self.assertEqual(c.fetchone()['n'],1)
+
+    def test_stable_view_keeps_historical_edition_after_successor_acceptance(self):
+        self.submit()
+        successor={**self.body,'requestId':OTHER,'parentId':EID}
+        self.assertEqual(self.client().post(self.url,json=successor).status_code,201)
+        record=next(x['record'] for x in self.client().get(self.url).json['editions'] if x['id']==OTHER)
+        self.submit({**self.decision,'requestId':OTHER,'editionId':OTHER,'parentId':EID,'selectionDigest':record['selectionDigest']},OTHER)
+        response=self.client().get(self.url+'/'+EID+'/view?layout=brief')
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(response.json['id'],EID)
+        self.assertIn(DID,response.json['html'])
+        self.assertNotIn(OTHER,response.json['html'])
+
+    def test_rejected_view_never_substitutes_original_or_another_edition(self):
+        self.submit({**self.decision,'action':'reject'})
+        r=self.client().get(self.url+'/'+EID+'/view?layout=brief')
+        self.assertEqual(r.status_code,409)
+        self.assertIn('no other edition was substituted',r.json['error'])
+        self.assertNotIn('html',r.json)
+
+    def test_stable_view_rechecks_source_policy_bytes_and_saved_decision(self):
+        for mutation in ("UPDATE document_files SET metadata='{\"usage\":\"reference_only\"}'::jsonb",
+                         "UPDATE document_files SET file_data='Y2hhbmdlZA=='",
+                         'DELETE FROM onepager_accepted_heads'):
+            self.setUp();self.submit()
+            with self.db(True) as (_,c):c.execute(mutation)
+            r=self.client().get(self.url+'/'+EID+'/view?layout=brief')
+            self.assertEqual(r.status_code,409,r.json)
+            self.assertNotIn('html',r.json)
+
+    def test_recovery_view_renders_complete_saved_corrections_before_and_after_decision(self):
+        from tests.unit.test_research_review_brief import fixture
+        from onepager_edition_contract import baseline, prepare_edition
+        run,assignment,record,corrections,docs,financials=fixture()
+        assignment['result']['visualFundamentals']=financials
+        body={k:v for k,v in baseline(run,assignment,financials).items() if k!='ticker'}
+        body.update(requestId=EID,correctionIds=[x['id'] for x in corrections])
+        with self.db(True) as (_,c):
+            c.execute('DELETE FROM onepager_editions; DELETE FROM onepager_corrections')
+            c.execute('UPDATE stock_analysis_runs SET state=%s::jsonb,sources=%s::jsonb WHERE id=%s',(json.dumps(run['state']),json.dumps(run['sources']),run['id']))
+            c.execute('UPDATE mp_jobs SET input=%s::jsonb,result=%s::jsonb WHERE id=%s',(json.dumps(assignment['input']),json.dumps(assignment['result']),AID))
+            for row in corrections:
+                c.execute('INSERT INTO onepager_corrections VALUES(%s,%s,%s,%s,%s::jsonb)',(row['id'],row['run_id'],row['fingerprint'],row['payload_hash'],json.dumps(row['proposal'])))
+        r=self.client().post(self.url,json=body);self.assertEqual(r.status_code,201,r.json)
+        path=self.url+'/'+EID+'/view?layout=recovery'
+        pending=self.client().get(path);self.assertEqual(pending.status_code,200,pending.json)
+        record=self.client().get(self.url).json['editions'][0]['record']
+        intent={k:record[k] for k in ('assignmentId','runId','fingerprint','fundamentalsDigest','parentId','correctionIds','selectionDigest')}
+        self.submit({**intent,'requestId':DID,'editionId':EID,'action':'accept'})
+        accepted=self.client().get(path);self.assertEqual(accepted.status_code,200,accepted.json)
+        self.assertIn('Pending editorial preview',pending.json['html'])
+        self.assertIn('Investor-accepted editorial edition',accepted.json['html'])
+        for r in (pending,accepted):
+            self.assertIn('Qualified FY2029 assumption',r.json['html'])
+            self.assertIn('Charts not extracted.',r.json['html'])
+            self.assertEqual(r.json['id'],EID)

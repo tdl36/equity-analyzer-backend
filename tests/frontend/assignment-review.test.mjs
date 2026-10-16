@@ -3,7 +3,7 @@ import {reviewDocuments} from '../../src/assignment-review-model.mjs';
 test('recovered outputs take precedence without relinking the preserved failed original',()=>{
  const docs=reviewDocuments({id:'job',ticker:'ABT',result:{reviewPackage:{editionId:'edition',thesisDraftId:'new'},thesisDraftId:'old',artifacts:[{kind:'visual',url:'/old'}]}});
  assert.deepEqual(docs.map(d=>d.label),['One-pager','Stock summary','Thesis changes']);
- assert.match(docs[0].url,/edition\/preview\?layout=recovery$/);assert.ok(docs[0].json);assert.match(docs[2].href,/thesisDraft=new/);
+ assert.match(docs[0].url,/edition\/view\?layout=recovery$/);assert.ok(docs[0].json);assert.match(docs[2].href,/thesisDraft=new/);
 });
 test('partial results expose only saved deliverables and retain other requested outputs',()=>{
  assert.deepEqual(reviewDocuments({id:'job',ticker:'ABT',result:{}}),[]);
@@ -36,4 +36,19 @@ test('missing and stopped note receipts keep partial output links',()=>{
  const job={id:'job',ticker:'ABT',status:'cancelled',input:{labFullNote:{}},result:{artifacts:[{kind:'summary_note',url:'/saved'}]}};
  assert.equal(assignmentLabNote(job).status,'Stopped before delivery');assert.equal(assignmentLabNote(job).href,null);
  assert.deepEqual(reviewDocuments(job).map(d=>d.id),['summary_note']);
+});
+
+import {verifiedReviewPage} from '../../src/assignment-review-model.mjs';
+const pageJob={id:'job',ticker:'ABT',result:{reportId:'report',reviewPackage:{editionId:'edition'}}};
+const pageDoc=reviewDocuments(pageJob)[0];
+const response={id:'edition',assignmentId:'job',runId:'report',ticker:'ABT',status:'pending',layout:'recovery',html:'<p>Exact saved edition</p>'};
+test('saved review validates exact identities and retains pending or accepted status',()=>{
+ for(const status of ['pending','accepted'])assert.deepEqual(verifiedReviewPage({...response,status},pageDoc,pageJob),{html:response.html,status});
+ assert.equal(pageDoc.editionId,'edition');
+});
+test('saved review rejects substituted identity, rejected status and missing content',()=>{
+ for(const patch of [{id:'other'},{assignmentId:'other'},{runId:'other'},{ticker:'CVS'},{status:'rejected'},{status:undefined},{layout:'brief'},{html:''},{html:{} }])
+  assert.throws(()=>verifiedReviewPage({...response,...patch},pageDoc,pageJob),/does not match/);
+ assert.throws(()=>verifiedReviewPage(response,pageDoc,{...pageJob,result:{}}));
+ assert.throws(()=>verifiedReviewPage(null,pageDoc,pageJob));
 });
