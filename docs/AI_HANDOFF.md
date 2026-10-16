@@ -2,6 +2,41 @@
 
 Updated: October 14, 2026
 
+## T372 — Revise a blocked proposal without rebuilding its intent
+
+Saved proposal cards now offer Revise as a new proposal. This copies editable
+choices only: explicitly classified collected/supplemental selections, the same
+research purpose, event identity, outputs, instructions, full-note/PDF choices,
+meeting settings, horizon and public-financial-data choice. It copies no request
+identity, approval, hashes, baseline, provider plan or frozen model instructions.
+Unknown settings or unmappable source roles stop the copy instead of guessing.
+
+The other purpose's unfinished draft is retained. Replacing an unfinished draft
+for the same purpose requires confirmation. An unresolved submission or unavailable
+saved-proposal read blocks copying. The new draft is verified in browser recovery
+before it is displayed; copying itself makes no server write. Saving uses a new
+request identity and rechecks evidence/baselines/current full-note configuration;
+processing still needs the separate readiness check and investor approval. The
+original proposal, sources, jobs and authorization remain unchanged.
+
+The form now exposes horizon and optional public financial data so these existing
+server choices are not silently dropped during revision. Older local drafts migrate
+to their previous defaults, and unresolved submitted requests retain exact payloads.
+Blank unfinished horizons can be retained locally but cannot be submitted.
+
+Validation: all 1848 backend and 291 frontend tests, 9 focused frontend tests and
+production build pass. Synthetic full-app checks at 390/1280 cover source roles,
+local copy without writes, other-purpose preservation, cancel/confirm replacement,
+new pending identity versus original dispatched identity, and lost-save recovery.
+Phone rendering inspected; no horizontal overflow. Tests use intercepted synthetic
+API responses; no production proposal, approval, research or acceptance was created.
+
+Next: verify hosted T372. The real collection → selected proposal → explicit
+processing approval → saved research milestone remains open. When genuine receipts
+arrive, inspect readiness and use a new proposal for changed intent/baselines rather
+than altering the frozen request. Operations owns collection; shared dashboard
+expansion and all eight acceptance certifications remain deferred.
+
 ## T371 — Inspect saved processing blockers before approval
 
 Pending proposal cards previously revealed changed source/baseline blockers only

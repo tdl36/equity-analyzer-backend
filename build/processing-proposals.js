@@ -1,3 +1,4 @@
+import { proposalRevisionDraft } from './processing-proposal-revision.mjs';
 import { ProcessingReadiness } from './processing-readiness';
 import { processingSelection } from './processing-selection-model.mjs';
 import { ProcessingSelectionReview } from './processing-selection-review';
@@ -42,6 +43,10 @@ function ProposalReview({
     });
   var initial = restored.value || emptyDraft();
   var purposeDrafts = React.useRef(restored.drafts || {});
+  var formRef = React.useRef(null);
+  var [reuseNotice, setReuseNotice] = React.useState(''),
+    [horizon, setHorizon] = React.useState(initial.horizon),
+    [visualFundamentals, setVisualFundamentals] = React.useState(initial.visualFundamentals);
   var [submissionIssue, setSubmissionIssue] = React.useState('');
   var [draftIssue, setDraftIssue] = React.useState(restored.error),
     [restoredNotice, setRestoredNotice] = React.useState(!!restored.value);
@@ -86,6 +91,8 @@ function ProposalReview({
   });
   var authoring = {
     version: 1,
+    horizon,
+    visualFundamentals,
     selected,
     supplements,
     purpose,
@@ -108,6 +115,8 @@ function ProposalReview({
     }
   }, [localKey, JSON.stringify(authoring), draftIssue, pending]);
   var applyDraft = d => {
+    setHorizon(d.horizon);
+    setVisualFundamentals(d.visualFundamentals);
     setSelected(d.selected);
     setSupplements(d.supplements);
     setPurpose(d.purpose);
@@ -121,11 +130,13 @@ function ProposalReview({
     setMeetingType(d.meetingType);
   };
   var changePurpose = next => {
+    setReuseNotice('');
     purposeDrafts.current[purpose] = authoring;
     applyDraft(purposeDrafts.current[next] || emptyPurposeDraft(next));
     setRestoredNotice(false);
   };
   var resetForm = () => {
+    setReuseNotice('');
     var d = emptyPurposeDraft(purpose);
     purposeDrafts.current[purpose] = d;
     applyDraft(d);
@@ -135,6 +146,35 @@ function ProposalReview({
       setDraftIssue('');
     } catch {
       setDraftIssue('Current draft could not be cleared in browser recovery. Keep this screen open.');
+    }
+  };
+  var revise = p => {
+    if (lock.current || pending || submissionIssue || draftIssue || readIssue) return;
+    setError('');
+    try {
+      var draft = proposalRevisionDraft(p, job),
+        drafts = {
+          ...purposeDrafts.current,
+          [purpose]: authoring
+        };
+      var previous = drafts[draft.purpose];
+      if (previous && JSON.stringify(previous) !== JSON.stringify(emptyPurposeDraft(draft.purpose)) && !window.confirm('Replace the unfinished ' + (draft.purpose === 'event_note' ? 'event-note' : 'thesis-review') + ' draft with these saved choices? The other purpose and original saved proposal will be preserved.')) return;
+      writeDraftWorkspace(sessionStorage, localKey, draft, drafts);
+      purposeDrafts.current = {
+        ...drafts,
+        [draft.purpose]: draft
+      };
+      applyDraft(draft);
+      setRestoredNotice(false);
+      setReuseNotice('Copied saved choices into a new draft. Review the evidence and settings, then save a new proposal. Saving rechecks current sources and baselines and freezes current full-note configuration. The original proposal and its authorization remain unchanged; no processing was requested.');
+      formRef.current?.scrollIntoView({
+        block: 'start'
+      });
+      formRef.current?.focus({
+        preventScroll: true
+      });
+    } catch (e) {
+      setError(e.message || 'Saved choices could not be copied. The current draft is unchanged.');
     }
   };
   var key = 'charlie-processing-proposal:' + api + ':' + job.id;
@@ -282,7 +322,10 @@ function ProposalReview({
         },
         outputs: [...outputs].sort(),
         instruction,
-        horizon: '12–24 months',
+        horizon,
+        ...(visualFundamentals ? {
+          visualFundamentals: true
+        } : {}),
         ...(fullNote ? {
           labFullNote: {
             allowPdfText
@@ -329,7 +372,9 @@ function ProposalReview({
     role: "alert"
   }, error), restoredNotice && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested."), draftIssue && /*#__PURE__*/React.createElement("p", {
+  }, "Restored unsaved choices in this browser tab. Review them; originals and baseline are checked again when you save. No processing was requested."), reuseNotice && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, reuseNotice), draftIssue && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, draftIssue), submissionIssue && /*#__PURE__*/React.createElement("p", {
     role: "alert"
@@ -342,6 +387,8 @@ function ProposalReview({
   }, "Refresh saved proposals"), pending && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "A proposal submission is unresolved. Refresh to find its receipt, or retry the same saved submission below. Its choices are frozen."), /*#__PURE__*/React.createElement("fieldset", {
+    ref: formRef,
+    tabIndex: -1,
     disabled: busy || !loaded || !!pending || !!readIssue
   }, /*#__PURE__*/React.createElement("legend", null, "Select evidence and purpose"), /*#__PURE__*/React.createElement("label", null, "Processing purpose", /*#__PURE__*/React.createElement("select", {
     "aria-label": "Processing purpose",
@@ -423,13 +470,24 @@ function ProposalReview({
     type: "checkbox",
     checked: allowPdfText,
     onChange: e => setAllowPdfText(e.target.checked)
-  }), "Allow extracted PDF text when needed \xB7 charts and layout may be omitted")), /*#__PURE__*/React.createElement("label", null, "Focus and evidence gaps", /*#__PURE__*/React.createElement("textarea", {
+  }), "Allow extracted PDF text when needed \xB7 charts and layout may be omitted")), /*#__PURE__*/React.createElement("label", null, "Research horizon", /*#__PURE__*/React.createElement("input", {
+    "aria-label": "Processing research horizon",
+    maxLength: 100,
+    value: horizon,
+    onChange: e => setHorizon(e.target.value)
+  })), outputs.includes('visual') && /*#__PURE__*/React.createElement("label", {
+    className: "sa-check"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: visualFundamentals,
+    onChange: e => setVisualFundamentals(e.target.checked)
+  }), "Include public financial history and market snapshot \xB7 retrieval may be required"), /*#__PURE__*/React.createElement("label", null, "Focus and evidence gaps", /*#__PURE__*/React.createElement("textarea", {
     rows: 3,
     maxLength: 1800,
     value: instruction,
     onChange: e => setInstruction(e.target.value)
   }))), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !loaded || !!readIssue || !!submissionIssue || !pending && (!collectionReady || selectionSummary.metadataPending || selectionSummary.missing > 0 || selectionSummary.unavailable > 0 || !selected.length || !outputs.length || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
+    disabled: busy || !loaded || !!readIssue || !!submissionIssue || !pending && (!collectionReady || selectionSummary.metadataPending || selectionSummary.missing > 0 || selectionSummary.unavailable > 0 || !selected.length || !outputs.length || !horizon.trim() || outputs.includes('meeting_prep') && !meetingDate || purpose === 'event_note' && (!title.trim() || !eventDate)),
     onClick: save
   }, pending ? 'Retry saved proposal submission' : 'Save proposal · no generation'), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Approval starts the existing shared research workflow: up to twelve model calls within the configured budget. Large evidence packs may be excerpted with omissions recorded; selection does not guarantee exhaustive review. No exact credit estimate is available. Finished research still requires investor review.")), !loaded ? /*#__PURE__*/React.createElement("p", null, readIssue ? 'Saved proposals unavailable. Refresh to check their status.' : 'Loading saved proposals…') : !rows.length ? /*#__PURE__*/React.createElement("p", null, "No saved processing proposals for this collection.") : rows.map(p => /*#__PURE__*/React.createElement("article", {
     key: p.id,
@@ -437,7 +495,7 @@ function ProposalReview({
       borderTop: '1px solid var(--border-color,#d8dedd)',
       padding: '14px 0'
     }
-  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), p.plan.meeting && /*#__PURE__*/React.createElement("p", null, "Meeting preparation \xB7 ", p.plan.meeting.date, " \xB7 ", p.plan.meeting.type), p.fullNote && /*#__PURE__*/React.createElement("p", null, "Full versioned note \xB7 frozen model ", p.fullNote.modelKey, " \xB7 up to ", p.fullNote.maxCalls, " additional calls, ", p.fullNote.maxTokens.toLocaleString(), " output tokens per call \xB7 PDF text fallback ", p.fullNote.allowPdfText ? 'allowed' : 'off', ". Draft requires investor review."), p.fullNote?.sourcePreparation && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "Full-note source check: ", p.fullNote.sourcePreparation.sourcePack.length, " originals planned across ", p.fullNote.sourcePreparation.batchCount, " batches. Rechecked before dispatch; provider context validation still happens at execution."), p.fullNote.sourcePreparation.warnings.length > 0 && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Source representation limitations \xB7 ", p.fullNote.sourcePreparation.warnings.length), /*#__PURE__*/React.createElement("ul", null, p.fullNote.sourcePreparation.warnings.map(w => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("strong", null, p.plan.researchPurpose.kind === 'event_note' ? p.plan.researchPurpose.event.title : 'Longitudinal thesis review'), " \xB7 ", p.status, /*#__PURE__*/React.createElement("p", null, p.plan.researchPurpose.kind === 'event_note' ? `Event ${p.plan.researchPurpose.event.date} · ` : '', p.sources.length, " verified originals at save \xB7 ", p.plan.outputs.map(id => assignmentOutputs.find(x => x[0] === id)?.[1] || id).join(', ')), /*#__PURE__*/React.createElement("p", null, "Research horizon: ", p.plan.horizon || '12–24 months', p.plan.visualFundamentals ? ' · includes public financial history and market snapshot retrieval' : ''), p.plan.meeting && /*#__PURE__*/React.createElement("p", null, "Meeting preparation \xB7 ", p.plan.meeting.date, " \xB7 ", p.plan.meeting.type), p.fullNote && /*#__PURE__*/React.createElement("p", null, "Full versioned note \xB7 frozen model ", p.fullNote.modelKey, " \xB7 up to ", p.fullNote.maxCalls, " additional calls, ", p.fullNote.maxTokens.toLocaleString(), " output tokens per call \xB7 PDF text fallback ", p.fullNote.allowPdfText ? 'allowed' : 'off', ". Draft requires investor review."), p.fullNote?.sourcePreparation && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "Full-note source check: ", p.fullNote.sourcePreparation.sourcePack.length, " originals planned across ", p.fullNote.sourcePreparation.batchCount, " batches. Rechecked before dispatch; provider context validation still happens at execution."), p.fullNote.sourcePreparation.warnings.length > 0 && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Source representation limitations \xB7 ", p.fullNote.sourcePreparation.warnings.length), /*#__PURE__*/React.createElement("ul", null, p.fullNote.sourcePreparation.warnings.map(w => /*#__PURE__*/React.createElement("li", {
     key: w.reference
   }, p.sources.find(s => s.reference === w.reference)?.filename || w.reference, ": ", w.issue))))), p.plan.instruction && /*#__PURE__*/React.createElement("p", null, p.plan.instruction), /*#__PURE__*/React.createElement(ProcessingCoverage, {
     coverage: p.coverage
@@ -467,7 +525,10 @@ function ProposalReview({
         digest: p.digest
       });
     })
-  }, "Cancel proposal")), p.assignmentId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
+  }, "Cancel proposal")), /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!readIssue || !loaded || !!pending || !!submissionIssue || !!draftIssue,
+    onClick: () => revise(p)
+  }, "Revise as a new proposal \xB7 no generation"), p.assignmentId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('stockanalysis', p.ticker, 'stock-analysis', 'assignment:' + p.assignmentId)
   }, "Open saved processing job and outputs")))), loaded && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, rows.length, " saved proposals loaded", nextCursor ? ' · older proposals remain' : '', ". Refresh returns to the latest page.")), historyIssue && /*#__PURE__*/React.createElement("p", {
     role: "alert"

@@ -190,6 +190,7 @@ with sync_playwright() as p:
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   assert writes==[]
   expect(save).to_be_enabled()
+  review.get_by_label('Processing research horizon',exact=True).fill('6–9 months')
   save.click()
   if width==1280:
    expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
@@ -243,6 +244,45 @@ with sync_playwright() as p:
   link=review.get_by_role('link',name='Open saved processing job and outputs')
   expect(link).to_have_attribute('href', '#view=stockanalysis&ticker=ABT&section=stock-analysis&work=assignment%3A'+NOTE)
   assert len(writes)==2,writes
+  # Revision is local intent, never a replay or mutation of the old authorization.
+  review.get_by_label('Processing purpose').select_option('thesis_review')
+  review.get_by_role('textbox',name='Focus and evidence gaps',exact=True).fill('Keep longitudinal work')
+  review.get_by_role('checkbox',name='recent.pdf',exact=True).check()
+  revise=review.get_by_role('button',name='Revise as a new proposal · no generation',exact=True)
+  revise.click()
+  expect(review.get_by_label('Processing purpose')).to_have_value('event_note')
+  expect(review.get_by_label('Processing event title')).to_have_value('Guidance update')
+  expect(review.get_by_label('Processing research horizon')).to_have_value('6–9 months')
+  expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
+  selected_review=review.get_by_role('region',name='Evidence review before save',exact=True)
+  selected_review.get_by_text('Selected originals · 2',exact=True).click()
+  expect(selected_review.get_by_role('button',name='Remove supplemental source annual-2024-10-K.pdf',exact=True)).to_be_visible()
+  expect(review.get_by_role('status').filter(has_text='Copied saved choices')).to_be_visible()
+  assert len(writes)==2
+  review.get_by_role('textbox',name='Focus and evidence gaps',exact=True).fill('Unfinished event edit')
+  page.once('dialog',lambda dialog:dialog.dismiss());revise.click()
+  expect(review.get_by_role('textbox',name='Focus and evidence gaps',exact=True)).to_have_value('Unfinished event edit')
+  page.once('dialog',lambda dialog:dialog.accept());revise.click()
+  expect(review.get_by_role('textbox',name='Focus and evidence gaps',exact=True)).not_to_have_value('Unfinished event edit')
+  review.get_by_label('Processing purpose').select_option('thesis_review')
+  expect(review.get_by_role('textbox',name='Focus and evidence gaps',exact=True)).to_have_value('Keep longitudinal work')
+  expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).to_be_checked()
+  review.get_by_label('Processing purpose').select_option('event_note')
+  assert len(writes)==2
+  expect(review.get_by_role('button',name='Save proposal · no generation',exact=True)).to_be_enabled()
+  review.get_by_label('Processing research horizon').scroll_into_view_if_needed()
+  page.screenshot(path='/tmp/charlie-T372-'+str(width)+'-revision.png')
+  old_id=proposals[0]['id']
+  review.get_by_role('button',name='Save proposal · no generation',exact=True).click()
+  if width==1280:
+   expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
+   review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
+  expect(review.get_by_role('button',name='Check processing readiness · no generation',exact=True)).to_be_visible()
+  assert len(writes)==3 and len(proposals)==2
+  assert proposals[0]['id']==old_id and proposals[0]['status']=='dispatched'
+  assert proposals[1]['id']!=old_id and proposals[1]['status']=='pending'
+  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+  print(width,'revision restores intent, preserves other purpose, confirms target replacement, saves new pending identity without reapproval: passed',flush=True)
   print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, local draft reload/discard, lost-save reconciliation, saved coverage, failed/mismatched status guards and mock approval passed',flush=True)
   page.close()
  b.close()
