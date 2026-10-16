@@ -22,10 +22,23 @@ def assignment_id(ident):
 
 
 def original_pack(cur, ticker, filenames, supplemental_ids=()):
-    cur.execute("WITH selected AS MATERIALIZED (SELECT id,filename,metadata,file_data FROM document_files WHERE ticker=%s AND (filename=ANY(%s) OR id::text=ANY(%s)) FOR SHARE) SELECT id::text AS id,filename,metadata,CASE WHEN octet_length(file_data)<=20000000 AND sum(octet_length(file_data)) OVER ()<=80000000 THEN file_data ELSE NULL END AS file_data FROM selected", (ticker, filenames, list(supplemental_ids)))
+    # Downstream workers address frozen originals by filename. A supplemental ID
+    # must not save successfully only to discover an unselected namesake at approval.
+    cur.execute('''WITH selected AS MATERIALIZED (
+        SELECT d.id,d.filename,d.metadata,d.file_data,
+            (SELECT COUNT(*) FROM document_files identities
+             WHERE identities.ticker=d.ticker AND identities.filename=d.filename) AS identity_count
+        FROM document_files d
+        WHERE d.ticker=%s AND (d.filename=ANY(%s) OR d.id::text=ANY(%s)) FOR SHARE OF d)
+        SELECT id::text AS id,filename,metadata,identity_count,
+            CASE WHEN identity_count=1 AND octet_length(file_data)<=20000000
+                 AND sum(octet_length(file_data)) OVER ()<=80000000
+                 THEN file_data ELSE NULL END AS file_data FROM selected''', (ticker, filenames, list(supplemental_ids)))
     documents = {'charlie:thesis_' + str(r['id']): r for r in cur.fetchall()}
     if len(documents) != len(filenames) + len(supplemental_ids):
         raise ValueError('Selected original identities are missing or ambiguous. Refresh the source library.')
+    if any(r['identity_count'] != 1 for r in documents.values()):
+        raise ValueError('A selected original shares its filename with another stored original for this company. Resolve the ambiguous identity before saving or approving processing; originals are preserved.')
     checked = check_originals(ticker, 'processing', 1, sorted(documents), documents)
     if checked['blockers']:
         raise ValueError(' '.join(checked['blockers']))

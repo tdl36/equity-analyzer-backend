@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T363 detects supplemental filename ambiguity before saving a processing proposal,
+preventing an existing late approval failure. Synthetic preservation, scoped identity,
+legacy replay and post-save collision checks pass. This improves source-selection
+readiness; live collection, explicit processing and investor acceptance remain open.
+
 T362 prevents collection-only completion from certifying ambiguous stored original
 identities or malformed/repeated receipts. Synthetic same-request recovery,
 frozen receipt preservation, larger-library verification and legacy replay pass.

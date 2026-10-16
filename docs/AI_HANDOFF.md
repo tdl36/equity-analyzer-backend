@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T363 — Supplemental source ambiguity is detected before proposal approval
+
+A source selected by supplemental document ID could save in a processing proposal
+while another unselected stored original shared its filename. Approval subsequently
+resolved the frozen pack by filename and failed. New proposal preparation now checks
+all same-company identities for each selected filename, before byte validation,
+and returns an explicit blocker instead of saving an unapprovable proposal.
+Duplicate original bodies are withheld. Other-company namesakes remain valid.
+The existing coordinator and workers, collection breadth and generation limits
+are unchanged; no original is renamed, removed or automatically repaired.
+
+A regression reproduced the prior HTTP 201 for this ambiguous selection. It now
+returns 409 without creating a proposal or changing the parent collection. Tests
+also cover valid other-company namesakes, a collision introduced after saving,
+unchanged exact replay of that frozen proposal, and blocked dispatch. Existing
+proposal records remain readable/replayable; this is earlier readiness validation,
+not a new identity-repair workflow or research approval.
+
+Validation: 88 focused tests, all 1824 safe backend tests, 280 frontend tests,
+Python compilation and production build pass. No production proposal was saved or
+approved, no collection was retried and no paid generation ran. UI behavior is
+unchanged; no new visual or investor acceptance is claimed.
+
+Next: verify the exact hosted release and scoped unfinished-collection guards.
+The critical-path live milestone remains a genuine completed collection, selected
+frozen proposal, explicit investor processing approval and saved drafts. Operations
+owns AlphaSense coverage reconciliation. All eight acceptance certifications remain
+open; broader approval-dashboard expansion waits for the connected journey proof.
+
 ## T362 — Collection-only completion rejects ambiguous original identities
 
 The coordinator previously used the first document row matching a collection

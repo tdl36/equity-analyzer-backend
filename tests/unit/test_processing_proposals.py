@@ -243,6 +243,47 @@ class ProcessingProposalTests(unittest.TestCase):
         with self.db(True) as (_,cur):cur.execute('UPDATE document_files SET metadata=%s::jsonb WHERE id=%s',(json.dumps({'usage':'reference_only'}),int(extra)))
         self.assertEqual(self.decision(proposal).status_code,409)
 
+    def test_unselected_same_filename_history_blocks_new_proposal_before_approval(self):
+        self.parent();extra=self.extra()
+        self.body['supplementalIds']=[extra]
+        with self.db(True) as (_,cur):
+            cur.execute('INSERT INTO document_files(ticker,filename,file_data,file_type,metadata) SELECT ticker,filename,%s,file_type,metadata FROM document_files WHERE id=%s',
+                        (base64.b64encode(b'Unselected synthetic history').decode(),extra))
+        before=self.row(self.ident)
+        response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,409,response.json)
+        self.assertIn('filename',response.json['error'])
+        self.assertIsNone(self.row(self.body['requestId']));self.assertFalse(self.submits)
+        self.assertEqual(self.row(self.ident),before)
+        with self.db() as (_,cur):
+            cur.execute('SELECT COUNT(*) AS n FROM document_files WHERE ticker=%s',(self.ticker,))
+            self.assertEqual(cur.fetchone()['n'],3)
+
+    def test_history_filename_scope_excludes_other_companies(self):
+        self.parent();extra=self.extra()
+        self.extra(ticker='OTHER',raw=b'Unrelated company evidence')
+        self.body['supplementalIds']=[extra]
+        proposal=self.client.post(self.url,json=self.body)
+        self.assertEqual(proposal.status_code,201,proposal.json)
+        self.assertEqual(len(proposal.json['sources']),2)
+        self.assertEqual(self.decision(proposal.json).status_code,202)
+        self.assertFalse(self.submits)
+
+    def test_history_collision_after_save_preserves_replay_and_blocks_dispatch(self):
+        self.parent();extra=self.extra();self.body['supplementalIds']=[extra]
+        response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,201,response.json);proposal=response.json
+        before=self.row(proposal['id'])
+        with self.db(True) as (_,cur):
+            cur.execute('INSERT INTO document_files(ticker,filename,file_data,file_type,metadata) SELECT ticker,filename,file_data,file_type,metadata FROM document_files WHERE id=%s',(extra,))
+        replay=self.client.post(self.url,json=self.body)
+        self.assertEqual(replay.status_code,200,replay.json)
+        self.assertEqual(replay.json['digest'],proposal['digest'])
+        self.assertEqual(self.row(proposal['id']),before)
+        self.assertEqual(self.decision(proposal).status_code,409)
+        self.assertEqual(self.row(proposal['id']),before)
+        self.assertIsNone(self.row(assignment_id(proposal['id'])));self.assertFalse(self.submits)
+
     def test_library_inventory_is_scoped_paged_and_body_free(self):
         self.parent();self.extra(ticker='OTHER')
         with self.db(True) as (_,cur):
