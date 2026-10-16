@@ -11,13 +11,47 @@ from research_assignment_plan import plan
 
 @unittest.skipUnless((pg.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
 class Integration(fixtures.Review):
+    def test_selected_identity_replacement_cannot_enqueue_full_note(self):
+        ident=str(uuid.uuid4());ticker='FIX'+uuid.uuid4().hex[:6].upper();raw=b'Same bytes, replaced storage identity'
+        with self.db(True) as (_,cur):
+            cur.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s) RETURNING id',
+                        (ticker,'fixture.txt',base64.b64encode(raw).decode(),'{}'))
+            source_id=str(cur.fetchone()['id'])
+            cur.execute('UPDATE document_files SET id=id+1000000 WHERE id=%s',(source_id,))
+        assignment={'ticker':ticker,'thesisBaseline':{},'labNotePlan':{'promptTemplate':'Fixture','modelKey':'fixture','allowPdfText':False}}
+        pack=[{'documentId':source_id,'filename':'fixture.txt','sha256':hashlib.sha256(raw).hexdigest()}]
+        with self.assertRaisesRegex(ValueError,'identity'):
+            assignment_note(self.db,ident,assignment,pack)
+        note_id=str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie:assignment:'+ident+':full-lab-note'))
+        with self.db() as (_,cur):
+            cur.execute('SELECT note_id FROM pipeline_lab_note_plans WHERE note_id=%s',(note_id,))
+            self.assertIsNone(cur.fetchone())
+            cur.execute('SELECT note_id FROM pipeline_lab_note_jobs WHERE note_id=%s',(note_id,))
+            self.assertIsNone(cur.fetchone())
+
     def test_assignment_pack_to_saved_full_note_and_replay(self):
         self.assignment_roundtrip()
+
+    def test_selected_identity_pack_roundtrip_preserves_frozen_replay(self):
+        self.assignment_roundtrip(selected_ids=True)
+
+    def test_partial_selected_identity_pack_cannot_downgrade_to_hash_only(self):
+        ident=str(uuid.uuid4());ticker='FIX'+uuid.uuid4().hex[:6].upper();pack=[]
+        with self.db(True) as (_,cur):
+            for name in ('one.txt','two.txt'):
+                raw=name.encode()
+                cur.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s) RETURNING id',
+                            (ticker,name,base64.b64encode(raw).decode(),'{}'))
+                source_id=str(cur.fetchone()['id'])
+                pack.append({'filename':name,'sha256':hashlib.sha256(raw).hexdigest(),**({'documentId':source_id} if name=='one.txt' else {})})
+        assignment={'ticker':ticker,'thesisBaseline':{},'labNotePlan':{'promptTemplate':'Fixture','modelKey':'fixture','allowPdfText':False}}
+        with patch('pipeline_lab_note_service.prepare',side_effect=AssertionError('No extraction for incomplete identity pack')):
+            with self.assertRaisesRegex(ValueError,'identity'):assignment_note(self.db,ident,assignment,pack)
 
     def test_disclosed_truncation_survives_enqueue_execution_draft_and_replay(self):
         self.assignment_roundtrip(disclosure=1)
 
-    def assignment_roundtrip(self, disclosure=None):
+    def assignment_roundtrip(self, disclosure=None, selected_ids=False):
         ident=str(uuid.uuid4());ticker='FIX'+uuid.uuid4().hex[:6].upper();raw=b'Synthetic source only' if disclosure is None else b'x'*120_020
         with self.db(True) as (_,c):
             c.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s)',(ticker,'fixture.txt',base64.b64encode(raw).decode(),'{}'))
@@ -30,6 +64,7 @@ class Integration(fixtures.Review):
             doc=c.fetchone();ref='charlie:thesis_'+doc['id']
             verified=check_originals(ticker,'note',0,[ref],{ref:doc})['verified']
             assignment['labNotePlan']['sourcePreparation']=source_plan(c,ticker,[dict(s,documentId=doc['id']) for s in verified],assignment['labNotePlan'])
+        if selected_ids:pack[0]['documentId']=doc['id']
         from research_source_context import freeze, GUIDANCE
         assignment['researchPurpose']={'kind':'event_note','event':{'title':'Fixture earnings','date':'2025-03-01'}}
         assignment['processingEvidenceContext']=freeze([dict(s,documentId=doc['id']) for s in verified],{doc['id']:{'role':'supplemental','publishedDate':'2024-03-01','publisher':'Frozen publisher','sourceKind':'transcript','referencedBySavedThesis':False}})
@@ -52,6 +87,10 @@ class Integration(fixtures.Review):
         self.assertEqual(result['status'],'draft');self.assertEqual(len(calls),1)
         messages=json.dumps(calls[0]);self.assertIn('Frozen publisher',messages);self.assertIn('2024-03-01',messages);self.assertIn(GUIDANCE,messages);self.assertNotIn('Changed caller context',messages)
         self.assertEqual(assignment_note(self.db,ident,assignment,pack)['status'],'draft')
+        if selected_ids:
+            # Existing immutable plans replay their receipt without reselecting originals.
+            with self.db(True) as (_,c):c.execute('UPDATE document_files SET id=id+1000000 WHERE id=%s',(doc['id'],))
+            self.assertEqual(assignment_note(self.db,ident,assignment,pack)['status'],'draft')
         with self.db() as (_,c):
             draft=read(c,receipt['noteId'])
             self.assertEqual(draft['sourcePack'][0]['sha256'],pack[0]['sha256'])

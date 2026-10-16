@@ -2,6 +2,28 @@
 
 Updated: October 14, 2026
 
+## T364 — Full-note creation retains selected original identities
+
+Before a note plan existed, assignment_note checked filenames/hashes but not the
+storage IDs frozen by Lab selections. An identical-byte replacement could acquire
+a different ID, especially in older selections without sourcePreparation or frozen
+source context. The new-note path now verifies every supplied documentId against
+stored originals before extraction/enqueue. Partial identity packs fail closed;
+hash-only legacy collection receipts retain their contract. Existing frozen note
+plans still return their saved status without rebuilding or reselecting sources.
+
+A synthetic regression reproduced the identity substitution and now proves no
+plan/job is created. Other tests cover partial manifests, valid selected sources
+through synthetic generation and saved draft, and frozen receipt replay after
+storage changes. Eleven focused tests, all 1827 backend and 280 frontend tests,
+Python compilation and production build pass. No production source, note, approval
+or collection was changed; no paid generation ran. Original Pipeline is unchanged.
+
+Next: verify hosted T364, then continue the connected source-to-output journey.
+Real collection receipts and request-specific processing authorization remain open;
+Operations owns browser coverage reconciliation. Engineering and synthetic proof
+do not close the eight-priority investor/live acceptance ledger.
+
 ## T363 — Supplemental source ambiguity is detected before proposal approval
 
 A source selected by supplemental document ID could save in a processing proposal

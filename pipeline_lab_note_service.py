@@ -110,6 +110,13 @@ def assignment_note(get_db, ident, assignment, pack):
         expected={(r['filename'],r['sha256']) for r in pack}
         if checked['blockers'] or len(pack)!=len(docs) or actual!=expected:
             raise ValueError('Full note originals differ from the assignment pack. Saved research is retained.')
+        # Lab selections freeze storage identities as well as original bytes.
+        # Hash-only collection receipts keep their legacy contract, but a partial
+        # identity pack must never silently downgrade to filename/hash matching.
+        if any('documentId' in r for r in pack):
+            from lab_source_identity import validate,verify
+            selected=validate([{'id':r.get('documentId'),'filename':r['filename'],'sha256':r['sha256']} for r in pack],names)
+            verify(selected,list(docs.values()))
         prepared=prepare(assignment['ticker'],checked['verified'],docs,allow_pdf_text=cfg['allowPdfText'], source_disclosure_version=cfg.get('sourceDisclosureVersion'))
         if cfg.get('sourcePreparation') is not None:
             from pipeline_lab_note_plan import verify_preparation
