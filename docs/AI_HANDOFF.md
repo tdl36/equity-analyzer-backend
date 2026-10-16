@@ -37,6 +37,16 @@ processing → saved draft journey. Operations still owns AlphaSense reconciliat
 request-specific approval and investor acceptance remain open. All eight priority
 certifications remain open; shared-dashboard expansion waits for connected proof.
 
+T362 production verified: Render `83695bb566c9f9476a615995f1f6e99d6d45c873`,
+Cloudflare `a7a8b2ca-a8a4-4306-8a08-c7abdbc6eaad`. Hosted JS/service-worker
+bytes match the deployed assets and HTML reports T362. Focused read-only CVS
+assignment remains running / collection queued with zero verified source receipts;
+collection-only authorization is retained. Invalid-ID and unauthenticated reads
+return 400/401. No coordinator wake or production write was used for verification.
+Next checkpoint: genuine verified collection receipts and an explicitly authorized
+processing proposal; Operations coverage reconciliation and investor review remain
+external gates. Independent engineering continues without claiming live acceptance.
+
 ## T361 — Collection commands survive reload and lost responses
 
 CollectionCloud kept unresolved command identity only in a React ref. Reloading or

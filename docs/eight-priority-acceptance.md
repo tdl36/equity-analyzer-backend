@@ -9,6 +9,8 @@ identities or malformed/repeated receipts. Synthetic same-request recovery,
 frozen receipt preservation, larger-library verification and legacy replay pass.
 This strengthens collection-to-processing evidence integrity; it does not establish
 new live collection completion, processing authorization or investor acceptance.
+Exact hosted revision/assets and scoped assignment/authentication reads verified;
+CVS still has zero verified collection receipts. No production processing ran.
 
 T361 retains unresolved collection commands across reloads and uses exact scoped
 receipt reads outside the recent list. Synthetic desktop/mobile unknown-response,
