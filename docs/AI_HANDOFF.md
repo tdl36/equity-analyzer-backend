@@ -37,6 +37,18 @@ arrive, inspect readiness and use a new proposal for changed intent/baselines ra
 than altering the frozen request. Operations owns collection; shared dashboard
 expansion and all eight acceptance certifications remain deferred.
 
+T372 production verified: Render `b8a6f9e90d2d5073a520c14924a700c9e21d42a1`,
+Cloudflare `b758e031-b992-4c4d-8123-96afccade5e6`. Hosted JS/service-worker
+bytes and HTML match. Read-only assignment identity/authentication and readiness
+scope guards pass. One transient 502 recovered on a read-only retry. Proposal
+revision interactions remain synthetically verified; no live proposal or paid
+processing was submitted for QA. CVS remains running / collection queued / zero
+verified sources. Collection-to-processing preparation correctly remains blocked.
+Next: inspect genuine collection receipts when available, then a selected proposal
+and request-specific processing authorization through saved outputs and review.
+Continue independent demonstrated workflow repairs; shared-dashboard expansion
+and investor acceptance remain open. Originals and unrelated local edits preserved.
+
 ## T371 — Inspect saved processing blockers before approval
 
 Pending proposal cards previously revealed changed source/baseline blockers only
