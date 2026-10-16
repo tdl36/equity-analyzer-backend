@@ -4,6 +4,12 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T362 prevents collection-only completion from certifying ambiguous stored original
+identities or malformed/repeated receipts. Synthetic same-request recovery,
+frozen receipt preservation, larger-library verification and legacy replay pass.
+This strengthens collection-to-processing evidence integrity; it does not establish
+new live collection completion, processing authorization or investor acceptance.
+
 T361 retains unresolved collection commands across reloads and uses exact scoped
 receipt reads outside the recent list. Synthetic desktop/mobile unknown-response,
 503, reload and corrupt-storage recovery pass; no automatic retry or new worker.

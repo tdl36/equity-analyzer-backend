@@ -628,6 +628,72 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertFalse(self.submits)
         self.assertNotIn('reportId',row['result'])
 
+    def test_source_only_ambiguous_original_stays_attention_and_recovers_without_dispatch(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+        other=base64.b64encode(b'Different synthetic original').decode()
+        with self.db(True) as (_,cur):
+            cur.execute('INSERT INTO document_files VALUES(%s,%s,%s,%s,%s::jsonb)',(self.ticker,'one.txt',other,'txt','{}'))
+        with patch('command_thesis_bridge.file_hash',side_effect=AssertionError('Ambiguous bytes must not be hashed')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertIn('Multiple stored originals',row['error'])
+        self.assertNotIn('reportId',row['result']);self.assertNotIn('sources',row['result'])
+        self.assertFalse(self.submits);self.assertEqual(row['input']['collectionOnly'],True)
+        with self.db(True) as (_,cur):
+            cur.execute('SELECT COUNT(*) AS n FROM document_files WHERE ticker=%s',(self.ticker,))
+            self.assertEqual(cur.fetchone()['n'],2)
+            # Simulate resolution of the disposable fixture only; production code never removes originals.
+            cur.execute('DELETE FROM document_files WHERE ticker=%s AND file_data=%s',(self.ticker,other))
+            cur.execute("UPDATE app_settings SET value='{}' WHERE key='collection_control_snapshot'")
+        with patch.object(self.co,'invoke',side_effect=AssertionError('Collection recovery cannot call research')):
+            self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={}).status_code,200)
+            recovered=self.advance()
+        self.assertEqual(recovered['status'],'complete',recovered.get('error'))
+        self.assertEqual(recovered['result']['collection'],row['result']['collection'])
+        self.assertEqual(recovered['result']['sources'],[{'filename':'one.txt','sha256':self.sha}])
+        self.assertFalse(self.submits)
+
+    def test_source_only_same_byte_duplicate_identity_is_not_verified(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+        with self.db(True) as (_,cur):
+            cur.execute('INSERT INTO document_files SELECT * FROM document_files WHERE ticker=%s',(self.ticker,))
+        row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertIn('Multiple stored originals',row['error'])
+        self.assertFalse(self.submits)
+
+    def test_source_only_malformed_and_repeated_receipts_preserve_frozen_request(self):
+        valid={'filename':'one.txt','sha256':self.sha}
+        for pack in ({'filename':'one.txt'},['one.txt'],[{}],
+                     [{**valid,'filename':' '}],[{**valid,'sha256':'invalid'}],[valid,valid]):
+            with self.subTest(pack=pack):
+                self.ident=str(uuid.uuid4());self.ticker='T'+uuid.uuid4().hex[:10].upper()
+                body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}
+                self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+                self.collected()
+                with self.db(True) as (_,cur):
+                    snapshot={'requests':[{'id':self.ident,'status':'complete','result':{'assignmentSources':pack}}]}
+                    cur.execute("UPDATE app_settings SET value=%s WHERE key='collection_control_snapshot'",(json.dumps(snapshot),))
+                row=self.advance()
+                self.assertEqual(row['status'],'attention');self.assertIn('Collection receipts',row['error'])
+                self.assertEqual(row['result']['collection'],snapshot['requests'][0])
+                self.assertNotIn('reportId',row['result']);self.assertNotIn('sources',row['result'])
+                self.assertFalse(self.submits)
+                self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+                self.assertEqual(self.co.read(self.ident),row)
+
+    def test_completed_source_only_assignment_retains_legacy_frozen_receipts(self):
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':[],'collectionOnly':True}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected();row=self.advance()
+        state=row['result'];state['sources'].append(copy.deepcopy(state['sources'][0]))
+        self.co.store(self.ident,state,'complete');before=self.co.read(self.ident)
+        self.assertEqual(self.advance(),before)
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,200)
+        self.assertEqual(self.co.read(self.ident),before);self.assertFalse(self.submits)
+
     def test_stop_propagates_to_deterministic_full_note_child(self):
         stopped=[]
         self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Fixture'}

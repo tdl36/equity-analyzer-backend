@@ -2,6 +2,41 @@
 
 Updated: October 14, 2026
 
+## T362 — Collection-only completion rejects ambiguous original identities
+
+The coordinator previously used the first document row matching a collection
+receipt filename. Multiple stored originals with that filename could therefore
+be reported as verified even though later processing selection was ambiguous.
+Collection-only completion now requires exactly one ticker/filename identity,
+checks receipt structure, unique filenames and SHA-256 syntax, and retains an
+explicit attention state for invalid or ambiguous evidence. Duplicate original
+bodies are not returned or hashed. Each library original is still checked
+individually; larger collection breadth is not reduced to a generation limit.
+Distinct filenames with identical bytes remain a library concern; the existing
+processing-proposal deduplication still applies to selected evidence.
+
+New collection-only verification failures no longer acquire a nonexistent research
+report ID. Synthetic recovery resolves a duplicate fixture, resumes the same
+assignment from its frozen collection after snapshot rotation, and completes
+without any research invocation. Originals and frozen receipts are never repaired,
+deleted or rewritten by this change. Completed legacy assignments are untouched.
+Malformed frozen receipts remain explicit reconciliation cases, not auto-retries
+or silently rewritten authorizations. Original Research Pipeline is unchanged.
+
+Validation: 57 focused assignment tests, all 1,821 safe backend and 280 frontend
+tests, Python compilation and production build pass. Four new regressions cover
+ambiguous different/same-byte records, malformed/repeated receipts, safe resume
+and completed legacy replay. The initial multi-case fixture hit the existing
+same-company unfinished-job guard; isolated companies corrected the fixture.
+No production original, collection request, processing approval or synthesis was
+changed. No UI behavior changed; no new visual acceptance is claimed.
+
+Next: verify hosted T362 and exact read-only saved assignment state, then continue
+the genuine collection receipt → selected processing proposal → investor-approved
+processing → saved draft journey. Operations still owns AlphaSense reconciliation;
+request-specific approval and investor acceptance remain open. All eight priority
+certifications remain open; shared-dashboard expansion waits for connected proof.
+
 ## T361 — Collection commands survive reload and lost responses
 
 CollectionCloud kept unresolved command identity only in a React ref. Reloading or

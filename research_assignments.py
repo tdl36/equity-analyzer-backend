@@ -100,23 +100,33 @@ class Coordinator:
                     if collection['status']!='complete':
                         state['step']='Collecting and verifying originals';self.store(ident,state,'running');return
                     pack=obj(collection.get('result')).get('assignmentSources',[])
+                if p.get('collectionOnly'):
+                    if not isinstance(pack,list) or any(not isinstance(s,dict)
+                            or not isinstance(s.get('filename'),str) or not s['filename'].strip()
+                            or not isinstance(s.get('sha256'),str) or not re.fullmatch(r'[0-9a-f]{64}',s['sha256']) for s in pack):
+                        raise ValueError('Collection receipts contain invalid original identities. The frozen receipt needs reconciliation; preserve this request and the originals.')
+                    if len({s['filename'] for s in pack})!=len(pack):
+                        raise ValueError('Collection receipts repeat an original filename. The frozen receipt needs reconciliation; preserve this request and the originals.')
                 if not pack:raise ValueError('No eligible originals were collected in this date range. No research was charged.')
                 if len(pack)>1000:raise ValueError('Source manifest exceeds the supported 1000-original bound.')
-                # Persist exact originals and request payload before dispatch. Every retry uses this payload.
-                report_id=child(ident,'stock-analysis');state['reportId']=report_id
                 if p.get('collectionOnly'):
                     # Verify one original at a time; a library is not one model context.
                     from company_research import eligible
                     from command_thesis_bridge import file_hash
                     for source in pack:
                         with self.db() as (_,cur):
-                            cur.execute('SELECT filename,file_data,metadata FROM document_files WHERE ticker=%s AND filename=%s',(ticker,source['filename']))
+                            # Count all identities without returning duplicate original bodies.
+                            cur.execute('SELECT filename,metadata,COUNT(*) OVER () AS identity_count, CASE WHEN COUNT(*) OVER ()=1 THEN file_data ELSE NULL END AS file_data FROM document_files WHERE ticker=%s AND filename=%s',(ticker,source['filename']))
                             document=cur.fetchone()
+                        if document and document['identity_count']!=1:
+                            raise ValueError('Multiple stored originals share a collection filename. Preserve the originals and resolve the ambiguous identity before resuming.')
                         if not document or not eligible(document.get('metadata') or {}) or file_hash(document)!=source['sha256']:
                             raise ValueError('Imported source hashes or permissions do not match the collection receipts.')
                     state.pop('reportId',None);state['sources']=pack
                     state['step']='Originals collected and verified in Charlie; no research generation requested'
                     self.store(ident,state,'complete');return
+                # Persist exact originals and request payload before dispatch. Every retry uses this payload.
+                report_id=child(ident,'stock-analysis');state['reportId']=report_id
                 with self.db() as (_,cur):
                     cur.execute('SELECT COALESCE(SUM(octet_length(file_data)),0) AS encoded_bytes FROM document_files WHERE ticker=%s AND filename=ANY(%s)',(ticker,[s['filename'] for s in pack]))
                     if cur.fetchone()['encoded_bytes']>80_000_000:
