@@ -2,6 +2,45 @@
 
 Updated: October 14, 2026
 
+## T361 — Collection commands survive reload and lost responses
+
+CollectionCloud kept unresolved command identity only in a React ref. Reloading or
+leaving the view could lose recovery and allow a fresh request ID after an unknown
+response. It now persists the exact command in session storage before transmission,
+verifies storage, restores it on remount and disables new commands while unresolved.
+Retry is explicit and reuses the saved identity/payload. HTTP 5xx, auth/network errors
+and unverified receipts retain recovery; definitive 400/409 rejection releases it.
+Corrupt/unavailable storage fails closed. Successful clearing is checked, and
+API identity changes remount the view so old responses cannot affect another host.
+
+GET /api/collection/control?requestId=UUID provides a scoped, read-only exact command
+receipt outside the latest-50 window. Ambiguous/unknown filters are rejected;
+non-collection/missing IDs return no command. Existing snapshot and command queue
+semantics remain unchanged. Restored commands use this lookup, never automatically
+repost or claim browser completion. Failed receipts remain visible as failures.
+No collection worker, processing approval, policy mutation or synthesis was run.
+
+Validation: eight focused backend and three recovery-model tests pass. Synthetic
+browser checks at 390/1280px exercise lost response, reload, 503 preservation,
+exact receipt recovery outside the recent list, corrupt storage and no automatic
+POST; screenshots inspected without horizontal overflow. All 1,813 backend and
+280 frontend safe tests, Python compilation and production build pass. Initial fixture lacked
+CatalystWatch config and was corrected; final checks pass. Full suites/build and
+release verification are recorded in /tmp/charlie-T361-* logs.
+
+Read-only collection snapshot at 05:42 UTC: 28 queued, one collecting (COR holds
+slot), 21 attention requests. CVS is waiting at default position 24 of 28; this is
+not an ETA or proof of search progress. Several attention requests retain exact-byte
+partial originals but report AlphaSense result-count/card mismatches; these need
+Operations browser reconciliation, not fabricated completion or another worker.
+No request status or source was changed by this audit. No new complete linked
+collection-to-processing/investor proof is established.
+
+Next: verify hosted T361 and exact read against a retained command, then resume the
+genuine receipt → selected evidence → explicit processing approval → saved draft
+journey. Collection recovery is engineering progress, not eight-priority completion.
+Shared dashboard expansion and historical schema/acceptance gaps remain open.
+
 ## T360 — Disclose truncated full-note evidence across approval and review
 
 Full-note preparation previously described extracted text as losing images/layout

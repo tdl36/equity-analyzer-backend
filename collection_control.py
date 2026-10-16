@@ -73,6 +73,19 @@ def create_blueprint(get_db, is_agent):
                     return jsonify(id=jid,status=old['status'])
                 cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,%s,%s,'queued',%s::jsonb)",(jid,STAGE,value['payload'].get('ticker') or value['payload'].get('policy',{}).get('ticker'),json.dumps(value)))
             return jsonify(id=jid,status='queued'),202
+        if request.args:
+            try:
+                if set(request.args) != {'requestId'} or len(request.args.getlist('requestId')) != 1:
+                    raise ValueError()
+                ident=str(uuid.UUID(request.args['requestId']))
+            except (ValueError, TypeError, AttributeError):
+                return jsonify(error='Choose one valid collection command identity.'),400
+            with get_db() as (_,cur):
+                cur.execute('SELECT id,ticker,status,input,result,error,created_at FROM mp_jobs WHERE stage=%s AND id=%s',(STAGE,ident))
+                row=cur.fetchone()
+            response=jsonify(commands=[dict(row)] if row else [])
+            response.headers['Cache-Control']='no-store'
+            return response
         with get_db() as (_,cur):
             cur.execute('SELECT value,updated_at FROM app_settings WHERE key=%s',(KEY,));row=cur.fetchone()
             cur.execute('SELECT id,ticker,status,input,result,error,created_at FROM mp_jobs WHERE stage=%s ORDER BY created_at DESC LIMIT 50',(STAGE,));commands=[dict(r) for r in cur.fetchall()]

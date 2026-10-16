@@ -15,7 +15,9 @@ class Commands:
         if sql.startswith('SELECT stage,input,status'):
             row=self.jobs.get(args[0]);self.rows=[row] if row else []
         elif sql.startswith('INSERT INTO mp_jobs'):
-            self.jobs[args[0]]={'stage':args[1],'input':json.loads(args[3]),'status':'queued'}
+            self.jobs[args[0]]={'id':args[0],'stage':args[1],'input':json.loads(args[3]),'status':'queued'}
+        elif 'WHERE stage=%s AND id=%s' in sql:
+            row=self.jobs.get(args[1]);self.rows=[row] if row and row['stage']==args[0] else []
         else:raise AssertionError(sql)
     def fetchone(self):return self.rows[0] if self.rows else None
 
@@ -53,3 +55,20 @@ class ControlTests(unittest.TestCase):
             value={**self.data,'action':action,'payload':{'ticker':'MDT','refreshRequestId':str(uuid.uuid4())}}
             self.assertEqual(cc.command(value)['action'],action)
             with self.assertRaises(ValueError):cc.command({**value,'payload':{'ticker':'MDT','refreshRequestId':'bad'}})
+
+    def test_exact_command_read_is_scoped_read_only_and_not_limited_to_recent_list(self):
+        self.client.post('/api/collection/control',json=self.data)
+        for _ in range(60):self.client.post('/api/collection/control',json={**self.data,'requestId':str(uuid.uuid4())})
+        before=json.dumps(self.db.jobs,sort_keys=True)
+        response=self.client.get('/api/collection/control',query_string={'requestId':self.data['requestId']})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual([r['id'] for r in response.json['commands']],[self.data['requestId']])
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+        self.assertEqual(json.dumps(self.db.jobs,sort_keys=True),before)
+        self.db.jobs[self.data['requestId']]['stage']='research_assignment'
+        self.assertEqual(self.client.get('/api/collection/control',query_string={'requestId':self.data['requestId']}).json,{'commands':[]})
+        self.assertEqual(self.client.get('/api/collection/control',query_string={'requestId':str(uuid.uuid4())}).json,{'commands':[]})
+
+    def test_exact_command_read_rejects_ambiguous_filters(self):
+        for query in ('requestId=bad','other=1','requestId='+self.data['requestId']+'&requestId='+self.data['requestId']):
+            self.assertEqual(self.client.get('/api/collection/control?'+query).status_code,400)

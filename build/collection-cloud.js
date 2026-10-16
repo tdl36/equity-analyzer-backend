@@ -1,3 +1,5 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { commandRecoveryKey, readCommand, retainCommand, clearCommand, commandReceipt, exactCommand } from './collection-command-recovery.mjs';
 import { CollectionSynthesisStatus } from './collection-synthesis';
 import { CollectionRequests } from './collection-requests';
 import { parseTimestamp, workId } from './workspace-model.mjs';
@@ -15,20 +17,40 @@ var blank = {
   instructions: '',
   enabled: true
 };
-export function CollectionCloud({
+export function CollectionCloud(props) {
+  return /*#__PURE__*/React.createElement(CollectionCloudSession, _extends({
+    key: props.api
+  }, props));
+}
+function CollectionCloudSession({
   api,
   coverage = [],
   initialTicker = '',
   routeWork = '',
   onWorkChange
 }) {
+  var recoveryKey = commandRecoveryKey(api);
+  var [restored] = React.useState(() => {
+    try {
+      return {
+        body: readCommand(sessionStorage, recoveryKey),
+        error: ''
+      };
+    } catch (e) {
+      return {
+        body: null,
+        error: e.message
+      };
+    }
+  });
+  var [recoveryIssue, setRecoveryIssue] = React.useState(restored.error);
   var [data, setData] = React.useState(null),
     [cfg, setCfg] = React.useState(blank),
     [error, setError] = React.useState(''),
     [loadError, setLoadError] = React.useState(''),
     [message, setMessage] = React.useState(''),
     [busy, setBusy] = React.useState(false),
-    [uncertain, setUncertain] = React.useState(false);
+    [uncertain, setUncertain] = React.useState(!!restored.body || !!restored.error);
   var [bulk, setBulk] = React.useState(''),
     [custom, setCustom] = React.useState(false);
   var [query, setQuery] = React.useState(initialTicker),
@@ -37,13 +59,13 @@ export function CollectionCloud({
   var parsed = parseTickers(bulk);
   var alive = React.useRef(true),
     lock = React.useRef(false),
-    pending = React.useRef(null),
+    pending = React.useRef(restored.body),
     readSerial = React.useRef(0);
-  var json = async options => {
+  var json = async (options, query = '') => {
     var c = new AbortController(),
       timer = setTimeout(() => c.abort(), 20000);
     try {
-      var r = await fetch(`${api}/api/collection/control`, {
+      var r = await fetch(`${api}/api/collection/control${query}`, {
         ...options,
         signal: c.signal
       });
@@ -59,20 +81,36 @@ export function CollectionCloud({
     }
   };
   var refresh = async () => {
-    var serial = ++readSerial.current;
+    var serial = ++readSerial.current,
+      current = () => alive.current && serial === readSerial.current;
     try {
       var value = await json();
-      if (alive.current && serial === readSerial.current) {
-        setData(value);
-        setLoadError('');
-        if (pending.current && value.commands.some(c => c.id === pending.current.requestId)) {
+      if (!current()) return;
+      setData(value);
+      setLoadError('');
+      var body;
+      try {
+        body = readCommand(sessionStorage, recoveryKey);
+        setRecoveryIssue('');
+      } catch (e) {
+        setRecoveryIssue(e.message);
+        setUncertain(true);
+        return;
+      }
+      pending.current = body;
+      setUncertain(!!body);
+      if (body) {
+        var receipt = exactCommand(await json(undefined, '?requestId=' + encodeURIComponent(body.requestId)), body);
+        if (!current()) return;
+        if (receipt) {
+          clearCommand(sessionStorage, recoveryKey, body);
           pending.current = null;
           setUncertain(false);
-          setMessage('Command recorded. Track its Mac acknowledgement below.');
+          setMessage(`Command ${receipt.status === 'applied' ? 'applied on Mac' : receipt.status}. Its exact saved receipt was recovered; browser collection may still be pending.${typeof receipt.error === 'string' && receipt.error ? ' ' + receipt.error : ''}`);
         }
       }
     } catch (e) {
-      if (alive.current && serial === readSerial.current) setLoadError(e.message);
+      if (current()) setLoadError(e.message);
     }
   };
   React.useEffect(() => {
@@ -88,7 +126,7 @@ export function CollectionCloud({
     };
   }, [api]);
   var send = async (action, payload) => {
-    if (lock.current) return;
+    if (lock.current || recoveryIssue) return;
     lock.current = true;
     setBusy(true);
     setError('');
@@ -97,16 +135,19 @@ export function CollectionCloud({
       action,
       payload
     };
-    pending.current = req;
     try {
-      var d = await json({
+      retainCommand(sessionStorage, recoveryKey, req);
+      pending.current = req;
+      setUncertain(true);
+      var d = commandReceipt(await json({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(req)
-      });
+      }), req);
       if (alive.current) {
+        clearCommand(sessionStorage, recoveryKey, req);
         pending.current = null;
         setUncertain(false);
         setMessage(`Command ${d.status}. Collection starts only after Mac processing and browser execution.`);
@@ -115,9 +156,14 @@ export function CollectionCloud({
     } catch (e) {
       if (alive.current) {
         setError(e.message);
-        if (e.status) {
-          pending.current = null;
-          setUncertain(false);
+        if (e.status === 400 || e.status === 409) {
+          try {
+            clearCommand(sessionStorage, recoveryKey, req);
+            pending.current = null;
+            setUncertain(false);
+          } catch (clearError) {
+            setRecoveryIssue(clearError.message);
+          }
         } else setUncertain(true);
         await refresh();
       }
@@ -146,7 +192,12 @@ export function CollectionCloud({
     role: "status"
   }, health.overdue, " queued requests have waited over 30 minutes; oldest ", health.oldestMinutes, " minutes. A connected Mac is not proof that browser collection is progressing. Inspect the requests below and the browser worker."), /*#__PURE__*/React.createElement("p", {
     className: "desk-explainer"
-  }, "Counts reflect the latest Mac snapshot. A successful refresh is delivery evidence, not a guarantee of complete source coverage or research accuracy.")), (error || loadError) && /*#__PURE__*/React.createElement("p", {
+  }, "Counts reflect the latest Mac snapshot. A successful refresh is delivery evidence, not a guarantee of complete source coverage or research accuracy.")), recoveryIssue && /*#__PURE__*/React.createElement("p", {
+    role: "alert",
+    className: "workspace-error"
+  }, recoveryIssue, " No new collection commands will be sent."), uncertain && pending.current && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "An unresolved collection command is retained in this browser tab. Check status to find its exact receipt, or retry the same command. New commands are blocked until it is resolved."), (error || loadError) && /*#__PURE__*/React.createElement("p", {
     role: "alert",
     className: "workspace-error"
   }, error || loadError), message && /*#__PURE__*/React.createElement("p", {
@@ -301,8 +352,8 @@ export function CollectionCloud({
         ticker
       }))
     })
-  }, "Save ", parsed.tickers.length, " ticker policies on Mac")))), uncertain && /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
+  }, "Save ", parsed.tickers.length, " ticker policies on Mac")))), uncertain && pending.current && /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!recoveryIssue,
     onClick: () => send()
   }, "Retry same command"), /*#__PURE__*/React.createElement("button", {
     onClick: refresh,
