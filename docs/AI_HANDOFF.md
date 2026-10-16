@@ -31,6 +31,16 @@ proposal → saved research remains the main live acceptance milestone. Operatio
 owns collection reconciliation. Continue substantive saved-output reconciliation;
 shared approval expansion and all eight acceptance certifications remain open.
 
+T368 production verified: Render `a536e1e4495080f3b5123d400743baf2a68c9342`,
+Cloudflare `135f9c49-d1af-4bbb-b1b9-c3d1556d4739`. Hosted JS/service-worker
+bytes and HTML match. The authenticated ABT archive read and invalid/duplicate
+cursor/authentication guards pass. Positive multi-page and exact revision behavior
+is synthetic/disposable-DB evidence; no production note was created or accepted.
+Read-only CVS remains running / collection queued with zero verified sources;
+unfinished-parent processing reads remain guarded. No coordinator wake or paid
+operation was used. The live collection → approved processing → saved draft
+milestone and all eight acceptance certifications remain open.
+
 ## T367 — Assignment review retains the delivered meeting-question version
 
 Coordinated assignments already retained meetingId and meetingQuestionSetId, but
