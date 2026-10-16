@@ -34,6 +34,15 @@ processing approval. Preserve the backfill pause; no duplicate collection worker
 Do not repeat T350–T357 output access/recovery fixes. Historical reference schema,
 provider-outcome reconciliation and all eight acceptance certifications remain open.
 
+T357 production verified: Render `330e52ee2e9f4e8c922482e5ba378bf764ad36da`,
+Cloudflare `5c663834-aade-4b95-9e1b-da7e7970c66b`. Exact hosted JS/service-worker
+bytes and T357 HTML match. Read-only retained assignments verified MDT meeting 25
+(one version/eight originals), ABT 26 (one/nine) and ABT 24 (two/12), with exact
+company/version identity and private/no-store headers. Unauthenticated inspection
+returns 401. Wrong-company/ambiguous records remain synthetic evidence. CVS at
+04:47 UTC remains queued with zero receipts. No approvals, generation, collection
+worker changes or agent restart. Logs: /tmp/charlie-T357-{verify,journey}.log.
+
 ## T356 — One reliable meeting agenda on Home and Activity
 
 Home previously used the separate mpMeetings cache, including cancelled/completed

@@ -8,6 +8,8 @@ T357 verifies command assignment → preparation → meeting company identity be
 exposing sources, versions and navigation; ambiguous links remain explicit.
 Synthetic identity, duplicate-link and phone/desktop recovery checks pass. This
 is a saved-output integrity repair, not new end-to-end or investor acceptance.
+Exact hosted release and three retained MDT/ABT assignments with four saved
+meeting versions verified read-only; invalid/ambiguous cases remain synthetic.
 
 T356 unifies Home and Activity on the existing dated meeting agenda, removing
 stale cancelled/completed Home entries and false empty states after failed reads.
