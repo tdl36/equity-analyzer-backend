@@ -31,6 +31,17 @@ frozen proposal, explicit investor processing approval and saved drafts. Operati
 owns AlphaSense coverage reconciliation. All eight acceptance certifications remain
 open; broader approval-dashboard expansion waits for the connected journey proof.
 
+T363 production verified: Render `68be01d9d8426eb13b2311ba38507f97b6a26c0e`,
+Cloudflare `a21b11b3-9f36-4915-bc3f-208ece93e42d`. Hosted JS/service-worker
+bytes and HTML release match. Focused read-only CVS remains running / collection
+queued with zero verified sources and collection-only authorization. Invalid-ID
+and authentication guards return 400/401. All three processing preparation reads
+reject the unfinished parent with 409. No coordinator wake, proposal creation,
+approval, original mutation or paid research was used for verification.
+Next: continue source-to-output delivery engineering while waiting for Operations
+collection evidence; preserve the genuine selected-proposal/approved-processing/
+saved-draft acceptance gap. This release is not live end-to-end proof.
+
 ## T362 — Collection-only completion rejects ambiguous original identities
 
 The coordinator previously used the first document row matching a collection

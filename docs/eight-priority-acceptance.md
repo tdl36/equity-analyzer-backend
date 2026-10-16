@@ -8,6 +8,8 @@ T363 detects supplemental filename ambiguity before saving a processing proposal
 preventing an existing late approval failure. Synthetic preservation, scoped identity,
 legacy replay and post-save collision checks pass. This improves source-selection
 readiness; live collection, explicit processing and investor acceptance remain open.
+Exact hosted revision/assets and unfinished-collection/authentication read guards
+verified. No production proposal or processing was created.
 
 T362 prevents collection-only completion from certifying ambiguous stored original
 identities or malformed/repeated receipts. Synthetic same-request recovery,
