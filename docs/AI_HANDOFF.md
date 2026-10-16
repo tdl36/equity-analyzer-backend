@@ -22,6 +22,14 @@ collection-to-processing path. Genuine collection receipts, request-specific pai
 processing approval and investor-reviewed outputs remain required. Operations owns
 browser collection reconciliation. No eight-priority acceptance is closed here.
 
+T365 production verified: Render `66e8be5c381f7030e4b279b23a0b4fefea2a96a6`,
+Cloudflare `983c8d28-a69d-41e5-8401-c6b3633fee7d`. Hosted JS/service-worker
+bytes and HTML match. Focused read-only CVS remains running / queued with zero
+verified sources. Invalid-ID/authentication and unfinished-parent processing guards
+pass. No production cancellation, approval or paid operation was used to verify it.
+Next: genuine receipt → selected proposal → explicit processing approval → saved
+drafts. Operations collection evidence and investor acceptance remain open.
+
 ## T364 — Full-note creation retains selected original identities
 
 Before a note plan existed, assignment_note checked filenames/hashes but not the

@@ -7,7 +7,8 @@ None of the eight priorities is certified complete merely by this audit.
 T365 makes exact proposal-cancellation retries recover their saved receipt without
 rewriting the decision or reversing approved work. Synthetic retry/concurrency/race
 checks pass; no production cancellation, approval or paid run was performed.
-Live connected-journey and investor acceptance remain open.
+Live connected-journey and investor acceptance remain open. Exact hosted revision,
+assets and scoped read guards verified; CVS still has zero verified receipts.
 
 T364 verifies selected storage IDs before first full-note enqueue, including older
 Lab selections without a frozen representation plan. Synthetic replacement/partial
