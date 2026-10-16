@@ -29,3 +29,12 @@ test('opening saved research is not held behind saturated background reads',asyn
  assert.equal(await schedule('/api/thesis-imports/draft',()=> 'editor'), 'editor');
  for(let i=0;i<6;i++){releases[i]();await tick();}await Promise.all(background);
 });
+
+test('direct research reads are confined to trusted deployed frontend and never rewrite writes',async()=>{
+ const {researchReadUrl}=await import('../../src/api-read-scheduler.mjs');const origin='https://charlie-deployment.tonydlee.workers.dev';
+ assert.equal(researchReadUrl('/api/research/assignments?ticker=ABT',origin),'https://equity-analyzer-backend.onrender.com/api/research/assignments?ticker=ABT');
+ assert.equal(researchReadUrl('/api/thesis-imports/draft',origin),'https://equity-analyzer-backend.onrender.com/api/thesis-imports/draft');
+ for(const url of ['https://other.invalid/api/research/assignments','/api/settings','/dist/app.js'])assert.equal(researchReadUrl(url,origin),url);
+ assert.equal(researchReadUrl('/api/research/assignments',origin,'POST'),'/api/research/assignments');
+ assert.equal(researchReadUrl('/api/research/assignments','http://127.0.0.1:3000'),'/api/research/assignments');
+});

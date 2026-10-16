@@ -9,7 +9,7 @@ import {ResearchAlerts} from './research-alerts';
 import * as React from 'react';
 import {agentRunPending,agentRunTerminal,agentRunHeading,mergeAgentSnapshot,savedSubmission,selectedAgentRun,rememberAgentRun,observeAgentRun} from './agent-run-state.mjs';
 import {explainRequest} from './explain-request.mjs';
-import {createApiReadScheduler} from './api-read-scheduler.mjs';
+import {createApiReadScheduler,researchReadUrl} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
 import {PortfolioHeatmap} from './portfolio-heatmap';
 import {SummaryLab} from './summary-lab';
@@ -101,7 +101,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-16T385';
+        const BUILD_VERSION = '2026-10-16T386';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -339,7 +339,8 @@ if (typeof window !== 'undefined') {
             }
             const isApiRead = (options.method || url?.method || 'GET').toUpperCase() === 'GET' && (urlStr.includes('/api/') || urlStr.includes('equity-analyzer-backend'));
             const signal = options.signal || url?.signal || (isApiRead ? AbortSignal.timeout(60000) : undefined);
-            const perform = () => _originalFetch.call(window, url, isApiRead ? {...options, signal} : options);
+            const readUrl = isApiRead ? researchReadUrl(url,window.location.origin) : url;
+            const perform = () => _originalFetch.call(window, readUrl, isApiRead ? {...options, signal} : options);
             return (isApiRead ? scheduleApiRead(urlStr, perform, signal) : perform()).then(res => {
                 // Auto sign-out on auth failure (but only if we had a token — avoids loop during initial check)
                 if (res.status === 401 && urlStr.includes('/api/') && getAuthToken() && !urlStr.includes('/api/settings')) {

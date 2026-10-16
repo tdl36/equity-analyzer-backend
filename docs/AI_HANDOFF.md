@@ -2,6 +2,17 @@
 
 Updated: October 14, 2026
 
+## T386 — Direct authenticated research reads on deployed Charlie
+
+Research and thesis-import GETs on the exact deployed frontend origin now use
+Charlie's existing Render backend directly, with the existing authentication header
+and backend CORS allowlist. Writes, local development, other origins and unrelated
+reads retain their transport. This avoids the additional frontend proxy hop for
+saved packages and large editor/preview responses; it does not bypass authorization
+or add paid retries. The preceding live checks still saw proxy/body stalls after
+company/package navigation succeeded. 303 frontend tests and build pass, including
+origin/method boundaries. Next: verify the exact release and live ABT editor.
+
 ## T385 — Do not block startup on optional external assets
 
 Google font CSS is nonblocking; the sanitizer CDN script is asynchronous (existing
