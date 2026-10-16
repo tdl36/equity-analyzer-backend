@@ -2,6 +2,23 @@
 
 Updated: October 14, 2026
 
+## T380 — Refresh a delivered review package without losing prior drafts
+
+An explicit previousRequestId now permits revision of a delivered recovery package.
+The assignment lock fences competing refreshes; replay of any saved request returns
+its original receipt without reverting the current package. Every revision rechecks
+the pending thesis, live baseline, exact original pack and pending edition. Prior
+packages remain in reviewPackageHistory; original outputs and approval state remain
+unchanged. The brief keeps source filenames in its expandable evidence register,
+and summaries disclose proposed monitoring thresholds once.
+
+Validation: 1860 backend tests, 298 frontend tests, focused revision/concurrency
+checks, Python compilation and frontend build pass. ABT's revised pending edition
+was rendered at 390/1280 pixels without horizontal overflow. No paid research or
+investor acceptance. Next: verify T380 deployment, then link the refreshed ABT
+thesis and edition and read back all three review items. Private content stays
+outside the repository.
+
 ## T379 — Make saved research packages visible on the normal company route
 
 Stock Analysis now opens the existing read-only assignment archive above the

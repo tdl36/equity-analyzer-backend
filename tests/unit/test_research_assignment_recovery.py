@@ -56,6 +56,33 @@ class RecoveryTests(unittest.TestCase):
    with self.db(True) as (_,c):c.execute(sql)
    with self.subTest(sql=sql),self.assertRaises(ValueError):deliver(self.db,AID,self.body)
    with self.db() as (_,c):c.execute('SELECT result FROM mp_jobs');self.assertNotIn('reviewPackage',c.fetchone()['result'])
+ def test_revision_preserves_history_and_replays_without_reverting(self):
+  first=deliver(self.db,AID,self.body)['package']
+  revision={**self.body,'requestId':str(uuid.uuid4()),'previousRequestId':first['requestId']}
+  second=deliver(self.db,AID,revision)['package']
+  self.assertEqual(deliver(self.db,AID,self.body)['package'],first)
+  self.assertTrue(deliver(self.db,AID,revision)['reused'])
+  with self.db() as (_,c):
+   c.execute('SELECT result FROM mp_jobs');state=c.fetchone()['result']
+   self.assertEqual(state['reviewPackage'],second)
+   self.assertEqual(state['reviewPackageHistory'],[first])
+   self.assertEqual(state['artifacts'],self.original['artifacts'])
+   self.assertEqual(second['originalFailure'],first['originalFailure'])
+   c.execute('SELECT count(*) AS n FROM portfolio_analyses');self.assertEqual(c.fetchone()['n'],0)
+  with self.assertRaises(ValueError):deliver(self.db,AID,{**revision,'requestId':str(uuid.uuid4())})
+ def test_concurrent_revision_and_failed_validation_preserve_current(self):
+  first=deliver(self.db,AID,self.body)['package']
+  revision={**self.body,'requestId':str(uuid.uuid4()),'previousRequestId':first['requestId']}
+  with self.assertRaises(ValueError):deliver(self.db,AID,{**revision,'thesisDraftId':str(uuid.uuid4())})
+  def attempt(body):
+   try:return deliver(self.db,AID,body)
+   except ValueError:return None
+  with ThreadPoolExecutor(max_workers=2) as ex:
+   results=list(ex.map(attempt,[revision,{**revision,'requestId':str(uuid.uuid4())}]))
+  self.assertEqual(sum(x is not None for x in results),1)
+  with self.db() as (_,c):
+   c.execute('SELECT result FROM mp_jobs');state=c.fetchone()['result']
+   self.assertEqual(state['reviewPackageHistory'],[first])
  def test_approval_flags_rejected(self):
   with self.assertRaises(ValueError):deliver(self.db,AID,{**self.body,'approved':True})
 

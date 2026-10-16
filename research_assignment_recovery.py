@@ -12,7 +12,7 @@ from thesis_imports import current, row_hash
 
 def deliver(get_db, aid, body):
     aid = _uuid(aid)
-    if not isinstance(body, dict) or set(body) != {'requestId','thesisDraftId','editionId'}:
+    if not isinstance(body, dict) or set(body) not in ({'requestId','thesisDraftId','editionId'}, {'requestId','thesisDraftId','editionId','previousRequestId'}):
         raise ValueError('Choose a saved pending thesis and edition; approval flags are forbidden.')
     ident, tid, eid = (_uuid(body[k]) for k in ('requestId','thesisDraftId','editionId'))
     with get_db(commit=True) as (_, cur):
@@ -21,12 +21,21 @@ def deliver(get_db, aid, body):
         if not row: raise ValueError('Saved assignment not found.')
         assignment = dict(row); state = dict(assignment.get('result') or {})
         previous = state.get('reviewPackage')
+        # Replays remain idempotent even after a later revision becomes current.
+        for saved_package in [previous] + state.get('reviewPackageHistory', []):
+            if saved_package and saved_package['requestId'] == ident:
+                if saved_package['requestDigest'] != digest(body):
+                    raise ValueError('Delivery identity was reused with different content.')
+                return {'package':saved_package,'reused':True}
         if previous:
-            if previous['requestId'] != ident or previous['requestDigest'] != digest(body):
-                raise ValueError('A different recovery package is already delivered. Open its review.')
-            return {'package':previous,'reused':True}
-        if assignment['status'] != 'attention' or set(assignment['input'].get('outputs',[])) != {'stock_summary','thesis','visual'}:
+            if body.get('previousRequestId') != previous['requestId']:
+                raise ValueError('The review package changed. Refresh before revising it.')
+            if assignment['status'] != 'complete':
+                raise ValueError('Only a delivered package can be revised.')
+        elif 'previousRequestId' in body or assignment['status'] != 'attention':
             raise ValueError('Use a blocked summary, thesis and visual assignment.')
+        if set(assignment['input'].get('outputs',[])) != {'stock_summary','thesis','visual'}:
+            raise ValueError('Use a summary, thesis and visual assignment.')
         if (state.get('collection') or {}).get('status') != 'complete' or len(state.get('artifacts') or {}) < 2:
             raise ValueError('Collection and retained outputs must be complete before manual delivery.')
         cur.execute('SELECT * FROM external_thesis_drafts WHERE id=%s FOR SHARE',(tid,))
@@ -69,9 +78,11 @@ def deliver(get_db, aid, body):
         package = {'requestId':ident,'requestDigest':digest(body),'thesisDraftId':tid,'editionId':eid,
                    'thesisFingerprint':draft['fingerprint'],'editionDigest':digest(record),
                    'sourceHashes':sorted(expected),'deliveredAt':datetime.now(timezone.utc).isoformat(),
-                   'status':'pending_investor_review','originalFailure':assignment.get('error'),
+                   'status':'pending_investor_review','originalFailure':previous.get('originalFailure') if previous else assignment.get('error'),
                    'previousThesisProposal':state.get('separateThesisProposal'),
                    'caveat':'Assistant-authored recovery drafts. Exact source identity and saved baselines checked; meaning requires investor review. Original automated research remains preserved and is not certified.'}
+        if previous:
+            state.setdefault('reviewPackageHistory', []).append(previous)
         state['reviewPackage']=package
         state['step']='Recovered drafts ready for investor review'
         # This is delivery completion, not thesis/edition acceptance. Keep original
@@ -90,6 +101,8 @@ def summary_html(draft, package):
     for item in a['thesis']['pillars']:
         parts.append('<section><h2>'+esc(item['title'])+'</h2><p>'+esc(item['description'])+'</p>'+refs(item)+'</section>')
     parts.append('<h2>Monitoring plan</h2>')
+    thresholds = draft['package'].get('provenance', {}).get('monitoringThresholds')
+    if thresholds: parts.append('<p>'+esc(thresholds)+'</p>')
     for item in a['signposts']:
         parts.append('<section><h3>'+esc(item['metric'])+'</h3><p>'+esc(item['target'])+'</p><p>'+esc(item['timeframe'])+'</p>'+refs(item)+'</section>')
     parts.append('<h2>Risks and reconsideration triggers</h2>')
