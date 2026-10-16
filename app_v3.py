@@ -24273,28 +24273,12 @@ def mp_get_past_questions(ticker):
 
 @app.route('/api/mp/past-questions/<int:pq_id>/note', methods=['POST'])
 def mp_update_past_question(pq_id):
-    """Update notes/status on a past question."""
-    try:
-        data = request.json
-
-        updates = []
-        params = []
-        if 'responseNotes' in data:
-            updates.append('response_notes = %s')
-            params.append(data['responseNotes'])
-        if 'status' in data:
-            updates.append('status = %s')
-            params.append(data['status'])
-
-        if updates:
-            params.append(pq_id)
-            with get_db(commit=True) as (_, cur):
-                cur.execute(f"UPDATE mp_past_questions SET {', '.join(updates)} WHERE id = %s", params)
-
-        return jsonify({'success': True})
-    except Exception as e:
-        print(f"Error updating past question: {e}")
-        return jsonify({'error': str(e)}), 500
+    """Save an exact recorded answer only against its inspected baseline."""
+    from meeting_answer_capture import save
+    body,status=save(get_db,pq_id,request.get_json(silent=True))
+    response=jsonify(body);response.status_code=status
+    response.headers['Cache-Control']='private, no-store'
+    return response
 
 
 @app.route('/api/mp/meetings/<int:meeting_id>/documents/<int:doc_id>/text', methods=['GET'])

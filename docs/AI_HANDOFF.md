@@ -2,6 +2,44 @@
 
 Updated: October 14, 2026
 
+## T351 — Exact recorded-answer capture and conflict recovery
+
+Follow-through audit found that the old answer POST reported success for missing
+records, overwrote concurrent edits and returned no exact saved receipt. Meeting
+mode also silently chose the newest text-matching record when repeated questions
+had multiple saved records. The answer save now checks exact meeting/question/ID,
+locks the stored record and compares the original text/status before editing.
+Changed baselines return 409 with the current answer; identical saved content is
+an idempotent no-op. Missing/wrong meeting/company/question returns 404. Legacy
+unscoped payloads, empty/overlong text and unsupported status writes return 400.
+No generation, thesis acceptance or answer migration occurs.
+
+Meeting mode retains drafts and frozen uncertain save requests in browser-session
+recovery, verifies exact returned identity/text/status, and can reconcile a lost
+response through a scoped read before retry. A concurrent answer is displayed
+alongside the unchanged draft; the investor explicitly selects the reviewed
+baseline before another save. Duplicate question records require explicit record
+selection and disclose that legacy records have no question-pack version link.
+No automatic or inferred legacy version association is added. Current saved state
+updates the parent list after confirmed saves; unload warnings protect local edits.
+
+Validation: 16 focused tests including isolated PostgreSQL competing writes,
+exact reads/replay, missing and cross-meeting identity and malformed/legacy bodies;
+1,789 backend / 268 frontend safe tests pass, Python compilation/build pass.
+Actual-component synthetic 390/1280px checks cover draft remount, lost-response
+read recovery with one POST, concurrent conflict/reviewed-baseline save, wrong
+receipt, duplicate-record choice and no overflow/browser errors. Phone conflict
+screenshot inspected. No production answer was written. Logs:
+/tmp/charlie-T351-{focused,backend,frontend,build,ui}.log.
+
+CVS at 03:19 UTC remains queued, zero source receipts, collection-only. Next verify
+release and read existing answer identities through the hosted scoped endpoint.
+Then continue exact saved-object Home/company reconciliation; do not re-audit T350
+version delivery or repeat this completed answer-save recovery work. A genuine
+collection-to-approved-processing journey still requires source receipts and
+request-specific investor authorization. Historical schema and all eight acceptance
+certifications remain open. Operations collector and synthesis pause are unchanged.
+
 ## T350 — Inspect exact saved meeting versions from assignments
 
 Read-only live checks confirmed the three recovered historical command links open

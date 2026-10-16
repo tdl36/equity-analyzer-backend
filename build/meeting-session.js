@@ -1,3 +1,4 @@
+import { MeetingAnswerCapture } from './meeting-answer-capture';
 import { originLink } from './research-meeting-model.mjs';
 import * as React from 'react';
 export function MeetingSession({
@@ -72,56 +73,11 @@ export function MeetingSession({
     href: originLink(q.research_origin)
   }, "Open the saved ", q.research_origin.ticker, " research report"), " \xB7 ", q.research_origin.path), q.supporting_quotes?.map((c, k) => /*#__PURE__*/React.createElement("blockquote", {
     key: k
-  }, c.quote, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", c.filename))), /*#__PURE__*/React.createElement("p", null, q.follow_up_angle)), /*#__PURE__*/React.createElement(AnswerCapture, {
+  }, c.quote, /*#__PURE__*/React.createElement("cite", null, " \u2014 ", c.filename))), /*#__PURE__*/React.createElement("p", null, q.follow_up_angle)), /*#__PURE__*/React.createElement(MeetingAnswerCapture, {
     api: api,
-    answer: answers.find(a => a.question === q.question)
+    meetingId: meetingId,
+    question: q.question,
+    answers: answers,
+    onSaved: row => setAnswers(previous => previous.map(a => a.id === row.id ? row : a))
   })))))));
-}
-function AnswerCapture({
-  api,
-  answer
-}) {
-  var [note, setNote] = React.useState(answer?.response_notes || ''),
-    [message, setMessage] = React.useState(''),
-    [busy, setBusy] = React.useState(false);
-  React.useEffect(() => {
-    setNote(answer?.response_notes || '');
-    setMessage('');
-  }, [answer?.id]);
-  if (!answer) return /*#__PURE__*/React.createElement("p", {
-    className: "desk-explainer"
-  }, "Answer record unavailable for this question.");
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", null, "Management answer", /*#__PURE__*/React.createElement("textarea", {
-    className: "w-full",
-    value: note,
-    maxLength: 10000,
-    onChange: e => setNote(e.target.value),
-    placeholder: "Capture what management actually said\u2026"
-  })), /*#__PURE__*/React.createElement("button", {
-    disabled: busy || !note.trim(),
-    onClick: async () => {
-      setBusy(true);
-      try {
-        var r = await fetch(api + '/api/mp/past-questions/' + answer.id + '/note', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            responseNotes: note.trim(),
-            status: 'answered'
-          }),
-          signal: AbortSignal.timeout(20000)
-        });
-        if (!r.ok) throw Error('Answer could not be saved. Your text is still here.');
-        setMessage('Answer saved to meeting history.');
-      } catch (e) {
-        setMessage(e.message);
-      } finally {
-        setBusy(false);
-      }
-    }
-  }, busy ? 'Saving…' : 'Save answer'), /*#__PURE__*/React.createElement("p", {
-    role: "status"
-  }, message));
 }

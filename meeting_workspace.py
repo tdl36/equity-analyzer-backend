@@ -39,7 +39,15 @@ def create_blueprint(get_db):
     @bp.get('/api/mp/meetings/<int:mid>/answers')
     def answers(mid):
         with get_db() as (_,cur):
-            cur.execute('SELECT id,question,response_notes,status FROM mp_past_questions WHERE meeting_id=%s ORDER BY id DESC',(mid,))
+            cur.execute('SELECT id,meeting_id,question,response_notes,status FROM mp_past_questions WHERE meeting_id=%s ORDER BY id DESC',(mid,))
             rows=[dict(r) for r in cur.fetchall()]
         return jsonify(answers=rows)
+    @bp.get('/api/mp/meetings/<int:mid>/answers/<int:aid>')
+    def answer(mid,aid):
+        from meeting_answer_capture import read
+        with get_db() as (_,cur):row=read(cur,aid,mid)
+        response=jsonify(answer=row) if row else jsonify(error='Recorded question not found for this meeting.')
+        response.status_code=200 if row else 404
+        response.headers['Cache-Control']='private, no-store'
+        return response
     return bp
