@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T357 verifies command assignment → preparation → meeting company identity before
+exposing sources, versions and navigation; ambiguous links remain explicit.
+Synthetic identity, duplicate-link and phone/desktop recovery checks pass. This
+is a saved-output integrity repair, not new end-to-end or investor acceptance.
+
 T356 unifies Home and Activity on the existing dated meeting agenda, removing
 stale cancelled/completed Home entries and false empty states after failed reads.
 Synthetic desktop/mobile exact-link, outage and recovery checks pass. This advances

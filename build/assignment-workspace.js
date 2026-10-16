@@ -1,6 +1,12 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { AssignmentMeetingVersion } from './assignment-meeting-version';
-export function AssignmentWorkspace({
+export function AssignmentWorkspace(props) {
+  return /*#__PURE__*/React.createElement(AssignmentInspection, _extends({
+    key: props.api + '|' + props.id
+  }, props));
+}
+function AssignmentInspection({
   api,
   id,
   onNavigate,
@@ -8,39 +14,56 @@ export function AssignmentWorkspace({
 }) {
   var [open, setOpen] = React.useState(false),
     [data, setData] = React.useState(null),
-    [error, setError] = React.useState('');
+    [error, setError] = React.useState(''),
+    [loading, setLoading] = React.useState(false),
+    [revision, setRevision] = React.useState(0);
   React.useEffect(() => {
     if (!open) return;
-    var active = true;
+    var active = true,
+      pending = false;
+    var controller = new AbortController();
     var load = async () => {
+      if (pending) return;
+      pending = true;
+      setLoading(true);
       try {
         var r = await fetch(api + '/api/research/assignments/' + id, {
-          signal: AbortSignal.timeout(20000)
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)])
         });
         var d = await r.json();
-        if (!r.ok) throw Error(d.error || 'Assignment unavailable');
+        if (!r.ok) throw Error('This assignment could not be refreshed. Retained information may be out of date.');
+        if (d.command?.id !== id || typeof d.command.ticker !== 'string' || !d.assignment || !Array.isArray(d.documents) || !Array.isArray(d.versions)) throw Error('The saved assignment identity could not be verified. No other assignment has been substituted.');
         if (active) {
           setData(d);
           setError('');
         }
       } catch (e) {
         if (active) setError(e.message);
+      } finally {
+        pending = false;
+        if (active) setLoading(false);
       }
     };
     load();
     var timer = setInterval(load, 10000);
     return () => {
       active = false;
+      controller.abort();
       clearInterval(timer);
     };
-  }, [open, id, api]);
+  }, [open, id, api, revision]);
   return /*#__PURE__*/React.createElement("div", {
     className: "assignment-workspace"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open)
   }, open ? 'Close assignment workspace' : 'Inspect assignment →'), open && /*#__PURE__*/React.createElement("section", {
     "aria-label": "Assignment workspace"
-  }, error && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("button", {
+    disabled: loading,
+    onClick: () => setRevision(n => n + 1)
+  }, loading ? 'Refreshing…' : 'Refresh assignment'), loading && !data && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Loading this assignment\u2026"), error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
   }, error), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h3", null, data.command.ticker, " \xB7 Assignment workspace"), /*#__PURE__*/React.createElement("details", {
     className: "assignment-brief"
@@ -50,7 +73,9 @@ export function AssignmentWorkspace({
     key: step.key
   }, /*#__PURE__*/React.createElement("strong", null, step.label, " \xB7 ", step.state), /*#__PURE__*/React.createElement("p", null, step.detail)))), /*#__PURE__*/React.createElement("p", null, "Delivery means saved in Charlie. It does not mean emailed, approved, or applied to your thesis.")), (data.collection?.issue || data.preparation?.error || data.command.error) && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, data.collection?.issue || data.preparation?.error || data.command.error), data.collection?.historicalReceipt && /*#__PURE__*/React.createElement("p", {
+  }, data.collection?.issue || data.preparation?.error || data.command.error), data.meetingIssue && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, data.meetingIssue), data.collection?.historicalReceipt && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Historical collector receipt: ", data.collection.status, ". This records collection status only; original-byte verification and processing approval remain separate."), data.collection?.sourceProgress && /*#__PURE__*/React.createElement("details", {
     open: true

@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T357 — Verify assignment meeting destinations before exposing outputs
+
+Command assignment inspection previously trusted preparation.input.meetingId and
+picked an arbitrary linked preparation row. It now requires one linked preparation,
+matching preparation/command company and a saved meeting belonging to that company
+before returning its source names, version inventory or meeting link. Missing,
+malformed, foreign-company and ambiguous references retain the assignment and
+explain the withheld destination. Requested meeting delivery becomes attention;
+the saved preparation status remains unchanged. Exact version reads also reject
+wrong-company or ambiguous preparation links. All reads remain private/no-store.
+
+The inspector binds responses to the exact command ID, remounts on API/assignment
+change, aborts obsolete requests and serializes polling. Failed reads retain prior
+information with a warning and manual retry; late responses cannot fill another
+assignment. No worker, collection, generation, source mutation or approval added.
+
+Validation: 21 focused backend tests; 1,801 backend and 277 frontend safe tests;
+Python compilation and build pass. Disposable PostgreSQL verifies exact retained
+versions/sources, invalid/missing/foreign identities, duplicate preparations and
+unchanged job status. Synthetic 390/1280px inspector checks verify blocked links,
+retry retention, wrong response identity, nonoverlapping reads and late-response
+protection after changing assignments. No overflow/page errors/API writes; phone
+screenshot inspected. Logs: /tmp/charlie-T357-{focused,backend,frontend,build,ui}.log.
+
+Next: verify exact release and read the three retained MDT/ABT command assignments
+and their four meeting versions. These existing outputs are not the new genuine
+collection-only-to-processing journey. Its critical path still needs existing
+Operations collection receipts, frozen source selection and explicit investor
+processing approval. Preserve the backfill pause; no duplicate collection worker.
+Do not repeat T350–T357 output access/recovery fixes. Historical reference schema,
+provider-outcome reconciliation and all eight acceptance certifications remain open.
+
 ## T356 — One reliable meeting agenda on Home and Activity
 
 Home previously used the separate mpMeetings cache, including cancelled/completed
