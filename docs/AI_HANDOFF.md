@@ -33,6 +33,27 @@ source-to-proposal recovery work; do not repeat completed meeting fixes or expan
 the shared dashboard before the connected proof. Historical schema and all eight
 acceptance certifications remain open.
 
+T354 production verified: Render aad51a2dec472808e8bdd3fa5b17d1aab6f3609e;
+Cloudflare 60ecf424-d4e4-4d7a-aeda-53f6efe3b0c9. Hosted JS/service-worker exact
+bytes and HTML T354 match. Live unfinished CVS collection correctly returns 409
+for processing-library, processing-sources and processing-proposals; unauthenticated
+library read returns 401. Hosted Activity read succeeds. Successful library paging
+and mismatch recovery remain synthetic evidence because no genuine completed
+collection-only parent is available for that proof. No production writes/approval.
+Logs: /tmp/charlie-T354-{deploy,verify,journey}.log. Agent unchanged, no restart.
+
+CVS at 04:05 UTC remains queued/collection-only, zero source receipts, with a fresh
+04:04:49 collection snapshot. Do not treat that heartbeat as browser completion.
+Concrete next engineering: restore selected supplemental metadata by exact scoped
+IDs when reopening a draft, so older selections do not require manually paging an
+entire larger library before readiness is restored. Current library refresh resets
+to its first 200 rows; processingSelection marks selected IDs outside loaded rows
+missing, and the UI asks the investor to load more or remove unseen selections.
+Reuse the current metadata endpoint/model, retain explicit missing/restricted
+states, never auto-select files or relax byte verification. Keep the genuine
+receipt -> selected proposal -> investor-authorized processing -> saved draft proof
+separate and open; all eight acceptance certifications remain open.
+
 ## T353 — Verified saved-meeting destinations in Home and Activity
 
 Activity's mp_jobs inventory now resolves pipeline/command_meeting meeting IDs
