@@ -30,6 +30,19 @@ request-specific processing authorization and saved-output/investor-review chain
 remains open. Use the existing Operations worker and preserve its pending export;
 no duplicate collector or shared-dashboard expansion was introduced.
 
+T375 production verified: Render `b780dd9fc1997e83912d315a724b5947eadf5ed6`,
+Cloudflare `ebef0e6a-0aa4-4b2f-a1c9-3a83d27c9ec9`. Hosted JS/service-worker
+bytes and HTML match; exact assignment/authentication/readiness scope guards pass.
+Focused read-only CVS assignment: running collection: queued verified sources: 0
+Saved stage: Waiting for browser collection worker reported issue present: True Mac report: 2026-10-16T09:18:39.795496+00:00
+Company/request navigation and stale-action controls have synthetic browser proof;
+production verification performed only reads and deployment checks. No collection
+command, worker wake, paid processing or investor acceptance was invoked.
+Next: follow genuine Operations completion into verified source receipts and a
+selected proposal, then request-specific processing authorization and saved-output
+review. The operational collection dependency and eight-priority acceptance remain
+open; deployed navigation/recovery does not close that evidence gap.
+
 ## T374 — Show real collection blockers in the originating assignment
 
 A read-only CVS inspection found a genuine visibility defect: the Mac reported
