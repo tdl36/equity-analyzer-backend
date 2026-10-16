@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T358 preserves validated document type, author evidence and event topic when the
+existing explicit repair path fills empty original metadata. New imports and
+repairs retain identical provenance; nonempty metadata and originals stay protected.
+Regression/replay/input checks pass synthetically; no production repair was made.
+
 T357 verifies command assignment → preparation → meeting company identity before
 exposing sources, versions and navigation; ambiguous links remain explicit.
 Synthetic identity, duplicate-link and phone/desktop recovery checks pass. This

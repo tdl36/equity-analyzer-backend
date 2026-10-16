@@ -124,4 +124,32 @@ class EndpointTests(unittest.TestCase):
             c,cur=self.client([old]);self.assertEqual(c.post('/api/agent/collection-original',json=body).status_code,409)
             self.assertFalse(any(x.args[0].startswith(('UPDATE','INSERT')) for x in cur.execute.call_args_list))
 
+    def test_recovered_metadata_retains_recorded_source_classification_and_provenance(self):
+        body={**self.body,'restoreEmptyMetadata':True,'sourceKind':'broker-report',
+              'author':'Fixture analyst','authorEvidence':'Observed synthetic byline',
+              'topic':'Q3 event','publisher':'Fixture publisher','published':'2026-10-01'}
+        c,cur=self.client([{'file_data':body['fileData'],'metadata':{}}])
+        self.assertEqual(c.post('/api/agent/collection-original',json=body).status_code,200)
+        update=next(x for x in cur.execute.call_args_list if x.args[0].startswith('UPDATE'))
+        recovered=json.loads(update.args[1][0])
+        for field in ('sourceKind','author','authorEvidence','topic','publisher','published','collectionRun','documentId','sourceUrl','sha256'):
+            self.assertEqual(recovered[field],body[field])
+        self.assertNotIn('fileData',recovered);self.assertNotIn('restoreEmptyMetadata',recovered)
+        # New imports and explicit recovery have the same evidence metadata.
+        new={k:v for k,v in body.items() if k!='restoreEmptyMetadata'}
+        c,cur=self.client([None,{'id':1}]);self.assertEqual(c.post('/api/agent/collection-original',json=new).status_code,200)
+        insert=next(x for x in cur.execute.call_args_list if 'INSERT INTO document_files' in x.args[0])
+        self.assertEqual(json.loads(insert.args[1][-1]),recovered)
+        # Identical replay is read-only. Different provenance never rewrites it.
+        for patch,status in [({},200),({'author':'Another analyst'},409),({'sourceKind':'transcript'},409),({'topic':'Different event'},409)]:
+            c,cur=self.client([{'file_data':body['fileData'],'metadata':recovered}])
+            self.assertEqual(c.post('/api/agent/collection-original',json={**body,**patch}).status_code,status)
+            self.assertFalse(any(x.args[0].lstrip().startswith(('INSERT','UPDATE')) for x in cur.execute.call_args_list))
+
+    def test_metadata_recovery_rejects_unverified_or_invalid_provenance_before_storage(self):
+        for patch in ({'author':'Analyst without observed byline'}, {'sourceKind':'invented-type'}, {'topic':'../other-folder'}, {'authorEvidence':'x'*2001}):
+            c,cur=self.client([])
+            r=c.post('/api/agent/collection-original',json={**self.body,'restoreEmptyMetadata':True,**patch})
+            self.assertEqual(r.status_code,400);cur.execute.assert_not_called()
+
 if __name__=='__main__':unittest.main()

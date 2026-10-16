@@ -136,6 +136,14 @@ def validate(data):
     return validate_original(data)
 
 
+def original_metadata(data, digest):
+    """Use identical validated provenance for new originals and empty-record repair."""
+    meta={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
+    meta.update({k:data[k] for k in ('sourceKind','author','authorEvidence','topic') if k in data})
+    meta.update(source='alphasense_collection',sha256=digest,usage='research')
+    return meta
+
+
 def create_blueprint(get_db,is_agent):
     from flask import Blueprint,jsonify,request
     bp=Blueprint('collection_original_sync',__name__)
@@ -161,8 +169,7 @@ def create_blueprint(get_db,is_agent):
                 from company_research import eligible
                 if not eligible(meta):return jsonify(error='Existing original is restricted; restriction retained.'),409
                 if data.get('restoreEmptyMetadata'):
-                    recovered={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
-                    recovered.update(source='alphasense_collection',sha256=digest,usage='research')
+                    recovered=original_metadata(data,digest)
                     if meta and meta!=recovered:
                         return jsonify(error='Existing metadata retained; recovery only fills an empty record.'),409
                     if not meta:
@@ -171,9 +178,7 @@ def create_blueprint(get_db,is_agent):
             else:
                 if data.get('restoreEmptyMetadata'):
                     return jsonify(error='Original missing; metadata recovery cannot create a document.'),409
-                meta={k:data.get(k) for k in ('collectionRun','documentId','sourceUrl','publisher','published')}
-                meta.update({k:data[k] for k in ('sourceKind','author','authorEvidence','topic') if k in data})
-                meta.update(source='alphasense_collection',sha256=digest,usage='research')
+                meta=original_metadata(data,digest)
                 cur.execute('''INSERT INTO document_files(ticker,filename,file_data,file_type,mime_type,file_size,metadata)
                     VALUES(%s,%s,%s,'pdf','application/pdf',%s,%s::jsonb)
                     ON CONFLICT(ticker,filename) DO NOTHING RETURNING id''',(tk,name,data['fileData'],len(raw),json.dumps(meta)))

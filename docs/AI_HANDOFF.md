@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T358 — Preserve source provenance during explicit metadata repair
+
+The original-import endpoint's explicit restoreEmptyMetadata path previously
+omitted sourceKind, author, authorEvidence and topic, although ordinary imports
+retained those validated fields. A regression fixture reproduced the missing
+sourceKind. New imports and empty-record repair now share the same metadata
+construction, preserving recorded classification and event/author context for
+subsequent Lab evidence selection. This does not infer metadata from filenames.
+
+Exact original-byte checks, eligibility and agent authentication remain required.
+Only empty metadata can be repaired. Identical replay is read-only; a different
+nonempty record, changed provenance, restricted record, missing original or changed
+bytes are not overwritten. Invalid type/topic or an author without observed byline
+evidence is rejected before storage. No automatic repair/backfill was added and
+no existing production source was modified or reprocessed.
+
+Validation: regression reproduced before fix; 15 focused original-import tests,
+1,803 full backend and 277 frontend safe tests, Python compilation and production
+build pass. Synthetic endpoint tests compare new/repair metadata exactly and cover
+identical replay, changed provenance and rejected input. Existing temporary-local
+queue tests cover duplicate originals, timeout/restart and exact receipts. These
+are synthetic tests, not proof of a production metadata repair or completed run.
+Logs: /tmp/charlie-T358-{reproduction,focused,backend,frontend,build}.log.
+
+Next: verify hosted release and import authentication, then continue genuine
+collection receipt → frozen selection → investor-authorized processing proof.
+CVS's last verified state remains queued with zero receipts and retained interrupted
+browser-turn issue; Operations owns collection. Do not duplicate its worker or
+repair existing nonempty provenance under this release. The shared approval
+expansion, historical reference schema and eight acceptance certifications remain
+open. Do not repeat T350–T358 saved-output/source-recovery repairs.
+
 ## T357 — Verify assignment meeting destinations before exposing outputs
 
 Command assignment inspection previously trusted preparation.input.meetingId and
