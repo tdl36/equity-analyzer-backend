@@ -4,6 +4,24 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+October 16 live journey checkpoint: ABT assignment
+`f9e363e4-597e-4394-b9d4-36d83def935f` has a recovered review package for
+March 15–October 11, 2026. Read-only production checks returned the saved summary
+and pending recovery one-pager successfully. Pending thesis
+`8c434b10-20b3-46c1-a810-107709d3ac6e` is not stale, and its source-register hash
+set equals all eight assignment originals. The summary endpoint revalidates the
+thesis fingerprint and pending edition; edition rendering rechecks source bytes
+and restrictions. No new research, approval or resume was invoked.
+
+This is real recovered delivery awaiting investor review, not unattended success:
+the original automated thesis stage failed and assistant-authored recovery was
+delivered October 13. It does not prove the newer collection-only → processing-
+proposal approval journey, analytical correctness or investor acceptance. Use this
+existing ABT package for the next concrete investor review rather than generating
+another stock solely for QA. CVS's separate 200-original catch-up remains unstarted;
+its saved IQV blocker is older than Operations' latest reported TSM export blockage.
+Resolve browser ownership through Operations; do not start a duplicate collector.
+
 T371 adds an explicit read-only saved-proposal readiness check before processing
 approval, sharing frozen evidence validation with dispatch. Changed bytes,
 permissions, baselines and dispatch prerequisites remain blockers. Positive
