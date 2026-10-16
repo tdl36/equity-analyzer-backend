@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T361 retains unresolved collection commands across reloads and uses exact scoped
 receipt reads outside the recent list. Synthetic desktop/mobile unknown-response,
 503, reload and corrupt-storage recovery pass; no automatic retry or new worker.
-Live collection completion and investor approval remain separate open evidence.
+Exact hosted revision/assets and a real retained command lookup verified read-only;
+stage/identity/authentication guards pass. Live collection completion and investor
+approval remain separate open evidence.
 
 T360 carries known text truncation and omitted spreadsheet sheets through new
 full-note proposal readiness, frozen execution and saved draft review. Legacy

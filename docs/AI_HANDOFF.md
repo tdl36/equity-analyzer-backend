@@ -41,6 +41,22 @@ genuine receipt → selected evidence → explicit processing approval → saved
 journey. Collection recovery is engineering progress, not eight-priority completion.
 Shared dashboard expansion and historical schema/acceptance gaps remain open.
 
+T361 production verified: Render `c8974e82eb3c267811708610672f8977d8867457`,
+Cloudflare `8c966031-a689-4977-a792-ce875285d9e2`. Hosted JS/service-worker exact
+bytes and HTML match. Authenticated exact read recovered retained applied command
+`869964b0-5875-5521-8618-308ec3375881`; a research-assignment ID returns no command,
+malformed identity is rejected and unauthenticated access is rejected. No command
+was posted, retried or approved. Browser recovery remains synthetic verification.
+Release checkpoint complete; logs /tmp/charlie-T361-{deploy,verify}.log.
+
+Attention audit follow-up: 16 of the 21 sampled attention requests describe
+reported-result versus accessible-row discrepancies; other retained issues concern
+source verification, event novelty/duplication/relevance and company identity.
+Treat these separately. Operations owns live browser reconciliation and must retain
+partial original receipts. Do not generically retry, bypass coverage/identity checks
+or claim all attention items fixed. Next engineering investigation should address a
+demonstrated handoff gap without replaying collections or repeating shipped repairs.
+
 ## T360 — Disclose truncated full-note evidence across approval and review
 
 Full-note preparation previously described extracted text as losing images/layout
