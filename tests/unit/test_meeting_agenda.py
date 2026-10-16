@@ -3,12 +3,11 @@ from datetime import datetime,timezone,date
 from meeting_agenda import upcoming
 from tests.unit import test_stock_analysis_postgres as pg_tests
 class AgendaTests(unittest.TestCase):
-    def test_window_uses_new_york_date_and_absent_table_is_empty(self):
+    def test_absent_table_is_unavailable_not_an_empty_agenda(self):
         class Cursor:
             def execute(self,sql,args=()):self.sql=sql
             def fetchone(self):return {'name':None}
-        d=upcoming(Cursor(),datetime(2026,10,11,1,tzinfo=timezone.utc))
-        self.assertEqual((d['from'],d['through']),('2026-10-10','2026-10-16'));self.assertEqual(d['items'],[])
+        with self.assertRaises(RuntimeError):upcoming(Cursor(),datetime(2026,10,11,1,tzinfo=timezone.utc))
 @unittest.skipUnless((pg_tests.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
 class AgendaPostgresTests(unittest.TestCase):
     @classmethod

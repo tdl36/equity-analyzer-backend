@@ -65,6 +65,7 @@ class ActivityPostgresTests(unittest.TestCase):
   pg_tests.StockPostgresTests.setUpClass.__func__(cls)
   with cls.db(True) as (_,c):
    c.execute('CREATE TABLE mp_jobs(id TEXT,stage TEXT,ticker TEXT,status TEXT,error TEXT,input JSONB,result JSONB,created_at TIMESTAMP,updated_at TIMESTAMP); CREATE TABLE app_settings(key TEXT,value JSONB,updated_at TIMESTAMP); CREATE TABLE agent_heartbeats(last_seen TIMESTAMP);')
+   c.execute('CREATE TABLE mp_meetings(id SERIAL PRIMARY KEY,company_id INTEGER,meeting_date DATE,meeting_type TEXT,status TEXT); CREATE TABLE mp_question_sets(id SERIAL PRIMARY KEY,meeting_id INTEGER,status TEXT);')
    c.execute("INSERT INTO mp_jobs VALUES('old','research_assignment','UNH','running',NULL,'{}','{\"step\":\"Waiting for Mac\"}',NOW()-INTERVAL '2 days',NOW()-INTERVAL '2 days')")
    c.execute("INSERT INTO mp_jobs SELECT 'recent-'||i,'pipeline','SYK','done',NULL,'{}','{}',NOW(),NOW() FROM generate_series(1,40)i")
  @classmethod

@@ -100,3 +100,16 @@ export function recentAssignments(data) {
   .sort((a,b)=>(parseTimestamp(b.updatedAt)?.getTime()||0)-(parseTimestamp(a.updatedAt)?.getTime()||0))
   .filter(row=>{if(seen.has(row.jobId))return false;seen.add(row.jobId);return true;}).slice(0,3);
 }
+
+// Home and Activity share one server-filtered agenda, including failed reads.
+export function meetingAgendaState(data) {
+ const agenda=data?.meetingAgenda;
+ const day=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+ if(data?.unavailable?.includes('Meeting preparation agenda')||!agenda||!day(agenda.from)||!day(agenda.through)||Date.parse(agenda.through)-Date.parse(agenda.from)!==6*86400000||typeof agenda.truncated!=='boolean'||!Array.isArray(agenda.items)||agenda.items.length>50)return null;
+ const seen=new Set();
+ for(const m of agenda.items){
+  if(!m||!Number.isSafeInteger(m.id)||!validWork('meetingprep','','meeting:'+m.id)||seen.has(m.id)||typeof m.ticker!=='string'||!m.ticker.trim()||!day(m.date)||m.date<agenda.from||m.date>agenda.through||typeof m.prepared!=='boolean'||(m.type!=null&&typeof m.type!=='string'))return null;
+  seen.add(m.id);
+ }
+ return agenda;
+}

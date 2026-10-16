@@ -1,7 +1,7 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { ActivityWorkspace } from './activity';
-import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp, upcomingMeetings } from './workspace-model.mjs';
+import { GROUPS, viewLabel, viewGroup, companyIndex, parseTimestamp } from './workspace-model.mjs';
 var {
   useState,
   useEffect,
@@ -274,7 +274,6 @@ export function TodayWorkspace({
   overviews,
   summaries,
   alerts,
-  meetings,
   onNavigate,
   onSummary,
   onCompany
@@ -282,7 +281,6 @@ export function TodayWorkspace({
   var companies = companyIndex(analyses, overviews);
   var recent = [...summaries].sort((a, b) => (parseTimestamp(b.createdAt)?.getTime() || 0) - (parseTimestamp(a.createdAt)?.getTime() || 0)).slice(0, 5);
   var pending = alerts.filter(a => !['dismissed', 'done', 'archived'].includes(a.status));
-  var upcoming = upcomingMeetings(meetings).slice(0, 3);
   return /*#__PURE__*/React.createElement("div", {
     className: "workspace-page"
   }, /*#__PURE__*/React.createElement(PageHeading, {
@@ -339,13 +337,7 @@ export function TodayWorkspace({
     onClick: () => onNavigate(id)
   }, label, /*#__PURE__*/React.createElement(Icon, {
     name: "arrow"
-  })))), /*#__PURE__*/React.createElement("section", {
-    className: "workspace-panel"
-  }, /*#__PURE__*/React.createElement("h2", null, "Upcoming meetings"), upcoming.length ? upcoming.map(m => /*#__PURE__*/React.createElement("button", {
-    className: "workspace-link-row",
-    key: m.id,
-    onClick: () => onNavigate('meetingprep', m.ticker.trim().toUpperCase(), '', `meeting:${m.id}`)
-  }, m.ticker, " ", /*#__PURE__*/React.createElement("time", null, dateLabel(m.meeting_date)))) : /*#__PURE__*/React.createElement(Empty, null, "No upcoming meetings in this workspace. Your saved meeting preparation is available in Create.")))), /*#__PURE__*/React.createElement("section", {
+  })))))), /*#__PURE__*/React.createElement("section", {
     className: "workspace-panel"
   }, /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AssignmentHistory } from './assignment-history';
-import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination, recentAssignments } from './activity-model.mjs';
+import { activityRows, activityAge, collectionHealth, workLane, nextAction, workOverview, focusRows, activityDestination, recentAssignments, meetingAgendaState } from './activity-model.mjs';
 function AnalystRunInspection({
   api,
   row
@@ -110,6 +110,42 @@ function AnalystRunInspection({
     key: index
   }, /*#__PURE__*/React.createElement("small", null, entry.time || 'Time unavailable', " \xB7 ", entry.agent || 'Saved step'), /*#__PURE__*/React.createElement("p", null, entry.message)))), !data.logs.length && /*#__PURE__*/React.createElement("p", null, "No saved steps are available."), /*#__PURE__*/React.createElement("small", null, "Run ", data.id, " \xB7 Retrieved ", activityAge(data.asOf))));
 }
+export function MeetingAgenda({
+  data,
+  compact = false,
+  onNavigate,
+  onRefresh,
+  loading = false
+}) {
+  var agenda = meetingAgendaState(data),
+    rows = agenda?.items.slice(0, compact ? 3 : 50) || [];
+  return /*#__PURE__*/React.createElement("section", {
+    className: "activity-agenda",
+    "aria-label": "Upcoming meeting preparation"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "workspace-section-heading"
+  }, /*#__PURE__*/React.createElement("h3", null, "Upcoming meeting preparation"), /*#__PURE__*/React.createElement("button", {
+    onClick: onRefresh,
+    disabled: loading
+  }, loading ? 'Refreshing…' : 'Refresh agenda')), !agenda ? /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "Meeting preparation agenda is unavailable. Refresh to check saved meetings; this does not mean there are no upcoming meetings.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Saved meeting dates from ", agenda.from, " through ", agenda.through, " (New York dates). This is your Charlie preparation list, not a synced calendar or attendance record."), rows.map(m => /*#__PURE__*/React.createElement("article", {
+    className: "activity-row",
+    key: m.id
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "activity-company"
+  }, /*#__PURE__*/React.createElement("strong", null, m.ticker), /*#__PURE__*/React.createElement("small", null, m.date)), /*#__PURE__*/React.createElement("div", {
+    className: "activity-detail"
+  }, /*#__PURE__*/React.createElement("strong", null, m.prepared ? 'Question pack saved' : 'Preparation needed'), /*#__PURE__*/React.createElement("p", null, m.type || 'Meeting', " \xB7 ", m.prepared ? 'Review the questions and their factual premises before the meeting.' : 'Open the meeting to add sources or prepare questions.')), /*#__PURE__*/React.createElement("button", {
+    className: "activity-open",
+    onClick: () => onNavigate('meetingprep', m.ticker, '', 'meeting:' + m.id)
+  }, "Open meeting \u2197", /*#__PURE__*/React.createElement("span", {
+    className: "sr-only"
+  }, " ", m.ticker, " ", m.date)))), !rows.length && /*#__PURE__*/React.createElement("p", null, "No dated meetings in this seven-day window. Undated and other meetings remain in Meeting Preparation."), (agenda.truncated || agenda.items.length > rows.length) && /*#__PURE__*/React.createElement("p", null, "Showing ", rows.length, " of ", agenda.items.length, agenda.truncated ? '+' : '', " meetings in this snapshot. ", /*#__PURE__*/React.createElement("button", {
+    className: "activity-open",
+    onClick: () => onNavigate(compact ? 'activity' : 'meetingprep')
+  }, compact ? 'View the full agenda' : 'Open Meeting Preparation', " \u2197"))));
+}
 export function ActivityWorkspace({
   api,
   onNavigate,
@@ -205,22 +241,13 @@ export function ActivityWorkspace({
   }, collectionHealth(data).map(h => /*#__PURE__*/React.createElement("div", {
     key: h.key,
     className: h.ok ? '' : 'needs-check'
-  }, /*#__PURE__*/React.createElement("small", null, h.label), /*#__PURE__*/React.createElement("strong", null, h.value), !compact && /*#__PURE__*/React.createElement("p", null, h.detail)))), !compact && data?.meetingAgenda && /*#__PURE__*/React.createElement("details", {
-    className: "activity-agenda",
-    open: data.meetingAgenda.items.length > 0
-  }, /*#__PURE__*/React.createElement("summary", null, "Upcoming meeting preparation \xB7 ", data.meetingAgenda.items.length, data.meetingAgenda.truncated ? '+' : ''), /*#__PURE__*/React.createElement("p", null, "Saved meeting dates from ", data.meetingAgenda.from, " through ", data.meetingAgenda.through, " (New York dates). This is your Charlie preparation list, not a synced calendar or attendance record."), data.meetingAgenda.items.length ? data.meetingAgenda.items.map(m => /*#__PURE__*/React.createElement("article", {
-    className: "activity-row",
-    key: m.id
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "activity-company"
-  }, /*#__PURE__*/React.createElement("strong", null, m.ticker), /*#__PURE__*/React.createElement("small", null, m.date)), /*#__PURE__*/React.createElement("div", {
-    className: "activity-detail"
-  }, /*#__PURE__*/React.createElement("strong", null, m.prepared ? 'Question pack saved' : 'Preparation needed'), /*#__PURE__*/React.createElement("p", null, m.type || 'Meeting', " \xB7 ", m.prepared ? 'Review the questions and their factual premises before the meeting.' : 'Open the meeting to add sources or prepare questions.')), /*#__PURE__*/React.createElement("button", {
-    className: "activity-open",
-    onClick: () => onNavigate('meetingprep', m.ticker, '', 'meeting:' + m.id)
-  }, "Open meeting \u2197", /*#__PURE__*/React.createElement("span", {
-    className: "sr-only"
-  }, " ", m.ticker, " ", m.date)))) : /*#__PURE__*/React.createElement("p", null, "No dated meetings in this seven-day window. Undated and other meetings remain in Meeting Preparation."), data.meetingAgenda.truncated && /*#__PURE__*/React.createElement("p", null, "Showing the earliest 50. Open Meeting Preparation for the full list.")), !compact && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("small", null, h.label), /*#__PURE__*/React.createElement("strong", null, h.value), !compact && /*#__PURE__*/React.createElement("p", null, h.detail)))), data && /*#__PURE__*/React.createElement(MeetingAgenda, {
+    data: data,
+    compact: compact,
+    onNavigate: onNavigate,
+    onRefresh: load,
+    loading: loading
+  }), !compact && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "activity-counters",
     "aria-label": "Activity filters"
   }, [['focus', 'Needs you'], ['processing', 'Processing'], ['waiting', 'Waiting'], ['recent', 'Finished'], ['older', 'Older unfinished']].map(([key, label]) => /*#__PURE__*/React.createElement("button", {

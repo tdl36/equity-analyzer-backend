@@ -2,6 +2,37 @@
 
 Updated: October 14, 2026
 
+## T356 — One reliable meeting agenda on Home and Activity
+
+Home previously used the separate mpMeetings cache, including cancelled/completed
+meetings and a false empty state after failed initial loading. Home now shares the
+existing read-only Activity agenda: seven New York calendar dates, exact saved
+meeting/company links, ready question-pack status, and excluded terminal meetings.
+Home shows the first three and links to Activity for the remaining bounded list.
+Both surfaces show the date range, limits and independent manual refresh. Missing,
+malformed or unavailable agenda reads are explicit; failed refresh retains the
+previous snapshot with its existing warning. A missing meeting table is now an
+unavailable inventory rather than a verified empty list. No calendar sync implied.
+
+Validation: 25 focused backend tests; 1,797 backend and 277 frontend safe tests;
+Python compilation and production build pass. Synthetic actual Home/Activity
+components at 390/1280px verify exact links, shared data rather than the stale Home
+cache, bounded expansion, failed-refresh retention, unavailable/missing/empty states
+and retry. No overflow/page errors/API writes; phone screenshot inspected. Existing
+disposable PostgreSQL tests verify date window, cancelled exclusion and 50-item
+limit. Logs: /tmp/charlie-T356-{focused,backend,frontend,build,ui}.log.
+
+Next: verify exact hosted release and reconcile live agenda against saved meeting
+inventory. The 04:33 UTC focused CVS read still shows collection queued, zero source
+receipts and an awake existing worker. Its retained issue explicitly says the prior
+browser turn was interrupted, its lease released and all four searches pending;
+this is not a missing processing API or permission to duplicate Operations work.
+The critical-path next action remains an existing-worker collection receipt, then
+frozen selection and request-specific investor processing approval. Continue
+independent demonstrated output-access defects; do not repeat T350–T356 fixes or
+expand the shared approval dashboard before the real connected-journey proof.
+Historical schema and all eight acceptance certifications remain open.
+
 ## T355 — Restore selected historical sources without paging
 
 Processing proposals now re-read previously selected supplemental metadata by exact

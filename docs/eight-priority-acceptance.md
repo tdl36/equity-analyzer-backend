@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T356 unifies Home and Activity on the existing dated meeting agenda, removing
+stale cancelled/completed Home entries and false empty states after failed reads.
+Synthetic desktop/mobile exact-link, outage and recovery checks pass. This advances
+Home reconciliation, not collection-to-processing or investor acceptance.
+
 T355 restores selected historical-source metadata directly, without manually
 paging the library. Missing/restricted records and failed or stale reads cannot
 enable saving. Synthetic 201-source and full-app draft-reload checks pass; original

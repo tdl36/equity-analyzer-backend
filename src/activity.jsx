@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {AssignmentHistory} from './assignment-history';
-import {activityRows,activityAge,collectionHealth,workLane,nextAction,workOverview,focusRows,activityDestination,recentAssignments} from './activity-model.mjs';
+import {activityRows,activityAge,collectionHealth,workLane,nextAction,workOverview,focusRows,activityDestination,recentAssignments,meetingAgendaState} from './activity-model.mjs';
 function AnalystRunInspection({api,row}) {
  const [state,setState]=React.useState({loading:true}),[revision,setRevision]=React.useState(0);
  React.useEffect(()=>{let current=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);setState({loading:true});
@@ -28,6 +28,18 @@ function AnalystRunInspection({api,row}) {
  <small>Run {data.id} · Retrieved {activityAge(data.asOf)}</small></>}
  </section>;
 }
+export function MeetingAgenda({data,compact=false,onNavigate,onRefresh,loading=false}) {
+ const agenda=meetingAgendaState(data), rows=agenda?.items.slice(0,compact?3:50)||[];
+ return <section className="activity-agenda" aria-label="Upcoming meeting preparation">
+  <div className="workspace-section-heading"><h3>Upcoming meeting preparation</h3><button onClick={onRefresh} disabled={loading}>{loading?'Refreshing…':'Refresh agenda'}</button></div>
+  {!agenda?<p role="alert">Meeting preparation agenda is unavailable. Refresh to check saved meetings; this does not mean there are no upcoming meetings.</p>:<>
+   <p>Saved meeting dates from {agenda.from} through {agenda.through} (New York dates). This is your Charlie preparation list, not a synced calendar or attendance record.</p>
+   {rows.map(m=><article className="activity-row" key={m.id}><div className="activity-company"><strong>{m.ticker}</strong><small>{m.date}</small></div><div className="activity-detail"><strong>{m.prepared?'Question pack saved':'Preparation needed'}</strong><p>{m.type||'Meeting'} · {m.prepared?'Review the questions and their factual premises before the meeting.':'Open the meeting to add sources or prepare questions.'}</p></div><button className="activity-open" onClick={()=>onNavigate('meetingprep',m.ticker,'','meeting:'+m.id)}>Open meeting ↗<span className="sr-only"> {m.ticker} {m.date}</span></button></article>)}
+   {!rows.length&&<p>No dated meetings in this seven-day window. Undated and other meetings remain in Meeting Preparation.</p>}
+   {(agenda.truncated||agenda.items.length>rows.length)&&<p>Showing {rows.length} of {agenda.items.length}{agenda.truncated?'+':''} meetings in this snapshot. <button className="activity-open" onClick={()=>onNavigate(compact?'activity':'meetingprep')}>{compact?'View the full agenda':'Open Meeting Preparation'} ↗</button></p>}
+  </>}
+ </section>;
+}
 export function ActivityWorkspace({api,onNavigate,compact=false}) {
  const [data,setData]=React.useState(null),[error,setError]=React.useState(''),[filter,setFilter]=React.useState('focus'),[query,setQuery]=React.useState(''),[limit,setLimit]=React.useState(20);
  const [inspecting,setInspecting]=React.useState('');
@@ -50,7 +62,7 @@ export function ActivityWorkspace({api,onNavigate,compact=false}) {
   {!!data?.unavailable?.length&&<p role="alert" className="activity-warning">Some activity is unavailable: {data.unavailable.join(', ')}. This is a partial snapshot.</p>}
   {!!data?.truncated?.length&&<p className="activity-warning">This snapshot is limited in {data.truncated.join(', ')}. Counts and search cover loaded items only. Saved research assignments also have a separate history below.</p>}
   {data&&<div className="activity-health" aria-label="Collection delivery health">{collectionHealth(data).map(h=><div key={h.key} className={h.ok?'':'needs-check'}><small>{h.label}</small><strong>{h.value}</strong>{!compact&&<p>{h.detail}</p>}</div>)}</div>}
-  {!compact&&data?.meetingAgenda&&<details className="activity-agenda" open={data.meetingAgenda.items.length>0}><summary>Upcoming meeting preparation · {data.meetingAgenda.items.length}{data.meetingAgenda.truncated?'+':''}</summary><p>Saved meeting dates from {data.meetingAgenda.from} through {data.meetingAgenda.through} (New York dates). This is your Charlie preparation list, not a synced calendar or attendance record.</p>{data.meetingAgenda.items.length?data.meetingAgenda.items.map(m=><article className="activity-row" key={m.id}><div className="activity-company"><strong>{m.ticker}</strong><small>{m.date}</small></div><div className="activity-detail"><strong>{m.prepared?'Question pack saved':'Preparation needed'}</strong><p>{m.type||'Meeting'} · {m.prepared?'Review the questions and their factual premises before the meeting.':'Open the meeting to add sources or prepare questions.'}</p></div><button className="activity-open" onClick={()=>onNavigate('meetingprep',m.ticker,'','meeting:'+m.id)}>Open meeting ↗<span className="sr-only"> {m.ticker} {m.date}</span></button></article>):<p>No dated meetings in this seven-day window. Undated and other meetings remain in Meeting Preparation.</p>}{data.meetingAgenda.truncated&&<p>Showing the earliest 50. Open Meeting Preparation for the full list.</p>}</details>}
+  {data&&<MeetingAgenda data={data} compact={compact} onNavigate={onNavigate} onRefresh={load} loading={loading}/>}
   {!compact&&<><div className="activity-counters" aria-label="Activity filters">{[['focus','Needs you'],['processing','Processing'],['waiting','Waiting'],['recent','Finished'],['older','Older unfinished']].map(([key,label])=><button key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}><strong>{data?counts[key]:'—'}</strong><span>{label}</span></button>)}</div><div className="activity-toolbar"><label>Find work <input aria-label="Find work" placeholder="Ticker or workflow" value={query} onChange={e=>setQuery(e.target.value)}/></label></div></>}
   {!data&&!error&&<p role="status">Loading activity…</p>}
   {data&&!rows.length&&<p className="workspace-empty">{query?'No matching work in the loaded snapshot.':compact?'No current unfinished work in this snapshot. Older unresolved records remain in Activity.':filter==='focus'?'No current decisions or stalled jobs in this snapshot.':filter==='processing'?'No jobs currently reporting processing.':filter==='waiting'?'No jobs currently waiting.':filter==='older'?'No older unfinished records in this snapshot.':'No recently finished work in the last 24 hours.'}</p>}
