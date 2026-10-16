@@ -2,6 +2,32 @@
 
 Updated: October 14, 2026
 
+## T381 — Edit delivered research and retain explicit writing preferences
+
+Delivered recovery packages now expose an in-place editor for the shared stock
+summary/thesis sections and the one-pager's saved claims. Edits retain references
+and item identities, remain pending, and save through existing thesis import,
+correction, edition and package-revision APIs. Exact submission bodies/receipts
+are retained in browser-tab storage for interrupted saves. Unfinished edits are
+recoverable with an unsaved indicator and explicit discard; original documents
+and prior package versions are unchanged. One-pager decisions are available beside
+the editor with investor authentication and acknowledgment; thesis approval remains
+in the existing comparison screen. No unified or automatic approval.
+
+Explicit writing rules can be saved/removed in the editor. They are included in
+future thesis preparation instructions and frozen into newly created stock-analysis
+inputs, then supplied as style-only guidance. They are not model training, automatic
+inferences from company judgments, retroactive changes, or universal coverage of
+all legacy generators. Existing jobs remain frozen. Users must review one-pager
+wording separately from the shared summary/thesis; no silent model rewrite occurs.
+Accepted thesis/edition summaries remain readable with accurate decision labels.
+
+Validation: 1862 backend and 301 frontend tests pass; focused storage/conflict and
+accepted-summary checks pass, Python compiles, frontend builds. Synthetic browser
+checks at 390/1280 cover edits, recovery, rule save/removal, interrupted exact-retry
+without duplicate corrections, and no approval on save. No paid QA or live approval.
+Next: verify T381 deployment and read-only ABT editor, then investor usability review.
+
 ## T380 — Refresh a delivered review package without losing prior drafts
 
 An explicit previousRequestId now permits revision of a delivered recovery package.

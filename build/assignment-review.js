@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { PackageEditor } from './package-editor';
 import { reviewDocuments, assignmentLabNote, verifiedReviewPage } from './assignment-review-model.mjs';
 import { AssignmentMeetingOutput } from './assignment-meeting-output';
 import { HistoricalReview } from './historical-review';
@@ -62,7 +63,11 @@ export function AssignmentReview({
     "aria-label": "Review saved outputs"
   }, /*#__PURE__*/React.createElement("style", null, styles), /*#__PURE__*/React.createElement("header", null, /*#__PURE__*/React.createElement("small", null, job.ticker, " / SAVED RESEARCH"), /*#__PURE__*/React.createElement("h2", null, !docs.length ? 'Research delivery' : job.status === 'complete' ? 'Ready for your review' : 'Available drafts'), /*#__PURE__*/React.createElement("p", null, job.input.since, " \u2013 ", job.input.until, " \xB7 ", job.input.horizon || 'Saved research horizon'), /*#__PURE__*/React.createElement("p", {
     className: "review-caution"
-  }, job.result.reviewPackage ? 'Recovered drafts from the same frozen originals. Original automated outputs are preserved in history below.' : 'Review the evidence and limitations before using these drafts.', " Opening a preview does not approve or change your thesis.")), note && !note.saved && /*#__PURE__*/React.createElement("div", {
+  }, job.result.reviewPackage ? 'Recovered drafts from the same frozen originals. Original automated outputs are preserved in history below.' : 'Review the evidence and limitations before using these drafts.', " Opening a preview does not approve or change your thesis.")), job.result.reviewPackage && /*#__PURE__*/React.createElement(PackageEditor, {
+    key: job.result.reviewPackage.requestId,
+    job: job,
+    api: api
+  }), note && !note.saved && /*#__PURE__*/React.createElement("div", {
     className: "review-evidence",
     role: "status"
   }, /*#__PURE__*/React.createElement("h3", null, "Full Lab note \xB7 ", note.status), /*#__PURE__*/React.createElement("p", null, note.status === 'Needs attention' ? 'Inspect the saved note progress before any retry. Other completed outputs remain available.' : 'A saved full-note draft has not been confirmed. Collection or parent completion alone does not establish delivery.'), note.href ? /*#__PURE__*/React.createElement("a", {

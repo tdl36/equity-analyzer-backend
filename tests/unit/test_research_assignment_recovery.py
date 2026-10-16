@@ -99,5 +99,7 @@ class RecoverySummaryTests(unittest.TestCase):
   app.register_blueprint(co.bp);client=app.test_client()
   url='/api/research/assignments/x/review-package/summary'
   r=client.get(url);self.assertEqual(r.status_code,200);self.assertIn('&lt;script&gt;',r.text);self.assertNotIn('<script>',r.text)
+  draft['status']='approved';approved=client.get(url);self.assertEqual(approved.status_code,200);self.assertIn('Thesis approved.',approved.text);self.assertNotIn('No thesis changes approved.',approved.text)
+  draft['status']='pending'
   ok[0]=False;self.assertEqual(client.get(url).status_code,409)
   ok[0]=True;draft['stale']=True;self.assertEqual(client.get(url).status_code,409)

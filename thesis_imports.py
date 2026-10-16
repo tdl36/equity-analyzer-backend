@@ -238,11 +238,20 @@ def create_blueprint(get_db, invalidate=lambda: None):
         current_app.logger.error('External thesis database failure: %s', type(exc).__name__)
         return jsonify(error='Charlie could not finish this operation. Refresh the draft status before retrying. Thesis and approval changes are saved together or rolled back together.'), 503
 
+    @bp.route('/api/thesis-imports/preferences', methods=['GET','POST'])
+    def writing_preferences():
+        from research_preferences import read, save
+        with get_db(commit=request.method=='POST') as (_,cur):
+            value=save(cur,request.get_json(silent=True)) if request.method=='POST' else read(cur)
+        return jsonify(value)
+
     @bp.get('/api/thesis-imports/prepare/<ticker>')
     def prepare(ticker):
         ticker = ticker_value(ticker)
         with get_db() as (_, cur):
             row = current(cur, ticker)
+            from research_preferences import read, instruction
+            preferences = read(cur)
         old = row['analysis'] if row else {}
         package = {'schema': SCHEMA, 'ticker': ticker, 'companyName': row['company'] if row else '',
             'baseline': {'hash': row_hash(row), 'mode': 'upgrade' if row else 'initial', 'expectedNoExistingThesis': not bool(row)},
@@ -262,7 +271,7 @@ def create_blueprint(get_db, invalidate=lambda: None):
             'sourceRegister is a list of objects with unique id, name, optional date/pages/hash/usageStatus. '
             'Preserve source restrictions; never invent sources, hashes or independent validation. '
             'Include uncertainty and contrary evidence. Do not include original document bodies or credentials. '
-            'This is a draft for investor review, not approval. Charlie will not run paid models on import.'))
+            'This is a draft for investor review, not approval. Charlie will not run paid models on import.' + instruction(preferences)), writingPreferences=preferences)
 
     @bp.route('/api/thesis-imports', methods=['GET', 'POST'])
     def drafts():

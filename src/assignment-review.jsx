@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {PackageEditor} from './package-editor';
 import {reviewDocuments,assignmentLabNote,verifiedReviewPage} from './assignment-review-model.mjs';
 import {AssignmentMeetingOutput} from './assignment-meeting-output';
 import {HistoricalReview} from './historical-review';
@@ -12,6 +13,7 @@ export function AssignmentReview({job,api}) {
  if(!docs.length&&!note)return null;
  return <section className="assignment-review" aria-label="Review saved outputs"><style>{styles}</style>
  <header><small>{job.ticker} / SAVED RESEARCH</small><h2>{!docs.length?'Research delivery':job.status==='complete'?'Ready for your review':'Available drafts'}</h2><p>{job.input.since} – {job.input.until} · {job.input.horizon||'Saved research horizon'}</p><p className="review-caution">{job.result.reviewPackage?'Recovered drafts from the same frozen originals. Original automated outputs are preserved in history below.':'Review the evidence and limitations before using these drafts.'} Opening a preview does not approve or change your thesis.</p></header>
+ {job.result.reviewPackage&&<PackageEditor key={job.result.reviewPackage.requestId} job={job} api={api}/>}
  {note&&!note.saved&&<div className="review-evidence" role="status"><h3>Full Lab note · {note.status}</h3><p>{note.status==='Needs attention'?'Inspect the saved note progress before any retry. Other completed outputs remain available.':'A saved full-note draft has not been confirmed. Collection or parent completion alone does not establish delivery.'}</p>{note.href?<a className="review-link" href={note.href}>Open full-note progress and recovery</a>:<p>No note identity is available yet. Check Sources, progress &amp; history below for the assignment’s next step.</p>}</div>}
  {docs.length>0&&<><div role="tablist" aria-label="Saved deliverables">{docs.map((d,i)=><button key={d.id} id={'review-tab-'+job.id+'-'+d.id} role="tab" aria-selected={d.id===doc?.id} aria-controls={'review-panel-'+job.id} tabIndex={d.id===doc?.id?0:-1} onClick={()=>setSelected(d.id)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?0:e.key==='End'?docs.length-1:(i+(e.key==='ArrowRight'?1:-1)+docs.length)%docs.length;setSelected(docs[n].id);e.currentTarget.parentElement.children[n].focus();}}}>{d.label}</button>)}</div>
  <div role="tabpanel" id={'review-panel-'+job.id} aria-labelledby={'review-tab-'+job.id+'-'+doc?.id}>
