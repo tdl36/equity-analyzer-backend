@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T350 adds exact saved meeting-version inspection from historical assignments,
 including retained passages and explicit missing-evidence labels. Read-only live
 meeting destinations match; synthetic identity/recovery checks pass. This is saved-
-output access, not new processing or investor acceptance.
+output access, not new processing or investor acceptance. Hosted exact-version
+reads verified all four retained packs unchanged (65 total saved passages across
+the two newer packs; older ABT versions have no saved passages).
 
 T349 retains display-only exact-request collection terminal receipts through the
 existing sync, including bounded legacy backfill. Missing historical evidence stays

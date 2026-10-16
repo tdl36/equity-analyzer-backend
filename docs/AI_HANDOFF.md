@@ -31,6 +31,25 @@ CVS at 02:58 UTC remains collection-only, queued, zero source receipts; actual
 collection-to-processing proof still needs receipts and investor processing approval.
 Historical valuation schema and all eight acceptance certifications remain open.
 
+T350 production verified: Render 2beef03b68604d2b7a03f9608706451638b7696e;
+Cloudflare 8adc9a68-c998-4621-b0fa-886bb9367fd2. Hosted JS/service-worker exact
+bytes and HTML T350 match. Authenticated read-only checks opened all four exact
+retained versions and compared their topics to existing saved history in memory:
+MDT meeting 25 v1 has 11 questions/27 passages; ABT meeting 26 v1 has 12/38;
+ABT meeting 24 v2 and v1 each have 14 questions/zero saved passages. No private
+source text was logged. Unauthenticated reads return 401; wrong assignment and
+missing version return 404; successful reads are private/no-store. No generation,
+source, active job, answer or research decision changed. Logs:
+/tmp/charlie-T350-{deploy,verify,meetings}.log. A separate health read saw a transient
+502 during deployment; final exact-revision and content verification succeeded.
+An optional compact Operations status read did not return promptly and was abandoned;
+no fresh Operations progress claim is made and no message/worker was dispatched.
+
+Durable next: T350 exact saved-version delivery checks are complete; do not repeat
+them. Audit saved meeting-answer/follow-through identity across versions and exact
+Home/company destinations while genuine collection receipts are pending. Keep the
+single-stock collection-to-processing journey ahead of shared-dashboard expansion.
+
 ## T349 — Durable display-only collection history
 
 Repairs the four historical command delivery gaps identified in T348. Existing
