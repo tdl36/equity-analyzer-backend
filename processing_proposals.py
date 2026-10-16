@@ -265,6 +265,13 @@ def register(co):
             with co.db(True) as (_, cur):
                 cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s AND stage=%s AND status='pending' RETURNING id", (ident, STAGE))
                 cancelled = cur.fetchone()
+                if not cancelled:
+                    # Recover a lost cancellation response without rewriting its
+                    # decision time. An approval that won the race stays dispatched.
+                    cur.execute('SELECT status FROM mp_jobs WHERE id=%s AND stage=%s', (ident, STAGE))
+                    current = cur.fetchone()
+                    if current and current['status'] == 'cancelled':
+                        return jsonify(cancelled=True, replayed=True)
             if not cancelled:
                 return jsonify(error='Proposal already decided. Inspect its saved job.'), 409
             return jsonify(cancelled=True)

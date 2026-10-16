@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T365 makes exact proposal-cancellation retries recover their saved receipt without
+rewriting the decision or reversing approved work. Synthetic retry/concurrency/race
+checks pass; no production cancellation, approval or paid run was performed.
+Live connected-journey and investor acceptance remain open.
+
 T364 verifies selected storage IDs before first full-note enqueue, including older
 Lab selections without a frozen representation plan. Synthetic replacement/partial
 identity rejection and source-to-draft/frozen-replay checks pass. Legacy hash-only

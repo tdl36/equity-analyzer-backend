@@ -66,6 +66,9 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(self.row(self.ident), parent)
         self.assertEqual(self.row(proposal['id'])['status'], 'dispatched')
         self.assertEqual(self.decision(proposal).status_code, 200)
+        dispatched=self.row(proposal['id'])
+        self.assertEqual(self.decision(proposal,'cancel').status_code,409)
+        self.assertEqual(self.row(proposal['id']),dispatched)
         self.assertFalse(self.submits)
         with self.app.app_context(): self.co.advance(aid)
         self.assertEqual(len(self.submits), 1)
@@ -102,6 +105,43 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(self.decision(proposal).status_code, 409)
         self.assertEqual(self.row(proposal['id'])['status'], 'cancelled')
         self.assertIsNone(self.row(assignment_id(proposal['id'])))
+
+    def test_cancel_retry_recovers_receipt_without_rewriting_saved_decision(self):
+        proposal=self.save()
+        self.assertEqual(self.decision(proposal,'cancel').status_code,200)
+        before=self.row(proposal['id'])
+        retry=self.decision(proposal,'cancel')
+        self.assertEqual(retry.status_code,200,retry.json)
+        self.assertTrue(retry.json['cancelled']);self.assertTrue(retry.json['replayed'])
+        self.assertEqual(self.row(proposal['id']),before)
+        self.assertEqual(self.decision({**proposal,'digest':'0'*64},'cancel').status_code,409)
+        self.assertEqual(self.decision(proposal).status_code,409)
+        self.assertIsNone(self.row(assignment_id(proposal['id'])));self.assertFalse(self.submits)
+
+    def test_concurrent_cancellations_return_one_saved_decision(self):
+        proposal=self.save()
+        def cancel(_):
+            with self.app.test_client() as client:return self.decision(proposal,'cancel',client).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertEqual(list(pool.map(cancel,range(2))),[200,200])
+        self.assertEqual(self.row(proposal['id'])['status'],'cancelled')
+        self.assertIsNone(self.row(assignment_id(proposal['id'])));self.assertFalse(self.submits)
+
+    def test_cancel_approval_race_never_reverses_the_winning_decision(self):
+        proposal=self.save()
+        def decide(action):
+            with self.app.test_client() as client:return action,self.decision(proposal,action,client).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results=dict(pool.map(decide,['cancel','approve']))
+        saved=self.row(proposal['id']);job=self.row(assignment_id(proposal['id']))
+        if saved['status']=='cancelled':
+            self.assertEqual(results,{'cancel':200,'approve':409});self.assertIsNone(job)
+            self.assertEqual(self.decision(proposal,'cancel').status_code,200)
+        else:
+            self.assertEqual(saved['status'],'dispatched')
+            self.assertEqual(results,{'cancel':409,'approve':202});self.assertIsNotNone(job)
+            self.assertEqual(self.decision(proposal,'cancel').status_code,409)
+        self.assertEqual(self.row(proposal['id']),saved);self.assertFalse(self.submits)
 
     def test_wrong_digest_or_changed_plan_is_rejected(self):
         proposal = self.save();bad = dict(proposal, digest='0'*64)

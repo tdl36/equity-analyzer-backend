@@ -2,6 +2,26 @@
 
 Updated: October 14, 2026
 
+## T365 — Exact processing-proposal cancellation retries recover their receipt
+
+A successful cancellation followed by a lost response returned 409 on exact retry,
+leaving recovery dependent on a separate history refresh. The same proposal revision
+and digest now return the saved cancellation receipt with replayed=true. Its timestamp
+and frozen contents are not rewritten. Already-dispatched proposals remain 409;
+this endpoint never stops an approved assignment or reverses its authorization.
+
+A regression reproduced the old conflict. Synthetic tests cover exact retry,
+unchanged saved decision, wrong digest, concurrent cancellations and approval/cancel
+races. The winning decision is retained; cancelled proposals cannot dispatch and
+approved work cannot be cancelled through this proposal endpoint. All 91 focused,
+1830 backend and 280 frontend tests, Python compilation and production build pass.
+No production proposal was cancelled/approved and no paid research was run.
+
+Next: verify hosted T365, then continue delivery/recovery engineering on the existing
+collection-to-processing path. Genuine collection receipts, request-specific paid
+processing approval and investor-reviewed outputs remain required. Operations owns
+browser collection reconciliation. No eight-priority acceptance is closed here.
+
 ## T364 — Full-note creation retains selected original identities
 
 Before a note plan existed, assignment_note checked filenames/hashes but not the
