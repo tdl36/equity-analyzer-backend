@@ -30,6 +30,16 @@ editor synthetic checks also pass. No paid QA, live generation or investor decis
 Next: verify T382 exact deployment and the ABT editor/estimate without generating;
 then investor-directed generation and review remain live acceptance evidence.
 
+T382 deployment verified: Render `23639b046acf69ed24e871d416f476f6897dd9e9`,
+Cloudflare `3dac7524-9bc0-4791-b5fe-8adcc7f6efc8`; hosted T382 version,
+JavaScript and service-worker bytes match. Live ABT read-only estimate preparation
+returns one call and eight sources; saved assignment read through the frontend
+proxy returns 200. No generation was authorized. The existing in-app browser tab
+still times out loading the package despite successful direct/proxied API checks;
+live browser control verification remains incomplete. Synthetic editor/rewrite
+interaction checks passed. Next: resolve that browser loading issue and observe
+an investor-authorized alternative; do not claim live generation acceptance.
+
 ## T381 — Edit delivered research and retain explicit writing preferences
 
 Delivered recovery packages now expose an in-place editor for the shared stock
