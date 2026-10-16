@@ -18,3 +18,14 @@ test('failed reads release capacity and are not automatically repeated',async()=
  const first=schedule(()=>{calls++;throw Error('Unavailable');});
  const second=schedule(()=>42);await assert.rejects(first,/Unavailable/);assert.equal(await second,42);assert.equal(calls,1);
 });
+
+test('opening saved research is not held behind saturated background reads',async()=>{
+ const {createApiReadScheduler}=await import('../../src/api-read-scheduler.mjs');
+ const schedule=createApiReadScheduler();const releases=[];
+ const background=Array.from({length:6},()=>schedule('/api/settings',()=>new Promise(resolve=>releases.push(resolve))));
+ await tick();assert.equal(releases.length,4);
+ assert.equal(await schedule('/api/research/investment-case/ABT',()=> 'case'), 'case');
+ assert.equal(await schedule('/api/research/assignments?ticker=ABT',()=> 'package'), 'package');
+ assert.equal(await schedule('/api/thesis-imports/draft',()=> 'editor'), 'editor');
+ for(let i=0;i<6;i++){releases[i]();await tick();}await Promise.all(background);
+});

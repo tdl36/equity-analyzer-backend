@@ -31,3 +31,14 @@ export function createReadScheduler(limit = 4) {
     pump();
   });
 }
+
+// Reserve capacity for the research page the investor is opening. Startup and
+// background reads must not consume its entire timeout while it is queued.
+export function createApiReadScheduler() {
+  const background=createReadScheduler(4), research=createReadScheduler(2);
+  return (url,run,signal)=>{
+    let path='';try{path=new URL(url,'https://charlie.invalid').pathname;}catch{}
+    const foreground=/^\/api\/research\/(investment-case\/[^/]+|assignments|assignment-history|assignments\/[^/]+\/(review-package\/summary|onepager-editions(?:\/.*)?|artifact\/[^/]+)|stock-analysis-run\/[^/]+(?:\/rewrite\/.*)?|stock-analysis\/[^/]+)$/.test(path)||/^\/api\/thesis-imports(?:\/[^/]+)?$/.test(path);
+    return (foreground?research:background)(run,signal);
+  };
+}

@@ -115,7 +115,7 @@ function AssignmentWorkspace({
   React.useEffect(() => {
     var live = true;
     setDefaultsWarning('');
-    if (origin || labSelection) {
+    if (focusId || origin || labSelection) {
       setDefaultsReady(true);
       return () => {
         live = false;

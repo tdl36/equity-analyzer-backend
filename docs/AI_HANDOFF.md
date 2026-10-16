@@ -2,6 +2,22 @@
 
 Updated: October 14, 2026
 
+## T383 — Prevent background reads starving Stock Analysis
+
+Research-page GETs now have a separate bounded two-request lane from the four
+background slots. Their timeout no longer expires waiting behind an unrelated
+startup burst. Hidden evidence/review workspaces no longer mount and load data;
+focused package views skip stock inventory, collection-control and creation-default
+reads. Company-load errors expose a plain explanation and a visible retry button.
+No write retry, generation or approval behavior changed.
+
+Validation: 302 frontend tests and production build pass. Synthetic browser checks
+at 390/1280 deliberately stall eight background reads and verify that normal company
+entry and focused package review still open; hidden/background requests are absent.
+The live ABT investment-case read returned 200 in 0.92 seconds before the fix,
+consistent with frontend queue starvation. Backend unchanged. Next: verify T383
+exact hosted assets/revision and open the actual ABT package in the browser.
+
 ## T382 — Revise package wording with AI before saving
 
 The package editor now offers section or whole-document rewrites with investor

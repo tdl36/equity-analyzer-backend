@@ -97,7 +97,7 @@ export function InvestmentCase({
       setSelectedVersion('');
       pending.current = null;
     } catch (e) {
-      if (alive.current) setMessage(e.message);
+      if (alive.current) setMessage(e.name === 'TimeoutError' || e.name === 'AbortError' ? 'The company workspace could not load in time. Retry loading; your saved research is unchanged.' : e.message);
     } finally {
       lock.current = false;
       if (alive.current) setBusy(false);
@@ -221,7 +221,10 @@ export function InvestmentCase({
     }
   }, "Allow reload without saving"), "."), /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, message), active && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
+  }, message), message && !active && /*#__PURE__*/React.createElement("button", {
+    disabled: busy,
+    onClick: () => load()
+  }, "Retry loading company"), active && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
     open: !reviewingAssignment
   }, /*#__PURE__*/React.createElement("summary", null, "Explore ", active), /*#__PURE__*/React.createElement("div", {
     className: "workspace-section-heading"
@@ -415,9 +418,7 @@ export function InvestmentCase({
     }
   }, /*#__PURE__*/React.createElement("h3", null, "Saved scenario sensitivities"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Scenario"), /*#__PURE__*/React.createElement("th", null, "Implied price (", body.scenarios.currency, ")"), /*#__PURE__*/React.createElement("th", null, "Price return"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(bridge).map(([name, v]) => /*#__PURE__*/React.createElement("tr", {
     key: name
-  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%"))))))), /*#__PURE__*/React.createElement("div", {
-    hidden: workspaceTab !== 'reviews'
-  }, /*#__PURE__*/React.createElement(ResearchWorkbench, {
+  }, /*#__PURE__*/React.createElement("th", null, name), /*#__PURE__*/React.createElement("td", null, v.impliedPrice), /*#__PURE__*/React.createElement("td", null, v.priceReturnPct, "%"))))))), workspaceTab === 'reviews' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(ResearchWorkbench, {
     initialKind: "underweight",
     key: active + '-work',
     api: api,
@@ -431,9 +432,7 @@ export function InvestmentCase({
     ticker: active,
     routeWork: routeWork,
     onWorkChange: onWorkChange
-  })), /*#__PURE__*/React.createElement("div", {
-    hidden: workspaceTab !== 'evidence'
-  }, /*#__PURE__*/React.createElement(CaseEvidence, {
+  })), workspaceTab === 'evidence' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(CaseEvidence, {
     researchContext: researchContext,
     key: active + (researchContext?.id || ''),
     revision: revision,

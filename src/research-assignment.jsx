@@ -32,7 +32,7 @@ function AssignmentWorkspace({api,ticker,onReport,disabled,focusId='',onClearFoc
  const request=async(path,body,method='POST')=>{const r=await fetch(api+'/api/research/'+path,{...(body?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});let d;try{d=await r.json();}catch{throw Error('Response unavailable. Your request identity is retained; check saved assignments before retrying.');}if(!r.ok){const e=Error(d.error||'Research assignment unavailable');e.status=r.status;throw e;}return d;};
  React.useEffect(()=>{
   let live=true;setDefaultsWarning('');
-  if(origin||labSelection){setDefaultsReady(true);return()=>{live=false;};}
+  if(focusId||origin||labSelection){setDefaultsReady(true);return()=>{live=false;};}
   setDefaultsReady(false);
   request('assignment-defaults').then(checkedAssignmentDefaults).then(d=>{if(live&&!formRecovery.restored){setChosen(d.outputs);setHorizon(d.horizon);}})
    .catch(()=>{if(live){if(!formRecovery.restored){setChosen([...fallbackAssignmentDefaults.outputs]);setHorizon(fallbackAssignmentDefaults.horizon);}setDefaultsWarning(formRecovery.restored?'Saved defaults could not be loaded. Your recovered choices are retained; review them before starting.':'Saved defaults could not be loaded. Standard output choices are shown below; review them before starting.');}})

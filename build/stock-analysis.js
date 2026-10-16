@@ -122,6 +122,7 @@ export function StockAnalysis({
     setNotice('');
   }, [focusId]);
   React.useEffect(() => {
+    if (assignmentFocus) return;
     var live = true,
       inflight = false;
     var load = async () => {
@@ -148,6 +149,7 @@ export function StockAnalysis({
     };
   }, [ticker, api, reload, focusId, assignmentFocus]);
   React.useEffect(() => {
+    if (assignmentFocus) return;
     var live = true;
     var load = async () => {
       try {
@@ -170,7 +172,7 @@ export function StockAnalysis({
       live = false;
       clearInterval(timer);
     };
-  }, [ticker, api]);
+  }, [ticker, api, assignmentFocus]);
   React.useEffect(() => {
     var live = true,
       inflight = false;
