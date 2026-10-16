@@ -21,6 +21,12 @@ Next: verify hosted T379 and the ordinary ABT company entry; finish review of th
 existing recovered ABT package. CVS collection and the newer explicitly approved
 processing journey remain open. The recurring improvement automation stays deleted.
 
+T379 production verified: Render `164909767a7fd3dcc14ace91e6047e97afb2324e`,
+Cloudflare `47273c76-b0a2-4ae7-825b-a52b055611a7`. Hosted HTML and JS/service-worker
+bytes match. The production read-only ABT history first page includes the actual
+recovered package. Normal company entry visibly shows the expanded saved-package
+section; an initial read during deployment failed visibly and exposes retry.
+
 ## T378 — Preserve saved assignment outcomes after coordinator interruption
 
 The coordinator's outer error handler could demote a completed or failed assignment
