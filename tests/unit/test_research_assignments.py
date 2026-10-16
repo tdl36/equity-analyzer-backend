@@ -291,6 +291,88 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.start();self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,200)
         self.assertEqual(self.advance()['status'],'cancelled');self.assertEqual(self.submits,{})
         with self.db() as (_,cur):cur.execute('SELECT input FROM mp_jobs WHERE id=%s',(child(self.ident,'cancel-collection'),));self.assertEqual(cur.fetchone()['input']['payload']['assignmentId'],self.ident)
+    def stopping_assignment(self):
+        self.start(['summary_note']);self.collected();row=self.advance()
+        self.co.store(self.ident,row['result'],'attention','Synthetic delivery issue')
+        return copy.deepcopy(row['result'])
+
+    def test_failed_child_stop_fences_parent_and_preserves_outputs_until_retry(self):
+        saved=self.stopping_assignment();original=self.co.invoke
+        def fail(endpoint,method,body,params):
+            if endpoint=='stock_analysis.control':return {'error':'Private provider detail'},503
+            return original(endpoint,method,body,params)
+        path='/api/research/assignments/'+self.ident
+        with patch.object(self.co,'invoke',side_effect=fail):
+            reply=self.client.post(path+'/stop',json={})
+        self.assertEqual(reply.status_code,409);self.assertNotIn('Private',reply.json['error'])
+        row=self.co.read(self.ident)
+        self.assertEqual(row['status'],'attention');self.assertTrue(row['result']['stopRequested'])
+        self.assertEqual(row['result']['artifacts'],saved['artifacts'])
+        self.assertIn('Stop is not yet confirmed',row['error'])
+        with patch.object(self.co,'invoke',side_effect=AssertionError('No dispatch while stop unresolved')):
+            self.assertEqual(self.advance()['status'],'attention')
+            self.assertEqual(self.client.post(path+'/resume',json={}).status_code,409)
+        with self.db() as (_,cur):
+            cur.execute('SELECT count(*) AS n FROM mp_jobs WHERE id=%s',(child(self.ident,'cancel-collection'),))
+            self.assertEqual(cur.fetchone()['n'],1)
+        self.assertEqual(self.client.post(path+'/stop',json={}).status_code,200)
+        self.assertEqual(self.co.read(self.ident)['status'],'cancelled')
+        self.assertEqual(self.co.read(self.ident)['result']['artifacts'],saved['artifacts'])
+        self.assertEqual(len(self.submits),1)
+
+    def test_lost_or_malformed_child_stop_receipt_never_claims_success(self):
+        self.stopping_assignment();path='/api/research/assignments/'+self.ident+'/stop'
+        for result in (({},200),({'ok':'true'},200),({'ok':True},503),RuntimeError('Private credentials')):
+            with self.subTest(result=type(result).__name__):
+                effect=result if isinstance(result,Exception) else lambda *a,r=result,**k:r
+                with patch.object(self.co,'invoke',side_effect=effect):
+                    reply=self.client.post(path,json={})
+                self.assertEqual(reply.status_code,409)
+                self.assertEqual(self.co.read(self.ident)['status'],'attention')
+                self.assertNotIn('Private',reply.json['error'])
+
+    def test_stop_accepts_verified_completed_child_not_foreign_receipt(self):
+        self.stopping_assignment();report_id=child(self.ident,'stock-analysis')
+        for delta in ({'id':str(uuid.uuid4())},{'ticker':'OTHER'},{'status':'running'},{}):
+            report={**self.report(),**delta}
+            def invoke(endpoint,*args):
+                return ({'error':'No unfinished research found'},409) if endpoint=='stock_analysis.control' else (report,200)
+            with patch.object(self.co,'invoke',side_effect=invoke):
+                reply=self.client.post('/api/research/assignments/'+self.ident+'/stop',json={})
+            self.assertEqual(reply.status_code,409 if delta else 200)
+        self.assertEqual(self.co.read(self.ident)['status'],'cancelled')
+
+    def test_stop_missing_child_requires_read_confirmation(self):
+        self.stopping_assignment()
+        with patch.object(self.co,'invoke',side_effect=[({'error':'missing'},409),({'error':'missing'},404)]):
+            reply=self.client.post('/api/research/assignments/'+self.ident+'/stop',json={})
+        self.assertEqual(reply.status_code,200)
+        self.assertEqual(self.co.read(self.ident)['status'],'cancelled')
+
+    def test_failed_report_stop_still_fences_note_and_missing_note_integration_holds(self):
+        self.stopping_assignment()
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET input=input || %s::jsonb WHERE id=%s",(json.dumps({'labFullNote':{'allowPdfText':False}}),self.ident))
+        stopped=[];self.co.lab_note_stop=lambda cur,note_id:stopped.append(note_id)
+        with patch.object(self.co,'invoke',return_value=({'error':'unavailable'},503)):
+            self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,409)
+        self.assertEqual(stopped,[child(self.ident,'full-lab-note')])
+        self.co.lab_note_stop=None
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,409)
+        self.assertEqual(self.co.read(self.ident)['status'],'attention')
+        self.co.lab_note_stop=lambda cur,note_id:None
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,200)
+
+    def test_note_stop_exception_retains_durable_parent_fence(self):
+        self.stopping_assignment()
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET input=input || %s::jsonb WHERE id=%s",(json.dumps({'labFullNote':{'allowPdfText':False}}),self.ident))
+        self.co.lab_note_stop=lambda *a:(_ for _ in ()).throw(RuntimeError('Private data'))
+        reply=self.client.post('/api/research/assignments/'+self.ident+'/stop',json={})
+        self.assertEqual(reply.status_code,503);self.assertNotIn('Private',reply.json['error'])
+        self.assertTrue(self.co.read(self.ident)['result']['stopRequested'])
+        self.assertEqual(self.advance()['status'],'attention')
+
     def test_changed_detailed_thesis_blocks_draft_without_losing_outputs(self):
         self.start();self.collected()
         with self.db(True) as (_,cur):cur.execute("INSERT INTO portfolio_analyses(ticker,company,analysis) VALUES(%s,'Synthetic','{}')",(self.ticker,))

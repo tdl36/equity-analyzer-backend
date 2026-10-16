@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T338 fences assignment dispatch after a stop request and requires verified child-stop
+receipts before reporting cancellation. Failed/lost stops retain outputs and expose
+a confirmation retry. Synthetic recovery checks pass; no live job was stopped
+for acceptance and no provider cancellation/refund is claimed.
+
 T337 keeps older processing proposals and uncertain save receipts reachable through
 scoped read-only paging and exact lookup. Synthetic recovery/navigation checks pass;
 this is not live processing or investor acceptance.

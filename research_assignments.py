@@ -414,18 +414,44 @@ class Coordinator:
                 if not row or row['status']=='complete':return jsonify(error='No unfinished assignment found.'),409
                 state=obj(row['result']);d=request.get_json(silent=True) or {}
                 if action=='stop':
-                    if obj(row['input']).get('labFullNote') and not self.lab_note_stop:
-                        return jsonify(error='Full note stop integration unavailable; no stop was confirmed.'),409
-                    if state.get('reportId'):self.invoke('stock_analysis.control','POST',{},dict(ident=state['reportId'],action='stop'))
-                    with self.db(True) as (_,cur):
-                        if obj(row['input']).get('labFullNote'):
-                            self.lab_note_stop(cur,child(ident,'full-lab-note'))
-                        cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s",(ident,))
-                        if not (obj(row['input']).get('labSelection') or obj(row['input']).get('processingProposal')):
-                            cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s AND status='queued'",(child(ident,'collection'),))
-                            cid=child(ident,'cancel-collection');payload={'action':'cancel_assignment','payload':{'ticker':row['ticker'],'assignmentId':ident}}
-                            cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb) ON CONFLICT(id) DO NOTHING",(cid,row['ticker'],json.dumps(payload)))
+                    # Persist intent before contacting children: a failed/lost stop
+                    # response must never leave the coordinator free to dispatch.
+                    state['stopRequested']=True
+                    state['step']='Stop requested; confirming child work is fenced'
+                    issue='Stop is not yet confirmed. Saved outputs are retained. Retry Stop to reconcile child work; do not start replacement research. An in-flight provider call may still finish.'
+                    self.store(ident,state,'attention',issue)
+                    confirmed=True
+                    try:
+                        if state.get('reportId'):
+                            response,code=self.invoke('stock_analysis.control','POST',{},dict(ident=state['reportId'],action='stop'))
+                            confirmed=code==200 and isinstance(response,dict) and response.get('ok') is True
+                            if not confirmed and code==409:
+                                # Completed/missing children cannot start another
+                                # stage. Verify identity; never infer from error text.
+                                saved,status=self.invoke('stock_analysis.detail','GET',None,dict(ident=state['reportId']))
+                                confirmed=status==404 or (status==200 and isinstance(saved,dict)
+                                    and saved.get('id')==state['reportId'] and saved.get('ticker')==row['ticker']
+                                    and saved.get('status')=='complete')
+                    except Exception:
+                        confirmed=False
+                    try:
+                        with self.db(True) as (_,cur):
+                            if obj(row['input']).get('labFullNote'):
+                                if not self.lab_note_stop:confirmed=False
+                                else:self.lab_note_stop(cur,child(ident,'full-lab-note'))
+                            if not (obj(row['input']).get('labSelection') or obj(row['input']).get('processingProposal')):
+                                cur.execute("UPDATE mp_jobs SET status='cancelled',updated_at=NOW() WHERE id=%s AND status='queued'",(child(ident,'collection'),))
+                                cid=child(ident,'cancel-collection');payload={'action':'cancel_assignment','payload':{'ticker':row['ticker'],'assignmentId':ident}}
+                                cur.execute("INSERT INTO mp_jobs(id,stage,ticker,status,input) VALUES(%s,'collection_control',%s,'queued',%s::jsonb) ON CONFLICT(id) DO NOTHING",(cid,row['ticker'],json.dumps(payload)))
+                            state['step']='Stopped; saved outputs retained' if confirmed else 'Stop requested; child confirmation needs attention'
+                            cur.execute("UPDATE mp_jobs SET status=%s,result=%s::jsonb,error=%s,updated_at=NOW() WHERE id=%s AND stage=%s",
+                                ('cancelled' if confirmed else 'attention',json.dumps(state),None if confirmed else issue,ident,STAGE))
+                    except Exception:
+                        return jsonify(error=issue),503
+                    if not confirmed:return jsonify(error=issue),409
                     return jsonify(stopped=True)
+                if state.get('stopRequested'):
+                    return jsonify(error='A stop was requested. Retry Stop to confirm child work is fenced; this assignment cannot resume.'),409
                 if row['status']=='cancelled':return jsonify(error='Stopped assignment retained. Start a new assignment to collect again.'),409
                 if state.get('reportId'):
                     report,code=self.invoke('stock_analysis.detail','GET',None,dict(ident=state['reportId']))

@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T338 — Durable stop intent and verified child-stop receipts
+
+Critical-path job recovery: assignment Stop previously ignored a rejected child
+research stop and could report success while the child kept running. Stop now
+persists an attention-state intent before contacting children, fencing future
+coordinator dispatch and explicit Resume even across a lost response or restart.
+The parent is cancelled only after a valid child stop acknowledgement, or a scoped
+read confirms the report already complete/missing. Error text is not evidence.
+Malformed receipts, unavailable services and exceptions retain an unresolved stop;
+retry reconciles the same child identities without submitting or resuming research.
+Full-note fencing and durable collection cancellation still run when report-stop
+confirmation fails. In-flight provider calls may finish; no refund/cancellation of
+an already running call is claimed. Saved artifacts and originals are preserved.
+
+The existing assignment controls hide Resume for unresolved stop intent and offer
+Retry Stop confirmation. No new orchestration, approval or dashboard is introduced.
+Validation: 41 focused assignment tests, 1,709 full safe backend tests, 252 frontend
+tests, Python compilation and production build pass. Isolated phone/desktop checks
+(390/1280px) cover failed stop, retry, confirmed state, retained output links and no
+resume option or overflow. Screenshot inspected. Backend fixtures cover lost and
+malformed receipts, scoped complete/missing child reads, unavailable note integration,
+child exceptions and saved-output retention. No live stop or paid run was used.
+Logs: /tmp/charlie-T338-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify exact production revision, then continue the existing CVS source-to-
+processing handoff when genuine receipts arrive. Latest read remains queued at
+position 2 with four searches pending; this is not evidence of collection or live
+end-to-end completion. Investor acceptance, historical-reference schema and the
+live authorized processing journey remain open. Pre-release audio inventory empty;
+Activity has no unavailable dependencies but retains research/audio truncation.
+Agent code unchanged; no restart needed. Backfill synthesis remains paused.
+
 ## T337 — Keep older processing proposals and uncertain save receipts reachable
 
 Critical-path handoff recovery: the proposal list previously returned only the

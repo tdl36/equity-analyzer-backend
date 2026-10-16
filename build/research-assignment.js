@@ -423,7 +423,7 @@ export function ResearchAssignment({
     href: `?thesisDraft=${encodeURIComponent(j.result.separateThesisProposal.id)}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
   }, "Review rebuilt thesis proposal")), /*#__PURE__*/React.createElement("p", null, "This separately prepared proposal references ", j.result.separateThesisProposal.sharedOriginals, " of this assignment\u2019s ", j.result.separateThesisProposal.assignmentOriginals, " originals and may use supplemental sources. Review its source register and current baseline before approving. The original automated research remains blocked; linking does not approve the thesis or certify its quality.")), j.status === 'attention' && j.result.manualThesisReviewRequired && !j.result.separateThesisProposal && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('thesisimports', ticker)
-  }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+  }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.stopRequested && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "sa-check"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -439,13 +439,15 @@ export function ResearchAssignment({
     })
   }, "Resume assignment"), /*#__PURE__*/React.createElement("a", {
     href: routeHash('desk', ticker, 'collection', j.result.refreshRequestId ? 'collection:' + j.result.refreshRequestId : '')
-  }, "Collection and source choices")), ['queued', 'running', 'attention'].includes(j.status) && /*#__PURE__*/React.createElement("button", {
+  }, "Collection and source choices")), j.status === 'attention' && j.result.stopRequested && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, "Stop requested; confirmation is incomplete. Saved outputs remain available. Retry Stop to reconcile child work. An in-flight call may still finish; this does not authorize more research."), ['queued', 'running', 'attention'].includes(j.status) && /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => mutate(async () => {
       await request(`assignments/${j.id}/stop`, {});
       return 'Stopped. Originals and saved drafts are retained; a call already running may finish.';
     })
-  }, "Stop assignment")))), !focusId && /*#__PURE__*/React.createElement("section", {
+  }, j.result.stopRequested ? 'Retry Stop confirmation' : 'Stop assignment')))), !focusId && /*#__PURE__*/React.createElement("section", {
     "aria-label": "New research"
   }, origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
     open: !!labSelection || !!origin || !focusId && loaded && !jobs.length
