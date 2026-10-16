@@ -32,6 +32,17 @@ proposal → explicit processing approval → saved research milestone is still 
 Operations owns browser coverage reconciliation. Continue source-to-output repairs;
 shared approval expansion and all eight acceptance certifications remain open.
 
+T369 production verified: Render `438bf860c1633fabb5ccd27fe7475196dd1478f6`,
+Cloudflare `78355183-3949-40c4-b74d-d0a8ae266327`. Hosted JS/service-worker
+bytes and HTML match. New inspection checks for absent jobs, invalid IDs,
+missing/duplicate ticker and authentication pass in production. Positive saved-call
+and recovery UI behavior is synthetic evidence; no live job recovery was invoked.
+Read-only CVS remains running / collection queued with zero verified sources;
+unfinished-parent processing reads remain guarded. No paid call or investor decision.
+Next critical milestone remains genuine source receipts, explicit processing approval
+and saved outputs. Operations owns collection reconciliation; engineering readiness
+must not be described as a completed live journey or investor acceptance.
+
 ## T368 — Older full Lab notes remain discoverable
 
 The full-note job list stopped at the newest 30 creations, leaving older notes
