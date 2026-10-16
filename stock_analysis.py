@@ -99,6 +99,9 @@ def validate_report(raw, group, sources, mode):
 
 
 def generate(state,sources,baseline,ask,save,check,inputs):
+    if inputs.get('packageRewrite'):
+        from research_package_rewrite import generate as rewrite
+        return rewrite(state,sources,ask,save,check,inputs)
     state=copy.deepcopy(state)
     if state.get('inFlight'):raise ValueError('Previous call outcome is unknown. Explicit retry acknowledgement is required.')
     mode=inputs['mode']

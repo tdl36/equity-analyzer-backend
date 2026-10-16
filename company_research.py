@@ -296,7 +296,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
         if not valid_ticker(ticker):return jsonify(error='Invalid ticker'),400
         ensure()
         with get_db() as (_,cur):
-            cur.execute(f'SELECT id,ticker,status,error,baseline,created_at,updated_at,version,model FROM {table} WHERE ticker=%s ORDER BY created_at DESC LIMIT 50',(ticker,));rows=[dict(r) for r in cur.fetchall()]
+            cur.execute(f"SELECT id,ticker,status,error,baseline,created_at,updated_at,version,model FROM {table} WHERE ticker=%s AND NOT (input ? 'packageRewrite') ORDER BY created_at DESC LIMIT 50",(ticker,));rows=[dict(r) for r in cur.fetchall()]
             for r in rows:r['baseline']={'revision':r['baseline']['revision']}
             cur.execute('SELECT filename,metadata FROM document_files WHERE ticker=%s ORDER BY filename',(ticker,));docs=[{'filename':r['filename'],'eligible':eligible(r.get('metadata') or {})} for r in cur.fetchall()]
             current=baseline(cur,ticker)
@@ -363,11 +363,11 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                 company=dict(cur.fetchone())
                 prior=None
                 if studio_options['priorId']:
-                    cur.execute(f"SELECT * FROM {table} WHERE id=%s AND ticker=%s AND status='complete'",(studio_options['priorId'],ticker))
+                    cur.execute(f"SELECT * FROM {table} WHERE id=%s AND ticker=%s AND status='complete' AND NOT (input ? 'packageRewrite')",(studio_options['priorId'],ticker))
                     prior=cur.fetchone()
                     if not prior:return jsonify(error='Choose a completed report for the same company.'),409
                 else:
-                    cur.execute(f"SELECT * FROM {table} WHERE ticker=%s AND status='complete' ORDER BY created_at DESC LIMIT 1",(ticker,))
+                    cur.execute(f"SELECT * FROM {table} WHERE ticker=%s AND status='complete' AND NOT (input ? 'packageRewrite') ORDER BY created_at DESC LIMIT 1",(ticker,))
                     prior=cur.fetchone()
                 if studio_options['mode']=='update' and not prior and not current['revision']:
                     return jsonify(error='Update thesis requires a saved case or completed report.'),400
@@ -379,6 +379,57 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                 frozen_input.update(companyId=company['id'],companyName=company['name'],ticker=ticker,prior=prior)
             cur.execute(f"INSERT INTO {table}(id,ticker,payload_hash,version,model,status,input,baseline) VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb,%s::jsonb)",(ident,ticker,signature,version,model_identity(),json.dumps(frozen_input),json.dumps(current)))
         start(ident,key);return jsonify(id=ident),202
+
+    @bp.post(f'/api/research/{route}-run/<parent_id>/rewrite/<action>')
+    def package_rewrite(parent_id, action):
+        if not studio or action not in ('prepare', 'start'):
+            return jsonify(error='Unknown rewrite action'), 404
+        ensure()
+        data = request.get_json(silent=True) or {}
+        from research_package_rewrite import specification, preview
+        try:
+            spec = specification(data)
+            ident = str(uuid.UUID(data.get('requestId', '')))
+        except (ValueError, TypeError, AttributeError) as exc:
+            return jsonify(error=str(exc)), 400
+        signature = digest([parent_id, spec, data.get('fingerprint')])
+        with get_db(commit=True) as (_, cur):
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', ('stock-analysis-request:' + ident,))
+            cur.execute(f'SELECT id,payload_hash FROM {table} WHERE id=%s', (ident,))
+            existing = cur.fetchone()
+            if existing:
+                if existing['payload_hash'] != signature or action != 'start':
+                    return jsonify(error='Request identity already used. Reload the saved rewrite.'), 409
+                return jsonify(id=ident, replayed=True)
+            cur.execute(f'SELECT * FROM {table} WHERE id=%s', (parent_id,))
+            parent = cur.fetchone()
+            if not parent or parent['status'] != 'complete' or parent['input'].get('packageRewrite') or not parent['sources']:
+                return jsonify(error='A completed original report with saved evidence is required.'), 409
+            from research_preferences import read as preferences
+            prefs = preferences(cur)
+            model = model_identity()
+            try:
+                plan = preview(spec, parent['sources'], prefs, model, parent_id)
+            except ValueError as exc:
+                return jsonify(error=str(exc)), 400
+            if action == 'prepare':
+                return jsonify(plan)
+            if data.get('confirmed') is not True or data.get('fingerprint') != plan['fingerprint']:
+                return jsonify(error='Review the current rewrite scope and cost before generating.'), 409
+            key = get_key('')
+            if not key or budget_check():
+                return jsonify(error='Research key unavailable or budget limit reached.'), 409
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))', ('stock-analysis-ticker:' + parent['ticker'],))
+            cur.execute(f"SELECT id FROM {table} WHERE ticker=%s AND status IN ('queued','running','attention') LIMIT 1", (parent['ticker'],))
+            if cur.fetchone():
+                return jsonify(error='Resolve the unfinished research for this company before generating another version.'), 409
+            frozen = copy.deepcopy(parent['input'])
+            frozen.update(packageRewrite=spec, writingPreferences=prefs, rewriteParentId=parent_id, rewritePlan=plan, mode='rewrite')
+            frozen.pop('prior', None)
+            cur.execute(f"INSERT INTO {table}(id,ticker,payload_hash,version,model,status,input,baseline,sources) VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb,%s::jsonb,%s::jsonb)",
+                        (ident,parent['ticker'],signature,version,model,json.dumps(frozen),json.dumps(parent['baseline']),json.dumps(parent['sources'])))
+        start(ident,key)
+        return jsonify(id=ident), 202
 
     @bp.get(f'/api/research/{route}-run/<ident>')
     def detail(ident):
@@ -457,6 +508,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             if not acquired:return jsonify(error='A worker is still active. Stop takes effect after its current call finishes.'),409
             with get_db(commit=True) as (_,cur):
                 cur.execute(f'SELECT * FROM {table} WHERE id=%s FOR UPDATE',(ident,));row=cur.fetchone()
+                if row and row['input'].get('packageRewrite'):
+                    return jsonify(error='Rewrite retries are disabled. Inspect the saved response and usage before starting a separately authorized version.'),409
                 repairing=studio and data.get('repairThesis') is True
                 if not row or (row['status']=='complete' and not repairing):return jsonify(error='No unfinished research found'),409
                 if row['version']!=version or row['model']!=model_identity():return jsonify(error='Configuration changed. Start a new research revision.'),409

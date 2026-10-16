@@ -1,3 +1,4 @@
+import { PackageRewrite } from './package-rewrite';
 import * as React from 'react';
 import { thesisFields, setText, revisionPackage, correctionBody } from './package-editor-model.mjs';
 import { claimLabel, editionDecision } from './onepager-edition-model.mjs';
@@ -242,7 +243,35 @@ export function PackageEditor({
     role: "status"
   }, "This saved version has been decided or its baseline has changed. Editing is disabled to preserve that decision; a fresh research revision is required."), /*#__PURE__*/React.createElement("p", {
     className: "pe-note"
-  }, tab === 'thesis' ? 'The stock summary and proposed thesis share these sections. Saving updates both. Review the one-pager separately: concise wording is never silently rewritten.' : 'Edit the one-pager’s saved claims. Evidence references remain attached; changing wording does not prove the new claim. Keep each field concise.'), /*#__PURE__*/React.createElement("fieldset", {
+  }, tab === 'thesis' ? 'The stock summary and proposed thesis share these sections. Saving updates both. Review the one-pager separately: concise wording is never silently rewritten.' : 'Edit the one-pager’s saved claims. Evidence references remain attached; changing wording does not prove the new claim. Keep each field concise.'), /*#__PURE__*/React.createElement(PackageRewrite, {
+    key: tab,
+    runId: job.result.reportId,
+    storageKey: key + ':' + tab,
+    api: api,
+    disabled: busy || !!attempt.current || data.draft.status !== 'pending' || data.draft.stale || !!data.edition.decision || data.edition.stale,
+    fields: tab === 'thesis' ? thesisFields(analysis).map(f => ({
+      id: JSON.stringify(f.path),
+      label: f.label,
+      text: f.value,
+      limit: 40000
+    })) : data.edition.record.claims.map(c => ({
+      id: c.correctionId,
+      label: claimLabel(c.proposal.path),
+      text: words[c.correctionId],
+      limit: 300
+    })),
+    onKeep: values => {
+      if (tab === 'thesis') {
+        var next = analysis;
+        for (var [id, text] of Object.entries(values)) next = setText(next, JSON.parse(id), text);
+        change(next, words);
+      } else change(analysis, {
+        ...words,
+        ...values
+      });
+      setNotice('AI alternative kept in your draft. Check the evidence and other documents before saving.');
+    }
+  }), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || !!attempt.current || data?.draft.status !== 'pending' || data?.draft.stale || data?.edition.decision || data?.edition.stale
   }, tab === 'thesis' ? thesisFields(analysis).map(f => /*#__PURE__*/React.createElement("label", {
     key: JSON.stringify(f.path)

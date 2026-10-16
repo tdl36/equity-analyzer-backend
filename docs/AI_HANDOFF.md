@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T382 — Revise package wording with AI before saving
+
+The package editor now offers section or whole-document rewrites with investor
+instructions. It prepares a model/source/preference-bound cost estimate, then
+requires explicit generation authorization. One bounded call reuses the existing
+stock-analysis worker, frozen source excerpts, original-byte checks and durable
+response receipts. The alternative is compared with original wording; Keep only
+changes the local editable draft. Package save and investor decisions remain separate.
+Summary/thesis share fields; the one-pager remains separately reviewed. Existing
+references are retained, not independently revalidated by the rewrite. No new
+collection or freshness claim. Explicit writing preferences guide the new call.
+
+Exact request IDs survive interrupted submission in tab storage. Recovery reads
+saved jobs; repeating the identical submission cannot enqueue a second job.
+Ambiguous/failed rewrites have no paid resume action. Returned invalid output is
+retained, and original drafts are unchanged. Editorial runs cannot become the
+implicit prior full stock report. Current scope is delivered recovery-package
+editors; other legacy document screens do not gain this action.
+
+Validation: 1866 backend tests passed before one additional route authorization/
+replay test; all five focused rewrite tests and 14 company-research tests pass.
+301 frontend tests pass. Production build and Python compile pass. Synthetic
+390/1280 browser checks prove explicit cost authorization, interrupted submission
+recovery by GET, before/after comparison and deliberate Keep. Existing package
+editor synthetic checks also pass. No paid QA, live generation or investor decision.
+Next: verify T382 exact deployment and the ABT editor/estimate without generating;
+then investor-directed generation and review remain live acceptance evidence.
+
 ## T381 — Edit delivered research and retain explicit writing preferences
 
 Delivered recovery packages now expose an in-place editor for the shared stock
