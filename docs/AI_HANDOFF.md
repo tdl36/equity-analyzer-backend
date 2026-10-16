@@ -40,6 +40,26 @@ request-specific authorization. All eight acceptance certifications and historic
 reference-schema gap remain open. Do not repeat completed edit/history audits or
 expand the dashboard before the connected-journey proof.
 
+T347 verified production receipt: Render ed1044a0886909314c160dafc23278f2c72c1559;
+Cloudflare 0000ea10-8f6a-4b80-a039-bf3caa34a4a3. Hosted JS/service-worker bytes
+and HTML T347 marker match. Agent healthy (84.4s heartbeat age), unchanged and not
+restarted. Read-only original/library/collection/proposal/history/note identity and
+authentication checks pass. Activity unavailable [], unchanged research/audio
+truncation, zero full-note inventory. Logs: /tmp/charlie-T347-{deploy,verify}.log.
+Additional synthetic lost-response/reload test confirms identical edit replay after
+newer revisions exist and opens the original revision 2, not latest revision 5;
+no live edits, generation or acceptance. Log: /tmp/charlie-T347-lost.log.
+
+Operations compact read reports active collection for Norfolk Southern; this is
+worker activity, not a completed CVS receipt. No worker was duplicated or message
+sent. Next resume actual collection-to-proposal readiness when receipts arrive.
+Full-note exact-read/history/edit recovery audits are complete; do not repeat them.
+If awaiting live evidence, assess remaining source-to-output failure presentation
+against the existing ledger rather than broadening dashboards. The export path
+already receives authentication through app.jsx global fetch; do not misdiagnose
+its local fetch call as unauthenticated. All acceptance and historical-schema gaps
+remain as documented above.
+
 ## T346 — Exact Lab notes remain readable during history outages
 
 Critical-path saved-output repair from the T345 reproduction: the focused full-note
