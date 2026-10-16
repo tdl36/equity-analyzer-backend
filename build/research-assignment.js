@@ -1,3 +1,4 @@
+import { AssignmentResume } from './assignment-resume';
 import { AssignmentCollection } from './assignment-collection';
 import { originalArtifactUrl } from './assignment-review-model.mjs';
 import { ProcessingProposals } from './processing-proposals';
@@ -49,7 +50,6 @@ export function ResearchAssignment({
     [busy, setBusy] = React.useState(false),
     [message, setMessage] = React.useState(''),
     [error, setError] = React.useState(''),
-    [ack, setAck] = React.useState(false),
     [preview, setPreview] = React.useState(null),
     [savedSubmission, setSavedSubmission] = React.useState(null);
   var [defaultsReady, setDefaultsReady] = React.useState(!!origin || !!labSelection),
@@ -116,7 +116,6 @@ export function ResearchAssignment({
     generation.current++;
     setJobs([]);
     setLoaded(false);
-    setAck(false);
     setPreview(null);
     var load = async () => {
       if (inflight) return;
@@ -427,21 +426,14 @@ export function ResearchAssignment({
     href: `?thesisDraft=${encodeURIComponent(j.result.separateThesisProposal.id)}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
   }, "Review rebuilt thesis proposal")), /*#__PURE__*/React.createElement("p", null, "This separately prepared proposal references ", j.result.separateThesisProposal.sharedOriginals, " of this assignment\u2019s ", j.result.separateThesisProposal.assignmentOriginals, " originals and may use supplemental sources. Review its source register and current baseline before approving. The original automated research remains blocked; linking does not approve the thesis or certify its quality.")), j.status === 'attention' && j.result.manualThesisReviewRequired && !j.result.separateThesisProposal && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('thesisimports', ticker)
-  }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.stopRequested && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
-    className: "sa-check"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: ack,
-    onChange: e => setAck(e.target.checked)
-  }), "If a paid call is uncertain, I checked usage and accept that retry may charge again."), /*#__PURE__*/React.createElement("button", {
-    disabled: busy,
-    onClick: () => mutate(async () => {
-      await request(`assignments/${j.id}/resume`, {
-        acknowledgeRetry: ack
-      });
+  }, "Import & review thesis"), " \xB7 Review the saved report above before preparing a separate proposal. Your accepted thesis is unchanged."), j.status === 'attention' && !j.result.stopRequested && !j.result.manualThesisReviewRequired && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(AssignmentResume, {
+    job: j,
+    disabled: busy || !!error || !loaded,
+    onResume: body => mutate(async () => {
+      await request(`assignments/${j.id}/resume`, body);
       return 'Resume requested; saved stages are retained.';
     })
-  }, "Resume assignment"), /*#__PURE__*/React.createElement("a", {
+  }), /*#__PURE__*/React.createElement("a", {
     href: routeHash('desk', ticker, 'collection', j.result.refreshRequestId ? 'collection:' + j.result.refreshRequestId : '')
   }, "Collection and source choices")), j.status === 'attention' && j.result.stopRequested && /*#__PURE__*/React.createElement("p", {
     role: "alert"

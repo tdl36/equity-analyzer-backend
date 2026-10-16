@@ -19,6 +19,15 @@ def child(ident,kind):return str(uuid.uuid5(uuid.NAMESPACE_URL,'charlie:assignme
 def obj(v):return json.loads(v) if isinstance(v,str) else v or {}
 
 
+def resume_revision(row):
+    # Preserve sub-second database precision; Flask serializes datetime fields to
+    # second-resolution HTTP dates, which cannot safely identify a saved state.
+    stamp=row.get('updated_at')
+    if not stamp:return None
+    value=[row['id'],row['status'],stamp.isoformat() if isinstance(stamp,datetime) else str(stamp)]
+    return hashlib.sha256(json.dumps(value).encode()).hexdigest()
+
+
 def age_seconds(value):
     if not value:return 0
     stamp=value if isinstance(value,datetime) else datetime.fromisoformat(str(value).replace('Z','+00:00'))
@@ -262,7 +271,7 @@ class Coordinator:
         s.pop('meetingSelection',None);s.pop('visualFundamentalRevisions',None);s.pop('thesisPackage',None);s.pop('researchInput',None);s.pop('artifactRevisions',None)
         if s.get('collection'):s['collection']={k:s['collection'].get(k) for k in ('status','issue','sourceProgress')}
         s['artifacts']=[{'kind':k,'url':'/api/research/assignments/'+row['id']+'/artifact/'+k,'reviewRequired':True} for k in s.get('artifacts',{})]
-        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy','labNotePlan')},result=s)
+        return dict(id=row['id'],ticker=row['ticker'],status=row['status'],error=error,resumeRevision=resume_revision(row),created_at=row.get('created_at'),updated_at=row.get('updated_at'),input={k:v for k,v in p.items() if k not in ('thesisBaseline','sourcePolicy','labNotePlan')},result=s)
     def routes(self):
         bp=self.bp
         @bp.route('/api/research/assignment-defaults',methods=['GET','PUT'])
@@ -445,6 +454,11 @@ class Coordinator:
                 row=self.read(ident)
                 if not row or row['status']=='complete':return jsonify(error='No unfinished assignment found.'),409
                 state=obj(row['result']);d=request.get_json(silent=True) or {}
+                if not isinstance(d,dict):return jsonify(error='Invalid assignment action.'),400
+                if action=='resume' and (d.get('acknowledgeRetry') is True or 'expectedRevision' in d):
+                    revision=resume_revision(row)
+                    if not revision or d.get('expectedRevision')!=revision:
+                        return jsonify(error='Assignment state changed or its retry receipt is missing. Refresh and review this assignment before resuming; no retry was requested.'),409
                 if action=='stop':
                     # Persist intent before contacting children: a failed/lost stop
                     # response must never leave the coordinator free to dispatch.

@@ -2,6 +2,37 @@
 
 Updated: October 14, 2026
 
+## T376 — Bind paid-retry acknowledgment to one saved assignment state
+
+A synthetic reproduction found that the assignment list shared one acknowledgment
+checkbox across every job and retained it after a resume attempt. Checking one job
+therefore also authorized the retry checkbox on another job. Each assignment now
+owns its acknowledgment, bound to an opaque receipt for its saved state. It clears
+after an attempt, a changed receipt or unavailable status. Resume is unavailable
+without a current receipt or after a failed status read; retained outputs stay visible.
+
+The existing coordinator exposes a receipt derived from assignment identity, status
+and the full-precision saved update timestamp. Under its existing execution lock,
+resume checks a supplied receipt before any child inspection/action or worker wake.
+An explicit paid-retry acknowledgment now requires that receipt, so old clients must
+refresh before acknowledging an uncertain retry. Ordinary legacy resume without an
+acknowledgment keeps existing child safety checks. Stop and frozen original plans
+are unchanged. This adds no orchestrator, automatic retry or processing approval.
+
+Validation: 2 focused disposable-database tests, all 1852 safe backend and 295
+frontend tests, Python compilation and production build pass. Tracked synthetic
+browser checks at 390/1280 reproduce the original shared-checkbox failure and verify
+job isolation, exact request receipt, clearing after a failed attempt/changed state,
+failed-read recovery and absent-receipt blocking. Backend tests verify missing/stale
+receipt rejection before child work, sub-second and identity distinction, accepted
+current receipts and rejection of a replay after state advancement. All retry calls
+were fixtures; no genuine uncertain paid call was retried.
+
+Next: verify hosted T376 and continue the genuine collection → selected proposal →
+explicit processing authorization → saved drafts journey when Operations supplies
+verified receipts. Shared-dashboard expansion and eight-priority acceptance remain
+open. This increment advances recovery authorization, not live collection proof.
+
 ## T375 — Keep assignment-to-Operations navigation scoped to the requested company
 
 CollectionCloud retained its initial company filter when the existing mounted view

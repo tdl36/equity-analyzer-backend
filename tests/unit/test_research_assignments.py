@@ -405,8 +405,33 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.start(['stock_summary']);self.collected();self.report_status='running';self.resume_error='Previous call outcome is unknown.'
         r=self.advance();self.assertEqual(r['status'],'attention');self.assertIn('unknown',r['error'])
         r=self.client.post('/api/research/assignments/'+self.ident+'/resume',json={});self.assertEqual(r.status_code,409)
-        self.resume_error=None;self.report_status='complete';self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={'acknowledgeRetry':True}).status_code,200)
+        self.resume_error=None;self.report_status='complete';self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={'acknowledgeRetry':True,'expectedRevision':self.co.public(self.co.read(self.ident))['resumeRevision']}).status_code,200)
         self.assertEqual(self.advance()['status'],'complete');self.assertEqual(len(self.submits),1)
+    def test_resume_receipt_blocks_stale_missing_and_cross_assignment_ack_before_child_work(self):
+        self.start(['summary_note']);self.collected();row=self.advance()
+        self.co.store(self.ident,row['result'],'attention','Synthetic uncertain outcome')
+        row=self.co.read(self.ident);token=self.co.public(row)['resumeRevision']
+        self.assertEqual(len(token),64)
+        from research_assignments import resume_revision
+        self.assertNotEqual(token,resume_revision({**row,'id':str(uuid.uuid4())}))
+        from datetime import timedelta
+        self.assertNotEqual(token,resume_revision({**row,'updated_at':row['updated_at']+timedelta(microseconds=1)}))
+        self.co.store(self.ident,row['result'],'attention','New synthetic outcome')
+        before=self.co.read(self.ident);path='/api/research/assignments/'+self.ident+'/resume'
+        with patch.object(self.co,'invoke',side_effect=AssertionError('No child action')),patch.object(self.co,'wake') as wake:
+            for body in ({'acknowledgeRetry':True},{'acknowledgeRetry':True,'expectedRevision':token},{'acknowledgeRetry':False,'expectedRevision':token},{'expectedRevision':None}):
+                response=self.client.post(path,json=body)
+                self.assertEqual(response.status_code,409,response.json)
+                self.assertEqual(before,self.co.read(self.ident))
+            wake.assert_not_called()
+        current=self.co.public(before)['resumeRevision'];self.report_status='attention'
+        with patch.object(self.co,'invoke',wraps=self.co.invoke) as invoke:
+            self.assertEqual(self.client.post(path,json={'acknowledgeRetry':True,'expectedRevision':current}).status_code,200)
+            actions=[call for call in invoke.call_args_list if call.args[0]=='stock_analysis.control']
+            self.assertEqual(len(actions),1);self.assertIs(actions[0].args[2]['acknowledgeRetry'],True)
+        with patch.object(self.co,'invoke',side_effect=AssertionError('No replay')):
+            self.assertEqual(self.client.post(path,json={'acknowledgeRetry':True,'expectedRevision':current}).status_code,409)
+
     def test_stop_before_mac_receipt_creates_durable_cancel(self):
         self.start();self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/stop',json={}).status_code,200)
         self.assertEqual(self.advance()['status'],'cancelled');self.assertEqual(self.submits,{})
