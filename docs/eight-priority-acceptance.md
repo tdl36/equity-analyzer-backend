@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T366 retains frozen event/thesis purpose and source context when recovering a saved
+final full-note response. Synthetic draft/export/replay checks pass without another
+provider call or investor acceptance. Existing versions and unknown legacy scope
+are preserved. Live connected-journey acceptance remains open.
+
 T365 makes exact proposal-cancellation retries recover their saved receipt without
 rewriting the decision or reversing approved work. Synthetic retry/concurrency/race
 checks pass; no production cancellation, approval or paid run was performed.

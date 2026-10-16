@@ -115,7 +115,9 @@ def recover(cur, note_id):
             state='attention';reason='intermediate_reply_truncated'
         elif calls and calls[-1]['batch']==plan['batchCount']:
             try:
-                receipt=store_draft(cur,note_id,plan['batchCount'],plan['ticker'],plan['title'],plan['warnings'])
+                # Recovery must preserve the same frozen purpose/source context
+                # as normal execution; never infer scope from generated prose.
+                receipt=store_draft(cur,note_id,plan['batchCount'],plan['ticker'],plan['title'],plan['warnings'],plan.get('researchProvenance'))
                 state='draft';revision=receipt['revision']
             except ValueError:
                 state='attention';reason='saved_reply_needs_review'

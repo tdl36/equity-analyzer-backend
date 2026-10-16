@@ -2,6 +2,31 @@
 
 Updated: October 14, 2026
 
+## T366 — Saved-response recovery retains full-note research scope
+
+Normal full-note execution passed frozen researchProvenance into draft storage,
+but explicit recovery of a completed final response omitted it. Recovered notes
+therefore lost the structured distinction between event debrief and longitudinal
+thesis review, plus frozen source roles/dates/register references. Recovery now
+passes the same plan provenance as normal execution. It makes no provider call
+and does not infer scope from generated prose or live thesis state.
+
+A synthetic regression reproduced missing provenance for both purposes. Tests now
+verify exact frozen context, exported scope/caveats, source limitations, unapproved
+draft status, one provider-journal record and one saved revision after repeated
+recovery. Legacy plans without provenance remain unchanged. Existing saved versions
+are not retroactively rewritten; any previously missing scope remains a review gap.
+
+Validation: 22 focused recovery/job/service tests, all 1831 backend and 280
+frontend tests, Python compilation and build pass. The first export assertion was
+adjusted for the existing Markdown escaping of dates; final tests pass. No real
+job was recovered, no original or proposal was changed, and no paid research ran.
+
+Next: verify hosted T366, then continue connected delivery and genuine acceptance.
+Collection evidence and request-specific processing approval remain open; Operations
+owns browser collection reconciliation. All eight acceptance certifications remain
+open, independently of this recovery repair.
+
 ## T365 — Exact processing-proposal cancellation retries recover their receipt
 
 A successful cancellation followed by a lost response returned 409 on exact retry,
