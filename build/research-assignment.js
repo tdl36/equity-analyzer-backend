@@ -1,3 +1,6 @@
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+import { assignmentFormKey } from './assignment-form-draft.mjs';
+import { useAssignmentForm } from './assignment-form';
 import { AssignmentResume } from './assignment-resume';
 import { AssignmentCollection } from './assignment-collection';
 import { originalArtifactUrl } from './assignment-review-model.mjs';
@@ -13,7 +16,15 @@ import { parseTimestamp, routeHash } from './workspace-model.mjs';
 import { downloadText } from './stock-analysis-model.mjs';
 var outputs = assignmentOutputs;
 var date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export function ResearchAssignment({
+export function ResearchAssignment(props) {
+  var key = assignmentFormKey(props);
+  return /*#__PURE__*/React.createElement(AssignmentWorkspace, _extends({
+    key: key
+  }, props, {
+    formKey: key
+  }));
+}
+function AssignmentWorkspace({
   api,
   ticker,
   onReport,
@@ -24,27 +35,48 @@ export function ResearchAssignment({
   labSelection = null,
   embedded = false,
   labMode = false,
-  onCollectionComplete = null
+  onCollectionComplete = null,
+  formKey
 }) {
-  var [purpose, setPurpose] = React.useState('thesis_review'),
-    [eventTitle, setEventTitle] = React.useState(''),
-    [eventDate, setEventDate] = React.useState('');
-  var [collectionLimit, setCollectionLimit] = React.useState(40);
-  var [collectionOnly, setCollectionOnly] = React.useState(false);
-  var [fullNote, setFullNote] = React.useState(false),
-    [notePdfText, setNotePdfText] = React.useState(false);
-  var [since, setSince] = React.useState(() => {
-      var d = new Date();
-      d.setDate(d.getDate() - 69);
-      return date(d);
-    }),
-    [until, setUntil] = React.useState(() => date(new Date())),
-    [chosen, setChosen] = React.useState(labSelection ? labSelection.task === 'thesis' ? ['thesis'] : ['summary_note'] : origin ? ['visual'] : outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0])),
-    [horizon, setHorizon] = React.useState('12–24 months'),
-    [instruction, setInstruction] = React.useState(''),
-    [visualFundamentals, setVisualFundamentals] = React.useState(true),
-    [meetingDate, setMeetingDate] = React.useState(''),
-    [meetingType, setMeetingType] = React.useState('management');
+  var [defaultsReady, setDefaultsReady] = React.useState(!!origin || !!labSelection),
+    [defaultsWarning, setDefaultsWarning] = React.useState('');
+  var from = new Date();
+  from.setDate(from.getDate() - 69);
+  var formRecovery = useAssignmentForm(formKey, {
+    purpose: 'thesis_review',
+    eventTitle: '',
+    eventDate: '',
+    collectionLimit: 40,
+    collectionOnly: false,
+    fullNote: false,
+    notePdfText: false,
+    since: date(from),
+    until: date(new Date()),
+    chosen: labSelection ? labSelection.task === 'thesis' ? ['thesis'] : ['summary_note'] : origin ? ['visual'] : outputs.filter(x => x[0] !== 'meeting_prep').map(x => x[0]),
+    horizon: '12–24 months',
+    instruction: '',
+    visualFundamentals: true,
+    meetingDate: '',
+    meetingType: 'management'
+  }, defaultsReady);
+  var {
+    purpose,
+    eventTitle,
+    eventDate,
+    collectionLimit,
+    collectionOnly,
+    fullNote,
+    notePdfText,
+    since,
+    until,
+    chosen,
+    horizon,
+    instruction,
+    visualFundamentals,
+    meetingDate,
+    meetingType
+  } = formRecovery.form;
+  var [setPurpose, setEventTitle, setEventDate, setCollectionLimit, setCollectionOnly, setFullNote, setNotePdfText, setSince, setUntil, setChosen, setHorizon, setInstruction, setVisualFundamentals, setMeetingDate, setMeetingType] = ['purpose', 'eventTitle', 'eventDate', 'collectionLimit', 'collectionOnly', 'fullNote', 'notePdfText', 'since', 'until', 'chosen', 'horizon', 'instruction', 'visualFundamentals', 'meetingDate', 'meetingType'].map(formRecovery.edit);
   var [jobs, setJobs] = React.useState([]),
     [loaded, setLoaded] = React.useState(false),
     [busy, setBusy] = React.useState(false),
@@ -52,8 +84,6 @@ export function ResearchAssignment({
     [error, setError] = React.useState(''),
     [preview, setPreview] = React.useState(null),
     [savedSubmission, setSavedSubmission] = React.useState(null);
-  var [defaultsReady, setDefaultsReady] = React.useState(!!origin || !!labSelection),
-    [defaultsWarning, setDefaultsWarning] = React.useState('');
   var submissionStorageKey = submissionKey(api, ticker);
   var listPath = 'assignments?ticker=' + encodeURIComponent(ticker) + (focusId ? '&requestId=' + encodeURIComponent(focusId) : '');
   var locked = React.useRef(false),
@@ -93,15 +123,17 @@ export function ResearchAssignment({
     }
     setDefaultsReady(false);
     request('assignment-defaults').then(checkedAssignmentDefaults).then(d => {
-      if (live) {
+      if (live && !formRecovery.restored) {
         setChosen(d.outputs);
         setHorizon(d.horizon);
       }
     }).catch(() => {
       if (live) {
-        setChosen([...fallbackAssignmentDefaults.outputs]);
-        setHorizon(fallbackAssignmentDefaults.horizon);
-        setDefaultsWarning('Saved defaults could not be loaded. Standard output choices are shown below; review them before starting.');
+        if (!formRecovery.restored) {
+          setChosen([...fallbackAssignmentDefaults.outputs]);
+          setHorizon(fallbackAssignmentDefaults.horizon);
+        }
+        setDefaultsWarning(formRecovery.restored ? 'Saved defaults could not be loaded. Your recovered choices are retained; review them before starting.' : 'Saved defaults could not be loaded. Standard output choices are shown below; review them before starting.');
       }
     }).finally(() => {
       if (live) setDefaultsReady(true);
@@ -188,6 +220,57 @@ export function ResearchAssignment({
       setBusy(false);
     }
   };
+  var planned = {
+    ticker,
+    since,
+    until,
+    researchPurpose: purpose === 'event_note' ? {
+      kind: purpose,
+      event: {
+        title: eventTitle.trim(),
+        date: eventDate
+      }
+    } : {
+      kind: purpose
+    },
+    ...(!labSelection ? {
+      collectionLimit
+    } : {}),
+    ...(labMode && fullNote && !collectionOnly ? {
+      labFullNote: {
+        allowPdfText: notePdfText
+      }
+    } : {}),
+    ...(labSelection ? {
+      labSelection
+    } : {}),
+    ...(labMode && collectionOnly ? {
+      collectionOnly: true
+    } : {}),
+    outputs: collectionOnly ? [] : [...chosen].sort(),
+    horizon,
+    instruction,
+    visualFundamentals: collectionOnly ? false : visualFundamentals,
+    ...(origin ? {
+      origin
+    } : {}),
+    ...(!collectionOnly && chosen.includes('meeting_prep') ? {
+      meeting: {
+        date: meetingDate,
+        type: meetingType
+      }
+    } : {})
+  };
+  var clearSubmittedForm = body => {
+    if (matchingReceipt({
+      id: body.requestId,
+      ticker: body.ticker,
+      input: body
+    }, {
+      ...planned,
+      requestId: body.requestId
+    })) formRecovery.clear();
+  };
   async function sendSaved(body, fresh = false) {
     var result;
     try {
@@ -204,51 +287,12 @@ export function ResearchAssignment({
     if (!matchingReceipt(result, body)) throw Error('Assignment receipt does not match the saved request. Inspect saved assignments before retrying.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
+    clearSubmittedForm(body);
     if (body.collectionOnly) return 'Assignment saved. Charlie will collect and verify originals only. Reload the Lab inventory when collection completes; no research generation was requested.';
     return body.labSelection ? 'Assignment saved from your checked Lab selection. No new collection was requested. Drafts will be saved for review.' : 'Assignment saved. Charlie will collect originals and prepare your requested drafts. You can close this page.';
   }
   var start = () => mutate(async () => {
-    var p = {
-      ticker,
-      since,
-      until,
-      researchPurpose: purpose === 'event_note' ? {
-        kind: purpose,
-        event: {
-          title: eventTitle.trim(),
-          date: eventDate
-        }
-      } : {
-        kind: purpose
-      },
-      ...(!labSelection ? {
-        collectionLimit
-      } : {}),
-      ...(labMode && fullNote && !collectionOnly ? {
-        labFullNote: {
-          allowPdfText: notePdfText
-        }
-      } : {}),
-      ...(labSelection ? {
-        labSelection
-      } : {}),
-      ...(labMode && collectionOnly ? {
-        collectionOnly: true
-      } : {}),
-      outputs: collectionOnly ? [] : [...chosen].sort(),
-      horizon,
-      instruction,
-      visualFundamentals: collectionOnly ? false : visualFundamentals,
-      ...(origin ? {
-        origin
-      } : {}),
-      ...(!collectionOnly && chosen.includes('meeting_prep') ? {
-        meeting: {
-          date: meetingDate,
-          type: meetingType
-        }
-      } : {})
-    };
+    var p = planned;
     var old = readSubmission(sessionStorage, submissionStorageKey, ticker);
     if (old) {
       setSavedSubmission(old);
@@ -270,6 +314,7 @@ export function ResearchAssignment({
     if (!matchingReceipt(found, body)) throw Error('The saved assignment does not match the frozen request. Keep this recovery request and inspect its company, dates, sources and output choices before proceeding.');
     clearSubmission(sessionStorage, submissionStorageKey, body);
     setSavedSubmission(null);
+    clearSubmittedForm(body);
     return 'Saved assignment found (' + found.status + '). Submission reconciled without starting research again.';
   });
   var visibleJobs = jobs.filter(j => (!focusId || j.id === focusId) && j.ticker === ticker);
@@ -445,7 +490,14 @@ export function ResearchAssignment({
     })
   }, j.result.stopRequested ? 'Retry Stop confirmation' : 'Stop assignment')))), !focusId && /*#__PURE__*/React.createElement("section", {
     "aria-label": "New research"
-  }, origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
+  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Unsubmitted choices are kept in this browser tab for this company and source context. They are not a saved assignment or processing approval.")), formRecovery.restored && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Restored unfinished research choices. Review the purpose, dates, sources and outputs before submitting. No work was started."), formRecovery.issue && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, formRecovery.issue, " Current choices remain on this screen. ", /*#__PURE__*/React.createElement("button", {
+    disabled: busy || !!savedSubmission,
+    onClick: formRecovery.clear
+  }, "Clear browser form recovery")), origin && /*#__PURE__*/React.createElement("p", null, "Refresh from ", origin.parentId ? 'accepted edition ' + origin.parentId.slice(0, 8) : 'original report ' + origin.runId.slice(0, 8), ". Creates a separate draft and retains this version. Prior editorial corrections are not automatically carried into the new report."), /*#__PURE__*/React.createElement("details", {
     open: !!labSelection || !!origin || !focusId && loaded && !jobs.length
   }, /*#__PURE__*/React.createElement("summary", null, labSelection ? 'Generate from this saved selection' : 'Start new research'), labSelection && /*#__PURE__*/React.createElement("p", null, "Uses your saved ", labSelection.task, " selection, checked again at submission. Dates below describe your research context, not source publication or a new collection search. Draft notes are saved with this assignment; this does not replace a published Pipeline note."), !defaultsReady && /*#__PURE__*/React.createElement("p", {
     role: "status"

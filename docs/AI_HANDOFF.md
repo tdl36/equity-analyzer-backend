@@ -2,6 +2,38 @@
 
 Updated: October 14, 2026
 
+## T377 — Retain unfinished assignment intent across company navigation
+
+The direct assignment form previously kept purpose, dates, output choices and focus
+only in component state. Opening another company or leaving/reopening the Lab could
+silently lose those unfinished choices. Browser-tab recovery now retains the form,
+scoped to API/company, entry mode, frozen Lab selection revision/digest or one-pager
+origin version. A changed source context cannot inherit another version's draft.
+Recovered intent takes precedence over newly loaded defaults and is explicitly
+labelled unsubmitted; source validation and authorization still occur at submission.
+
+Only form fields are stored. No request identity, retry acknowledgment, processing
+approval or worker action is restored. The existing exact-submission recovery stays
+separate. Successful submission/reconciliation clears the form copy only if its
+current choices match that submitted intent, preserving other unfinished forms.
+Malformed or mismatched recovery is retained with an explicit reset action; silent
+storage write/removal failure is detected. While storage is unavailable, current
+choices remain on screen and closing/reloading warns. This is browser-tab recovery,
+not server autosave or cross-device storage. Original Research Pipeline is unchanged.
+
+Validation: 3 focused form-storage tests, all 1852 safe backend and 298 frontend
+tests, Python compilation and production build pass. Synthetic 390/1280 browser
+checks cover company navigation, unmount/reload, source-version isolation, retained
+purpose/window/collection limit/instructions, corrupt and silent-write recovery,
+reconciliation of another source-version request and matching submission cleanup.
+These use intercepted GETs plus one explicit fixture submission per viewport; no
+live assignment was created. Existing retry-acknowledgment and full-app processing-
+proposal browser checks also pass. Synthetic evidence is not investor acceptance.
+
+Next: verify hosted T377. Continue the real Operations collection into exact-byte
+receipts, selected processing proposal, request-specific approval and saved drafts.
+Broader shared-dashboard work and all eight acceptance certifications remain open.
+
 ## T376 — Bind paid-retry acknowledgment to one saved assignment state
 
 A synthetic reproduction found that the assignment list shared one acknowledgment
