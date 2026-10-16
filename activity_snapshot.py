@@ -1,5 +1,6 @@
 """Read-only cross-company work inventory. Never resumes jobs or exposes inputs."""
 import json
+import re
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify
 
@@ -9,7 +10,7 @@ ACTIVE=('queued','running','pending','waiting','starting','processing','transcri
 WORKFLOW_LABELS={'evidence_amendment':'Evidence proposal','catalyst_watch':'Catalyst monitoring','catalyst_signal':'Catalyst signal','research_assignment':'End-to-end research','collection_control':'Collection request','auto_evidence_intake':'Evidence processing','command_meeting':'Meeting preparation','pipeline':'Meeting research','thesis':'Thesis draft','fanout':'Analyst research','orchestrate':'Research coordination'}
 # Identifiers/projections are constants, never request input. No source bodies or keys.
 SOURCES = [
- ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'labNoteId' AS lab_note_id, result->>'labNoteStatus' AS lab_note_status, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, result->>'reason' AS reason, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id",'updated_at'),
+ ('mp_jobs','Research workflows','desk',"stage, result->>'step' AS step, result->>'reportId' AS report_id, result->>'labNoteId' AS lab_note_id, result->>'labNoteStatus' AS lab_note_status, result->>'refreshRequestId' AS refresh_id, result->>'researchStages' AS stages, result->>'delayWarning' AS warning, result->>'reason' AS reason, COALESCE(input->>'assignmentId',input#>>'{payload,assignmentId}') AS assignment_id, input->>'meetingId' AS requested_meeting_id",'updated_at'),
  ('research_pipeline_jobs','Document processing','pipeline','job_type AS stage, current_step AS step','updated_at'),
  ('stock_analysis_runs','Stock analysis','stockanalysis',"jsonb_array_length(COALESCE(state->'completed','[]'::jsonb)) AS stages, state->>'inFlight' AS step",'updated_at'),
  ('company_research_runs','Company research','portfolio',"NULL::text AS step",'updated_at'),
@@ -31,6 +32,35 @@ def stamp(value):
 
 def bucket(status):
     return 'recent' if status in TERMINAL else 'active' if status in ACTIVE else 'attention'
+
+def meeting_destinations(get_db, rows):
+    """Resolve only saved meeting/company identities; never infer from job status."""
+    candidates=[r for r in rows if r['source']=='mp_jobs' and r.get('stage') in ('pipeline','command_meeting')]
+    pending=[]
+    for r in candidates:
+        r['meeting_id']=None
+        r['meeting_link_state']='missing'
+        value=r.get('requested_meeting_id')
+        if type(value) not in (str,int) or not re.fullmatch(r'[1-9][0-9]{0,9}',str(value)) or int(value)>2147483647:
+            continue
+        pending.append((r,int(value)))
+    if not pending:return True
+    try:
+        with get_db() as (_,cur):
+            cur.execute('SELECT m.id,c.ticker FROM mp_meetings m JOIN mp_companies c ON c.id=m.company_id WHERE m.id=ANY(%s)',(list({mid for _,mid in pending}),))
+            meetings={r['id']:r['ticker'] for r in cur.fetchall()}
+    except Exception:
+        for r,_ in pending:r['meeting_link_state']='unavailable'
+        return False
+    for r,mid in pending:
+        if mid not in meetings:continue
+        if not r.get('ticker') or meetings[mid]!=r['ticker']:
+            r['meeting_link_state']='mismatch'
+            continue
+        r['meeting_id']=mid
+        r['meeting_link_state']='linked'
+    return True
+
 
 def assemble(rows, collection, now):
     parents=[r for r in rows if r.get('stage')=='research_assignment']
@@ -56,6 +86,7 @@ def assemble(rows, collection, now):
             title=WORKFLOW_LABELS.get(r.get('stage'),r['label']),status=status,bucket=bucket(status),
             step=r.get('step') or r.get('reason') or ('Waiting for Mac collection' if is_parent else status.replace('_',' ')),
             workflow=r.get('stage') or r['source'],
+            meetingId=r.get('meeting_id'),meetingLinkState=r.get('meeting_link_state'),
             stages=stages,warning=r.get('warning'),error=error[:600],
             createdAt=stamp(r.get('created_at')),updatedAt=(stamp(r.get('last_log_at')) or stamp(r.get('updated_at'))) if r['source']=='agent_runs' and status in ACTIVE else stamp(r.get('updated_at')),
             pendingStart=bool(r.get('pending_start')) if r['source']=='agent_runs' else False,
@@ -199,6 +230,7 @@ def create_blueprint(get_db):
                             selected.extend(group[:limit])
                         for r in selected:rows.append({**dict(r),'source':table,'label':label,'view':view})
             except Exception:unavailable.append(label)
+        if not meeting_destinations(get_db,rows):unavailable.append('Meeting destinations')
         try:
             from lab_note_activity import inventory
             with get_db() as (_,cur):note_rows,note_truncated=inventory(cur)

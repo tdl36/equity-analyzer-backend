@@ -85,3 +85,20 @@ test('Lab note inventory routes to exact note and distinguishes review from exec
  assert.doesNotMatch(nextAction({...row,status:'queued'}),/collection delivery/);
  assert.match(nextAction({...row,status:'complete',bucket:'recent'}),/does not change the current thesis/);
 });
+
+test('meeting work opens only a verified same-company saved meeting',()=>{
+ for(const workflow of ['pipeline','command_meeting']){
+  const row={id:'mp_jobs:fixture',workflow,meetingId:24,meetingLinkState:'linked',bucket:'recent',status:'complete'};
+  assert.deepEqual(activityDestination(row),{view:'meetingprep',section:'',work:'meeting:24'});
+  for(const meetingId of [0,-1,2147483648,'24','24#other',null,1.5])assert.equal(activityDestination({...row,meetingId}).work,undefined);
+  for(const meetingLinkState of ['missing','mismatch','unavailable',undefined]){
+   const missing={...row,meetingLinkState};
+   assert.equal(activityDestination(missing).work,undefined);assert.match(nextAction(missing),/do not submit a duplicate/);
+  }
+  assert.match(nextAction({...row,meetingLinkState:'mismatch'}),/different companies/);
+  assert.match(nextAction({...row,meetingLinkState:'unavailable'}),/Refresh Activity/);
+ }
+ assert.deepEqual(activityDestination({id:'mp_jobs:x',workflow:'pipeline',meetingLinkState:'missing'}),{view:'meetingprep',section:''});
+ assert.deepEqual(activityDestination({id:'mp_jobs:x',workflow:'command_meeting',meetingLinkState:'missing'}),{view:'desk',section:'command'});
+ assert.deepEqual(activityDestination({id:'research_pipeline_jobs:x',view:'pipeline',workflow:'pipeline',meetingId:24,meetingLinkState:'linked'}),{view:'pipeline',section:''});
+});

@@ -37,7 +37,10 @@ export function workLane(row) {
  if(row.stale)return 'blocked';
  return 'processing';
 }
+function meetingWork(row) {return row.id?.startsWith('mp_jobs:')&&['pipeline','command_meeting'].includes(row.workflow);}
+function meetingLink(row) {return row.meetingLinkState==='linked'&&Number.isInteger(row.meetingId)?validWork('meetingprep','','meeting:'+row.meetingId):'';}
 export function nextAction(row) {
+ if(meetingWork(row)&&!meetingLink(row))return (row.meetingLinkState==='unavailable'?'The saved meeting link could not be checked. Refresh Activity.':row.meetingLinkState==='mismatch'?'The saved job and meeting belong to different companies. The meeting link is withheld.':'This job has no verified saved meeting link.')+' Open the workflow to inspect retained work; do not submit a duplicate.';
  const lane=workLane(row);
  if(row.pendingStart)return row.startRecovery?(row.bucket==='attention'?'Automatic start recovery is enabled but this job is delayed. Check backend worker availability without submitting another run.':'Waiting for its first execution. Charlie can recover this saved job after a backend restart; do not submit a duplicate.'):'This job has not reserved an execution attempt. Automatic start recovery is unavailable; inspect the saved job before resubmitting.';
  if(row.executionUnconfirmed)return 'Reconcile the saved run with backend execution and provider outcome. Do not submit another paid run until its outcome is known.';
@@ -67,6 +70,10 @@ export function focusRows(data) {
 }
 
 export function activityDestination(row) {
+ if(meetingWork(row)){
+  const work=meetingLink(row);
+  return work?{view:'meetingprep',section:'',work}:row.workflow==='command_meeting'?{view:'desk',section:'command'}:{view:'meetingprep',section:''};
+ }
  if(row.workflow==='lab_note')return {view:'pipelinelab',section:'',...workLink(row,'pipelinelab','','labnote')};
  if(row.workflow==='evidence_amendment')return {view:'desk',section:'evidence',...workLink(row,'desk','evidence','amendment')};
  if(row.workflow==='research_decision')return {view:'stockanalysis',section:'reviews',...workLink(row,'stockanalysis','reviews','decision')};

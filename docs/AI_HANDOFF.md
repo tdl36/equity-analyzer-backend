@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T353 — Verified saved-meeting destinations in Home and Activity
+
+Activity's mp_jobs inventory now resolves pipeline/command_meeting meeting IDs
+against the saved meeting and its company before exposing a destination. Home and
+Activity open that exact meeting; malformed, deleted, mismatched or unavailable
+identities retain the job with a visible explanation and a workflow fallback.
+Lookup failure marks Meeting destinations unavailable without hiding job inventory.
+Other document pipelines retain their own routes. No status, source, worker or
+investor decision is changed, and no private job inputs are returned.
+
+Validation: 22 focused tests, 1,796 backend / 272 frontend safe tests, Python
+compilation and production build pass. Disposable PostgreSQL covers exact company
+identity, missing/malformed IDs, lookup outage and unchanged saved jobs. Synthetic
+actual-component Home/Activity checks at 390/1280px verify exact/fallback navigation,
+visible reasons and GET-only behavior with no overflow/browser errors; phone
+screenshot inspected. The initial UI harness lacked production CSS ordering;
+rerunning with the actual built stylesheet passed. No production meeting edits.
+Logs: /tmp/charlie-T353-{focused,backend,frontend,build,ui}.log.
+
+Next: verify exact production revision and hosted inventory. The previous live
+Activity had no meeting-work entries; synthetic fixture coverage must not be
+represented as an observed new live workflow. Recheck the existing CVS collection
+receipt before the next critical-path step. Once genuine sources arrive, verify
+selection-to-proposal readiness without approving processing. Until then continue
+independent saved-output reconciliation, not another meeting-context audit or
+shared-dashboard expansion. Historical reference schema, genuine approved journey
+and all eight acceptance certifications remain open. Collection worker ownership
+and paused automatic synthesis remain unchanged.
+
 ## T352 — Independent saved meeting context recovery
 
 MeetingSession no longer couples answer, version-history and quality reads through

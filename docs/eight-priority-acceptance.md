@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T353 verifies saved-meeting/company identity before Home/Activity links open it.
+Missing or unavailable identities preserve jobs and explain fallback navigation.
+Synthetic database and phone/desktop route checks pass; this is output-access
+engineering, not collection-to-processing or investor acceptance.
+
 T352 isolates answer/history/quality failures and retries, preserves local drafts,
 and binds quality checks to the displayed saved pack. Synthetic outage/navigation
 checks pass; hosted scoped reads verified four retained pack versions and identity
