@@ -19,8 +19,10 @@ def schema(cur):
 def validate(value):
     keys={'noteId','ticker','title','context','promptTemplate','modelKey','maxTokens',
           'sourcePack','representationSha256','batchCount','warnings','allowPdfText'}
-    if not isinstance(value,dict) or not keys <= set(value) or set(value)-keys-{'researchProvenance'}:
+    if not isinstance(value,dict) or not keys <= set(value) or set(value)-keys-{'researchProvenance', 'sourceDisclosureVersion'}:
         raise ValueError('A complete frozen note plan is required.')
+    if 'sourceDisclosureVersion' in value and (type(value['sourceDisclosureVersion']) is not int or value['sourceDisclosureVersion'] != 1):
+        raise ValueError('Unsupported source disclosure version.')
     out=dict(value);out['noteId']=_note_identity(value['noteId'])
     if not isinstance(value['ticker'],str) or not re.fullmatch('[A-Z0-9][A-Z0-9.-]{0,19}',value['ticker']):
         raise ValueError('Confirmed ticker required.')

@@ -1,3 +1,14 @@
+## T360 — Full-note extraction omissions remain visible
+
+New full-note proposals and Lab note plans carry known text truncation and omitted
+spreadsheet sheets into source warnings and saved draft quality issues. Processing
+proposals show these frozen warnings before approval. Extraction still caps file
+text at 120,000 characters; oversized PDF text can omit its middle. This change
+discloses those limits rather than claiming the full selected original was read.
+Legacy frozen plans keep their original warning contract and replay behavior.
+Synthetic assignment-to-note storage/execution/replay tests pass; live approval,
+generation and investor acceptance remain open. See AI_HANDOFF T360 for release.
+
 ## T326 — Read-only Home inventory includes full Lab notes
 
 Activity/Home now includes queued/running standalone Lab notes, recovery cases,

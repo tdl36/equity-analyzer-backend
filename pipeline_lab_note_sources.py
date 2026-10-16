@@ -8,11 +8,13 @@ from pipeline_lab import check_originals
 from pipeline_lab_notes import normalized
 
 
-def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False):
+def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False, source_disclosure_version=None):
     pack = normalized({'title':'Source pack','markdown':'Sources','qualityIssues':[],
                        'sourcePack':source_pack})['sourcePack']
     if type(allow_pdf_text) is not bool:
         raise ValueError('Explicit PDF representation policy required.')
+    if source_disclosure_version is not None and (type(source_disclosure_version) is not int or source_disclosure_version != 1):
+        raise ValueError('Unsupported source disclosure version.')
     references = [s['reference'] for s in pack]
     checked = check_originals(ticker,'note',0,references,documents)
     if checked['blockers']:
@@ -57,7 +59,14 @@ def prepare(ticker, source_pack, documents, planner=None, allow_pdf_text=False):
                 if not isinstance(text,str) or not text.strip() or len(text.encode('utf-8')) > 2_000_000:
                     raise ValueError('A selected original has no bounded readable text representation.')
                 content.append({'type':'text','text':'[Original: '+ref+'; '+original['filename']+' — extracted text]\n'+text})
-                warnings.append({'reference':ref,'issue':'Extracted text representation; embedded images and layout are not verified.'})
+                issue = 'Extracted text representation; embedded images and layout are not verified.'
+                extraction = doc.get('textExtraction') or {}
+                if source_disclosure_version == 1:
+                    if extraction.get('omittedCharacters', 0) > 0:
+                        issue += ' Text shortened to ' + str(extraction['retainedCharacters']) + ' characters; at least ' + str(extraction['omittedCharacters']) + ' extracted characters are omitted.'
+                    if extraction.get('omittedSheets'):
+                        issue += ' Later spreadsheet sheets are omitted by the extraction limit.'
+                warnings.append({'reference':ref,'issue':issue})
             else:
                 raise ValueError('A selected original cannot be represented; no source may be silently skipped.')
         output.append(content)

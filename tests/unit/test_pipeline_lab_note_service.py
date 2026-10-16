@@ -12,11 +12,18 @@ from research_assignment_plan import plan
 @unittest.skipUnless((pg.PG/'initdb').exists(),'Disposable PostgreSQL unavailable')
 class Integration(fixtures.Review):
     def test_assignment_pack_to_saved_full_note_and_replay(self):
-        ident=str(uuid.uuid4());ticker='FIX'+uuid.uuid4().hex[:6].upper();raw=b'Synthetic source only'
+        self.assignment_roundtrip()
+
+    def test_disclosed_truncation_survives_enqueue_execution_draft_and_replay(self):
+        self.assignment_roundtrip(disclosure=1)
+
+    def assignment_roundtrip(self, disclosure=None):
+        ident=str(uuid.uuid4());ticker='FIX'+uuid.uuid4().hex[:6].upper();raw=b'Synthetic source only' if disclosure is None else b'x'*120_020
         with self.db(True) as (_,c):
             c.execute('INSERT INTO document_files(ticker,filename,file_data,metadata) VALUES(%s,%s,%s,%s)',(ticker,'fixture.txt',base64.b64encode(raw).decode(),'{}'))
         pack=[{'filename':'fixture.txt','sha256':hashlib.sha256(raw).hexdigest()}]
         assignment={'ticker':ticker,'thesisBaseline':{'analysis':'Frozen fixture'},'labNotePlan':{'promptTemplate':'Synthetic playbook','modelKey':'fixture','allowPdfText':False}}
+        if disclosure is not None:assignment['labNotePlan']['sourceDisclosureVersion']=disclosure
         from processing_proposal_note import source_plan
         with self.db() as (_,c):
             c.execute('SELECT id::text AS id,filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s',(ticker,))
@@ -48,6 +55,10 @@ class Integration(fixtures.Review):
         with self.db() as (_,c):
             draft=read(c,receipt['noteId'])
             self.assertEqual(draft['sourcePack'][0]['sha256'],pack[0]['sha256'])
+            if disclosure is not None:
+                self.assertTrue(any('20 extracted characters are omitted' in issue for issue in draft['qualityIssues']))
+                from pipeline_lab_note_plan import load
+                self.assertEqual(load(c,receipt['noteId'])['sourceDisclosureVersion'],1)
             self.assertEqual(draft['researchProvenance']['purpose'],assignment['researchPurpose'])
             self.assertEqual(draft['researchProvenance']['sourceEvidence'],assignment['processingEvidenceContext'])
     def test_assignment_changed_bytes_never_enqueue(self):

@@ -55,3 +55,52 @@ class Sources(unittest.TestCase):
         self.assertIn('fixture bytes',result['batches'][0][0]['text'])
         self.assertIn('charlie:thesis_1',result['batches'][0][0]['text'])
         self.assertEqual(len(result['warnings']),1)
+
+    def test_text_truncation_disclosed_without_changing_legacy_representation(self):
+        raw=('α'*120_000+'MISSING END').encode()
+        pack=[{'reference':'charlie:thesis_1','filename':'long.txt','sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw)}]
+        docs={'charlie:thesis_1':{'filename':'long.txt','file_type':'txt','file_data':base64.b64encode(raw).decode(),'metadata':{}}}
+        legacy=prepare('ABT',pack,docs)
+        current=prepare('ABT',pack,docs,source_disclosure_version=1)
+        self.assertEqual(legacy['representationSha256'],current['representationSha256'])
+        self.assertEqual(legacy['batches'],current['batches'])
+        self.assertNotIn('MISSING END',current['batches'][0][0]['text'])
+        self.assertNotIn('omitted',legacy['warnings'][0]['issue'])
+        self.assertIn('120000 characters',current['warnings'][0]['issue'])
+        self.assertIn('11 extracted characters are omitted',current['warnings'][0]['issue'])
+        self.assertEqual(docs['charlie:thesis_1']['file_data'],base64.b64encode(raw).decode())
+
+    def test_spreadsheet_discloses_unread_sheets(self):
+        import io
+        from openpyxl import Workbook
+        workbook=Workbook();sheet=workbook.active
+        for _ in range(5):sheet.append(['x'*30_000])
+        workbook.create_sheet('Later').append(['END OF WORKBOOK'])
+        output=io.BytesIO();workbook.save(output);raw=output.getvalue()
+        pack=[{'reference':'charlie:thesis_1','filename':'large.xlsx','sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw)}]
+        docs={'charlie:thesis_1':{'filename':'large.xlsx','file_type':'xlsx','file_data':base64.b64encode(raw).decode(),'metadata':{}}}
+        result=prepare('ABT',pack,docs,source_disclosure_version=1)
+        self.assertIn('Later spreadsheet sheets are omitted',result['warnings'][0]['issue'])
+        self.assertNotIn('END OF WORKBOOK',result['batches'][0][0]['text'])
+
+    def test_pdf_middle_extraction_reports_omission_counts(self):
+        from unittest.mock import patch
+        from notegen import extract_pdf_text
+        doc=dict(self.docs['charlie:thesis_1'])
+        with patch('pdf_text.extract',return_value={'pages':[{}],'ocrPages':[],'limitations':[]}), patch('pdf_text.render',return_value='x'*100):
+            text=extract_pdf_text(doc,max_tokens=10)
+        self.assertIn('middle of document omitted',text)
+        self.assertEqual(doc['textExtraction']['omittedCharacters'],60)
+        self.assertEqual(doc['textExtraction']['retainedCharacters'],40)
+        def planner(docs):return [[dict(doc,reference=docs[0]['reference'],send_as='text',extracted_text=text)]]
+        current=prepare('ABT',self.pack,self.docs,planner,True,1)
+        self.assertIn('60 extracted characters are omitted',current['warnings'][0]['issue'])
+
+    def test_complete_text_has_no_false_truncation_warning(self):
+        pack=[{**self.pack[0],'filename':'short.txt'}]
+        docs={'charlie:thesis_1':{**self.docs['charlie:thesis_1'],'filename':'short.txt','file_type':'txt'}}
+        result=prepare('ABT',pack,docs,source_disclosure_version=1)
+        self.assertNotIn('omitted',result['warnings'][0]['issue'])
+        for version in (True,2,'1'):
+            with self.assertRaisesRegex(ValueError,'disclosure version'):
+                prepare('ABT',pack,docs,source_disclosure_version=version)

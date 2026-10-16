@@ -38,7 +38,7 @@ def execute(get_db, note_id, load_documents, invoke, planner=None):
     for index in range(plan['batchCount']):
         # Recheck availability/eligibility and exact ordered representation before
         # each new dispatch. No filename-only fallback or live thesis reload.
-        prepared=prepare(plan['ticker'],plan['sourcePack'],load_documents(plan),planner,plan['allowPdfText'])
+        prepared=prepare(plan['ticker'],plan['sourcePack'],load_documents(plan),planner,plan['allowPdfText'],plan.get('sourceDisclosureVersion'))
         verify_preparation(plan,prepared)
         prompt=plan['promptTemplate']+'\n\nFROZEN CONTEXT:\n'+plan['context']
         if previous:

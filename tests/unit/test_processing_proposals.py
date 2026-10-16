@@ -374,6 +374,7 @@ class ProcessingProposalTests(unittest.TestCase):
         self.body['plan']['labFullNote'] = {'allowPdfText': False}
         proposal = self.client.post(self.url, json=self.body).json
         readiness = proposal['fullNote']['sourcePreparation']
+        self.assertEqual(self.row(proposal['id'])['input']['labNotePlan']['sourceDisclosureVersion'],1)
         self.assertEqual(readiness['batchCount'], 1)
         self.assertEqual(readiness['sourcePack'][0]['sha256'], self.sha)
         self.assertEqual(len(readiness['warnings']), 1)

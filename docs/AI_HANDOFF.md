@@ -2,6 +2,43 @@
 
 Updated: October 14, 2026
 
+## T360 — Disclose truncated full-note evidence across approval and review
+
+Full-note preparation previously described extracted text as losing images/layout
+without disclosing its 120,000-character file-text cap or unread later spreadsheet
+sheets. PDF extraction also shortened oversized text without carrying omission
+counts into saved readiness warnings. Extraction now records retained/omitted
+character counts and skipped-sheet presence, without changing extracted text,
+source originals, batching, model limits or original Research Pipeline behavior.
+
+New processing full-note configurations and new standalone Lab note plans freeze
+sourceDisclosureVersion=1. Their source warnings include known truncation and
+unread spreadsheet sheets. Existing proposal UI shows the frozen warnings before
+processing approval; assignment enqueueing and execution reproduce them, and saved
+draft quality issues retain them for review. Counts describe extracted characters,
+not total original content; unread sheets can contain additional uncounted content.
+No claim of exhaustive interpretation is made. This does not expand generation
+limits or automatically process the larger collected library.
+
+Legacy frozen proposals/plans without the version keep prior warnings and exact
+representations/replay behavior. No migration or reprocessing occurs. New version
+validation rejects unsupported versions. No paid run, production proposal or
+investor acceptance was performed.
+
+Validation: 109 focused tests pass, including long Unicode text, full-text control,
+spreadsheet omission, mocked PDF extraction, unchanged legacy representation and
+a disposable-database assignment → frozen plan → synthetic execution → saved draft
+roundtrip/replay with retained warnings. All 1,811 backend and 277 frontend tests,
+Python compilation and the production build pass. Logs are recorded in
+/tmp/charlie-T360-{focused,backend,frontend,build}.log. These are synthetic tests.
+
+Next: verify exact hosted T360 revision/assets and read-only guards, then continue
+the genuine collection → selected evidence → investor processing approval → saved
+review journey. CVS remains at the last focused 05:19 UTC checkpoint: queued with
+zero receipts; Operations owns browser collection. Do not substitute more hardening
+releases for this missing live proof. Shared approval expansion, historical schema
+and all eight acceptance certifications remain open.
+
 ## T359 — Reject duplicate original bytes in every new processing proposal
 
 The new-proposal save path checked duplicate SHA-256 values only when the optional

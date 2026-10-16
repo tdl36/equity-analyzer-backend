@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T360 carries known text truncation and omitted spreadsheet sheets through new
+full-note proposal readiness, frozen execution and saved draft review. Legacy
+frozen plans retain prior representations/warnings. Synthetic end-to-end storage
+and replay pass; no real generation or investor acceptance is implied.
+
 T359 rejects duplicate original bytes in every new processing proposal, including
 collection-only selections without optional wider-library fields. Synthetic tests
 prove rejection, original preservation, distinct-source success and unchanged

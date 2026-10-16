@@ -191,6 +191,8 @@ def extract_pdf_text(doc, max_tokens=MAX_TOKENS_PER_BATCH // 2):
     if len(joined) <= budget_chars:
         return joined
 
+    doc["textExtraction"]["omittedCharacters"] = len(joined) - budget_chars
+    doc["textExtraction"]["retainedCharacters"] = budget_chars
     head = int(budget_chars * 0.65)
     tail = budget_chars - head
     return (joined[:head]
@@ -226,11 +228,12 @@ def extract_file_text(doc, max_chars=120_000):
         return ""
 
     parts = []
+    omitted_sheets = False
     try:
         if name.endswith((".xlsx", ".xlsm", ".xls")):
             import openpyxl
             wb = openpyxl.load_workbook(io.BytesIO(blob), data_only=True, read_only=True)
-            for ws in wb.worksheets:
+            for sheet_index, ws in enumerate(wb.worksheets):
                 rows = []
                 for row in ws.iter_rows(values_only=True):
                     cells = ["" if v is None else str(v).strip() for v in row]
@@ -242,6 +245,7 @@ def extract_file_text(doc, max_chars=120_000):
                     parts.append(f"--- sheet: {ws.title} ---")
                     parts.extend(rows)
                 if sum(len(x) for x in parts) > max_chars:
+                    omitted_sheets = sheet_index + 1 < len(wb.worksheets)
                     break
             try:
                 wb.close()
@@ -264,6 +268,9 @@ def extract_file_text(doc, max_chars=120_000):
         return ""
 
     text = "\n".join(parts).strip()
+    doc["textExtraction"] = {"omittedCharacters": max(0, len(text) - max_chars),
+                             "retainedCharacters": min(len(text), max_chars),
+                             "omittedSheets": omitted_sheets}
     return text[:max_chars]
 
 

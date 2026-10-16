@@ -23,7 +23,7 @@ def freeze(co, plan):
         prompt += '\nInvestor focus (data): ' + json.dumps(plan['instruction'])
     if len(prompt.encode()) > 100000:
         raise ValueError('Full-note instructions exceed the supported size.')
-    return dict(modelKey=model, promptTemplate=prompt, allowPdfText=plan['labFullNote']['allowPdfText'], maxTokens=32000, maxCalls=8)
+    return dict(modelKey=model, promptTemplate=prompt, allowPdfText=plan['labFullNote']['allowPdfText'], maxTokens=32000, maxCalls=8, sourceDisclosureVersion=1)
 
 
 def public(config):
@@ -50,7 +50,7 @@ def source_plan(cur, ticker, sources, config):
     for document in documents.values():
         check_pdf(document, config['allowPdfText'])
     pack = [{k: s[k] for k in ('reference', 'filename', 'sha256', 'bytes')} for s in sources]
-    prepared = prepare(ticker, pack, documents, allow_pdf_text=config['allowPdfText'])
+    prepared = prepare(ticker, pack, documents, allow_pdf_text=config['allowPdfText'], source_disclosure_version=config.get('sourceDisclosureVersion'))
     return {**{k: prepared[k] for k in ('sourcePack', 'representationSha256', 'warnings')},
             'batchCount': len(prepared['batches'])}
 

@@ -59,7 +59,7 @@ def builder(playbook, model_key, available, budget):
         if problem:raise ValueError(problem)
         pack=[{k:v for k,v in s.items() if k!='documentId'} for s in resolve_selection(cur,data['ticker'],
             {'task':'note','revision':data['revision'],'digest':data['digest']})]
-        prepared=prepare(data['ticker'],pack,documents(cur,data['ticker'],pack),allow_pdf_text=data['allowPdfText'])
+        prepared=prepare(data['ticker'],pack,documents(cur,data['ticker'],pack),allow_pdf_text=data['allowPdfText'], source_disclosure_version=1)
         cur.execute('SELECT company,analysis FROM portfolio_analyses WHERE ticker=%s',(data['ticker'],))
         row=cur.fetchone()
         context=json.dumps(dict(row) if row else {'ticker':data['ticker'],'analysis':None},default=str)
@@ -67,7 +67,7 @@ def builder(playbook, model_key, available, budget):
             'title':data['ticker']+' — Equity research note','context':context,
             'promptTemplate':playbook+'\n\n'+PROMPT,'modelKey':model_key,'maxTokens':32000,
             'sourcePack':prepared['sourcePack'],'representationSha256':prepared['representationSha256'],
-            'batchCount':len(prepared['batches']),'warnings':prepared['warnings'],'allowPdfText':data['allowPdfText']})
+            'batchCount':len(prepared['batches']),'warnings':prepared['warnings'],'allowPdfText':data['allowPdfText'],'sourceDisclosureVersion':1})
     return build
 
 
@@ -110,7 +110,7 @@ def assignment_note(get_db, ident, assignment, pack):
         expected={(r['filename'],r['sha256']) for r in pack}
         if checked['blockers'] or len(pack)!=len(docs) or actual!=expected:
             raise ValueError('Full note originals differ from the assignment pack. Saved research is retained.')
-        prepared=prepare(assignment['ticker'],checked['verified'],docs,allow_pdf_text=cfg['allowPdfText'])
+        prepared=prepare(assignment['ticker'],checked['verified'],docs,allow_pdf_text=cfg['allowPdfText'], source_disclosure_version=cfg.get('sourceDisclosureVersion'))
         if cfg.get('sourcePreparation') is not None:
             from pipeline_lab_note_plan import verify_preparation
             verify_preparation(cfg['sourcePreparation'],prepared)
@@ -123,6 +123,7 @@ def assignment_note(get_db, ident, assignment, pack):
         return enqueue(cur,{'noteId':note_id,'ticker':assignment['ticker'],
             'title':assignment['ticker']+(' — '+assignment['researchPurpose']['event']['title'] if assignment.get('researchPurpose',{}).get('kind')=='event_note' else ' — Equity research note'),
             'context':context,**provenance,
+            **({'sourceDisclosureVersion':cfg['sourceDisclosureVersion']} if 'sourceDisclosureVersion' in cfg else {}),
             'promptTemplate':cfg['promptTemplate'],'modelKey':cfg['modelKey'],'maxTokens':32000,
             'sourcePack':prepared['sourcePack'],'representationSha256':prepared['representationSha256'],
             'batchCount':len(prepared['batches']),'warnings':prepared['warnings'],'allowPdfText':cfg['allowPdfText']})
