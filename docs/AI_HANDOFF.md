@@ -29,6 +29,18 @@ receipts, request-specific processing authorization, saved outputs and investor
 review remain the critical-path proof; all eight acceptance certifications remain
 open. Continue demonstrated delivery/recovery repairs while Operations collects.
 
+T373 production verified: Render `9fb9ffb1f75052fc7df88595634c401f363205a8`,
+Cloudflare `1fbf63e6-c2c4-4246-b4d6-d46d7a598560`. Hosted JS/service-worker
+bytes and HTML match; exact assignment/authentication/readiness scope guards pass.
+Silent-storage and cleanup interactions are synthetic browser evidence, not a
+production submission. Read-only CVS now reports running / collection collecting
+(previously queued), still zero verified sources. This is progress in the existing
+Operations worker, not completed collection or ready processing. Preparation remains
+correctly blocked. No worker wake, approval, research or investor decision invoked.
+Next: inspect completed receipts when available, then selected proposal readiness,
+request-specific authorization and saved drafts; preserve the separate acceptance
+step. Shared approval expansion and all eight certifications remain open.
+
 ## T372 — Revise a blocked proposal without rebuilding its intent
 
 Saved proposal cards now offer Revise as a new proposal. This copies editable
