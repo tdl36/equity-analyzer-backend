@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T355 restores selected historical-source metadata directly, without manually
 paging the library. Missing/restricted records and failed or stale reads cannot
 enable saving. Synthetic 201-source and full-app draft-reload checks pass; original
-bytes and investor acceptance still require their existing separate gates.
+bytes and investor acceptance still require their existing separate gates. Exact
+hosted release, unfinished-collection and authentication guards verified; positive
+selected-ID recovery remains synthetic evidence.
 
 T354 binds supplemental source pages to exact company, collection and cursor,
 preserving selections and blocking save on unverified reads. A 201-document

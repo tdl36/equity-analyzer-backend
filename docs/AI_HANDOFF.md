@@ -38,6 +38,24 @@ proof. Preserve Operations collection ownership and paused synthesis. Do not rep
 T354/T355 metadata identity/recovery work or T350–T353 meeting fixes. Historical
 schema and all eight acceptance certifications remain open.
 
+T355 production verified: Render 411b05edaa3371ca96d400d4727ca49109264711;
+Cloudflare 36ddf0b6-4bdb-47d0-8f84-f13f78ead369. Hosted JS/service-worker exact
+bytes and HTML T355 match. Live unfinished CVS collection rejects library/source/
+proposal reads with 409, including the new selected-ID query; unauthenticated
+selected-ID read returns 401. Hosted Activity read passes. Positive selected-source
+recovery remains synthetic, pending a genuine completed collection-only parent.
+Logs: /tmp/charlie-T355-{deploy,verify,journey}.log. No live writes/approvals or
+agent change/restart. Inherited handoff/runtime dirt is preserved.
+
+CVS at 04:19 UTC remains collection-only, queued, zero source receipts; snapshot
+04:18:34 is fresh but does not establish browser completion. Next critical-path
+action is a genuine completed receipt -> scoped source inventory -> explicitly
+selected saved processing proposal. Do not approve processing merely to close QA.
+While that external evidence is absent, use the acceptance ledger to identify an
+independent remaining delivery/quality gap; do not re-implement completed metadata
+recovery or meeting navigation. Real end-to-end proof, historical valuation schema
+and all eight investor acceptance certifications remain open.
+
 ## T354 — Company/collection-bound supplemental evidence pages
 
 The processing proposal's wider library previously returned no company/collection
