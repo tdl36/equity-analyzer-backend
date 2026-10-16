@@ -30,6 +30,18 @@ collection receipts, an explicitly approved selected processing proposal and sav
 drafts. Operations owns collection reconciliation. Shared approval expansion stays
 deferred; all eight acceptance certifications remain open.
 
+T367 production verified: Render `1fb1b2bdbf4e745a9b51d5384cb3c90e566f9b79`,
+Cloudflare `5e72d882-7bbc-4432-9b67-6681ef96af37`. Hosted JS/service-worker
+bytes and HTML match. The new read-only meeting endpoint verifies authentication,
+invalid/missing assignment and absent exact-receipt guards in production. No live
+meeting content or investor decision was changed. Positive exact-version behavior
+was tested with disposable PostgreSQL and synthetic browser fixtures, not a newly
+generated production meeting. CVS remains running / collection queued with zero
+verified sources; unfinished-parent processing preparation remains blocked.
+Next: genuine collected originals → investor-approved selected proposal → saved
+drafts and review. Continue independent saved-output reconciliation while Operations
+resolves collection coverage. No eight-priority acceptance is closed by this release.
+
 ## T366 — Saved-response recovery retains full-note research scope
 
 Normal full-note execution passed frozen researchProvenance into draft storage,
