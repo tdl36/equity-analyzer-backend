@@ -212,11 +212,18 @@ class ProcessingProposalTests(unittest.TestCase):
         url=self.url.replace('processing-proposals','processing-library')
         response=self.client.get(url);self.assertEqual(response.status_code,200)
         data=response.json;self.assertEqual(len(data['documents']),200)
+        self.assertEqual((data['ticker'],data['collectionId'],data['after']),(self.ticker,self.ident,None))
+        self.assertEqual(response.headers['Cache-Control'],'private, no-store')
         self.assertNotIn('SECRET_FIXTURE',response.text)
         self.assertNotIn('file_data',response.text)
         self.assertTrue(all(not r['eligible'] for r in data['documents']))
         more=self.client.get(url+'?after='+data['nextCursor']).json
         self.assertEqual(len(more['documents']),1)
+        self.assertEqual((more['ticker'],more['collectionId'],more['after']),(self.ticker,self.ident,data['nextCursor']))
+        self.assertEqual([int(r['id'][7:]) for r in data['documents']],sorted([int(r['id'][7:]) for r in data['documents']],reverse=True))
+        self.assertLess(int(more['documents'][0]['id'][7:]),int(data['nextCursor']))
+        for query in ('?after=1&after=2','?ticker=OTHER','?collectionId=other'):
+            self.assertEqual(self.client.get(url+query).status_code,400)
         self.assertIsNone(more['nextCursor'])
         self.assertEqual(self.client.get(url+'?after=99999999999999999999').status_code,400)
         self.assertFalse(self.submits)

@@ -142,7 +142,7 @@ def register(co):
             from processing_proposal_sources import inventory
             with co.db() as (_, cur):
                 data = inventory(cur, parent['ticker'], [s['filename'] for s in obj(parent['result']).get('sources', [])], request.args.get('after'))
-            response = jsonify(data); response.headers['Cache-Control'] = 'private, no-store'
+            response = jsonify(**data, collectionId=collection_id, ticker=parent['ticker'], after=request.args.get('after')); response.headers['Cache-Control'] = 'private, no-store'
             return response
         except ValueError as exc:
             return jsonify(error=str(exc)), 400

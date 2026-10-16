@@ -2,6 +2,37 @@
 
 Updated: October 14, 2026
 
+## T354 — Company/collection-bound supplemental evidence pages
+
+The processing proposal's wider library previously returned no company/collection
+identity, and the picker accepted pages without checking their scope or ordering.
+It now requires the exact requested company, completed collection and page cursor,
+strict descending stored IDs within PostgreSQL bounds, at most 200 rows and a
+next cursor matching the final row of a full page. Wrong, repeated or incomplete
+pages cannot replace usable metadata or enable saving a selected pack. Previously
+selected originals remain checked; successful retry restores readiness. Original
+byte/eligibility verification at save/approval remains the existing server gate.
+No collection, frozen request, generation limits or investor decision is changed.
+
+Validation: 77 focused backend tests, 1,796 full backend / 274 frontend safe tests,
+Python compilation and production build pass. Full-app synthetic 390/1280px tests
+use a 201-document supplemental library, reject wrong-company/collection/page
+responses, retain selections, block save during failure and recover on retry.
+Existing collected-source selection, original download, frozen proposal, local
+draft recovery and mock approval checks also pass. Phone error screenshot inspected;
+no overflow. Browser API traffic is intercepted; no production generation/approval.
+The older full-app script's discard label and empty-purpose-draft expectations were
+updated to the already-shipped behavior before the successful rerun. Logs:
+/tmp/charlie-T354-{focused,backend,frontend,build,ui}.log.
+
+Next: verify exact hosted release and unfinished-collection guards. Genuine CVS
+source receipts still determine when a real source-to-proposal handoff can be
+observed; explicit processing approval remains required. This release advances
+safe source selection, not live collection or end-to-end certification. Continue
+source-to-proposal recovery work; do not repeat completed meeting fixes or expand
+the shared dashboard before the connected proof. Historical schema and all eight
+acceptance certifications remain open.
+
 ## T353 — Verified saved-meeting destinations in Home and Activity
 
 Activity's mp_jobs inventory now resolves pipeline/command_meeting meeting IDs

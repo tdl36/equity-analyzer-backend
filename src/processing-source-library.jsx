@@ -1,17 +1,18 @@
+import {processingLibraryPage} from './processing-library-model.mjs';
 import {OriginalDownload} from './original-download';
 import * as React from 'react';
 import {labDocuments,visibleLabDocuments,groupLabDocuments,labSourceDate,taskSourceGuide} from './pipeline-lab-model.mjs';
 
-export function ProcessingSourceLibrary({api,ticker,call,path,selected,onChange,purpose,remaining,onInventory}){
+export function ProcessingSourceLibrary({api,ticker,collectionId,call,path,selected,onChange,purpose,remaining,onInventory}){
  const [documents,setDocuments]=React.useState([]),[loaded,setLoaded]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[cursor,setCursor]=React.useState(null),[query,setQuery]=React.useState(''),[type,setType]=React.useState('All');
  const lock=React.useRef(false),live=React.useRef(true),lastRead=React.useRef(null);
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  const load=async(after=null)=>{if(lock.current)return;lock.current=true;lastRead.current=after;setBusy(true);setError('');try{
   const data=await call(path+(after?'?after='+encodeURIComponent(after):''));
-  if(!Array.isArray(data.documents)||data.documents.some(r=>!/^thesis_[1-9][0-9]{0,18}$/.test(r.id)||typeof r.eligible!=='boolean')||(data.nextCursor!==null&&!/^[1-9][0-9]{0,18}$/.test(data.nextCursor)))throw Error('Source inventory response is incomplete. Reload the library.');
-  const merged=after?[...documents,...data.documents]:data.documents;
-  labDocuments(merged,[]); // Reject ambiguous identities before showing choices.
-  if(live.current){setDocuments(merged);setCursor(data.nextCursor);setLoaded(true);}
+  const page=processingLibraryPage(data,{ticker,collectionId,after});
+  const merged=after?[...documents,...page.documents]:page.documents;
+  labDocuments(merged,[]); // Reject ambiguous identities across pages before showing choices.
+  if(live.current){setDocuments(merged);setCursor(page.nextCursor);setLoaded(true);}
  }catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
  React.useEffect(()=>{onInventory({rows:labDocuments(documents,[]),loaded,busy,error,cursor});},[documents,loaded,busy,error,cursor,onInventory]);
  const rows=labDocuments(documents,[]),shown=visibleLabDocuments(rows,query,type,'date');

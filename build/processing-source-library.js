@@ -1,9 +1,11 @@
+import { processingLibraryPage } from './processing-library-model.mjs';
 import { OriginalDownload } from './original-download';
 import * as React from 'react';
 import { labDocuments, visibleLabDocuments, groupLabDocuments, labSourceDate, taskSourceGuide } from './pipeline-lab-model.mjs';
 export function ProcessingSourceLibrary({
   api,
   ticker,
+  collectionId,
   call,
   path,
   selected,
@@ -36,12 +38,16 @@ export function ProcessingSourceLibrary({
     setError('');
     try {
       var data = await call(path + (after ? '?after=' + encodeURIComponent(after) : ''));
-      if (!Array.isArray(data.documents) || data.documents.some(r => !/^thesis_[1-9][0-9]{0,18}$/.test(r.id) || typeof r.eligible !== 'boolean') || data.nextCursor !== null && !/^[1-9][0-9]{0,18}$/.test(data.nextCursor)) throw Error('Source inventory response is incomplete. Reload the library.');
-      var merged = after ? [...documents, ...data.documents] : data.documents;
-      labDocuments(merged, []); // Reject ambiguous identities before showing choices.
+      var page = processingLibraryPage(data, {
+        ticker,
+        collectionId,
+        after
+      });
+      var merged = after ? [...documents, ...page.documents] : page.documents;
+      labDocuments(merged, []); // Reject ambiguous identities across pages before showing choices.
       if (live.current) {
         setDocuments(merged);
-        setCursor(data.nextCursor);
+        setCursor(page.nextCursor);
         setLoaded(true);
       }
     } catch (e) {

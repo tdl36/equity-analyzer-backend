@@ -374,6 +374,7 @@ function ProposalReview({
     onInventory: setCollectionInventory
   }), /*#__PURE__*/React.createElement(ProcessingSourceLibrary, {
     api: api,
+    collectionId: job.id,
     ticker: job.ticker,
     call: call,
     path: path.replace('processing-proposals', 'processing-library'),

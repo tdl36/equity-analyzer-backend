@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T354 binds supplemental source pages to exact company, collection and cursor,
+preserving selections and blocking save on unverified reads. A 201-document
+synthetic full-app recovery check passes on phone/desktop; no live collection,
+processing authorization or investor acceptance is implied.
+
 T353 verifies saved-meeting/company identity before Home/Activity links open it.
 Missing or unavailable identities preserve jobs and explain fallback navigation.
 Synthetic database and phone/desktop route checks pass; this is output-access

@@ -8,7 +8,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  for width in [390,1280]:
   page=b.new_page(viewport={'width':width,'height':1000},service_workers='block');page.add_init_script("localStorage.setItem('charlie_auth_token','synthetic')")
-  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok';download_mode='good';downloads=[]
+  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok';library_mode='ok';download_mode='good';downloads=[]
   page.on('download',lambda d:downloads.append(d.suggested_filename))
   def api(route):
    u=route.request.url;d={};code=200
@@ -29,7 +29,11 @@ with sync_playwright() as p:
      {'id':None,'filename':'missing.pdf','receiptSha256':'d'*64,'availability':'missing','publishedDate':None}]}
     if collection_mode=='mismatch':d['ticker']='CVS'
    elif '/processing-library' in u:
-    d={'documents':[{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True},{'id':'thesis_4','filename':'reference-only.pdf','eligible':False}], 'nextCursor':'3'} if 'after=' not in u else {'documents':[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':None,'recordedSha256':HASH,'eligible':True}], 'nextCursor':None}
+    docs=[{'id':'thesis_'+str(i),'filename':'library-fixture-'+str(i)+'.pdf','eligible':True} for i in range(202,4,-1)]+[{'id':'thesis_4','filename':'reference-only.pdf','eligible':False},{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True}]
+    d={'collectionId':NOTE,'ticker':'ABT','after':'3' if 'after=' in u else None,'documents':docs if 'after=' not in u else [{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':None,'recordedSha256':HASH,'eligible':True}],'nextCursor':'3' if 'after=' not in u else None}
+    if library_mode=='company':d['ticker']='CVS'
+    if library_mode=='collection':d['collectionId']='other'
+    if library_mode=='cursor':d['after']=None
    elif '/processing-proposals' in u:
     if route.request.method=='POST':
      body=route.request.post_data_json
@@ -121,7 +125,23 @@ with sync_playwright() as p:
   library=review.get_by_role('region',name='Supplemental source library',exact=True)
   expect(library.get_by_role('checkbox',name='reference-only.pdf',exact=False)).to_be_disabled()
   library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False).check()
+  for invalid in ('company','collection'):
+   library_mode=invalid
+   library.get_by_role('button',name='Refresh library metadata',exact=True).click()
+   expect(library.get_by_role('alert').filter(has_text='could not be verified')).to_be_visible()
+   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+   expect(save).to_be_disabled()
+   library_mode='ok';library.get_by_role('button',name='Retry library read',exact=True).click()
+   expect(save).to_be_enabled()
+  library_mode='cursor'
   library.get_by_role('button',name='Load more library sources',exact=True).click()
+  expect(library.get_by_role('alert').filter(has_text='could not be verified')).to_be_visible()
+  expect(save).to_be_disabled()
+  expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
+  library.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T354-'+str(width)+'-library-recovery.png')
+  library_mode='ok';library.get_by_role('button',name='Retry library read',exact=True).click()
+  expect(save).to_be_enabled()
+
   expect(library.get_by_role('checkbox',name='historical-transcript.pdf',exact=False)).to_be_visible()
   pack=review.get_by_role('region',name='Evidence review before save',exact=True)
   expect(pack.get_by_text('2 selected originals',exact=False)).to_be_visible()
@@ -172,7 +192,7 @@ with sync_playwright() as p:
    assert len(writes)==1,writes
    expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).not_to_be_checked()
    review.get_by_role('checkbox',name='recent.pdf',exact=True).check()
-   review.get_by_role('button',name='Discard unsaved choices',exact=True).click()
+   review.get_by_role('button',name='Discard current purpose draft',exact=True).click()
    expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).not_to_be_checked()
    assert len(writes)==1
   page.reload(wait_until='domcontentloaded')
@@ -183,7 +203,7 @@ with sync_playwright() as p:
   approve=review.get_by_role('button',name='Approve processing · uses research credits',exact=True)
   expect(approve).to_be_visible()
   assert len(writes)==1
-  assert not review.get_by_text('Restored unsaved choices in this browser tab.',exact=False).count()
+  expect(review.get_by_role('checkbox',name='recent.pdf',exact=True)).not_to_be_checked()
   expect(review.get_by_text('Full versioned note · frozen model fixture-v1',exact=False)).to_be_visible()
   expect(review.get_by_text('Meeting preparation · 2026-10-20 · expert',exact=True)).to_be_visible()
   expect(review.get_by_text('Full-note source check: 2 originals planned across 2 batches.',exact=False)).to_be_visible()
