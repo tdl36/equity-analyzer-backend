@@ -2,6 +2,42 @@
 
 Updated: October 14, 2026
 
+## T344 — Recovery edition exports retain the actual review decision
+
+Saved-output audit found that the recovery layout was available on the accepted
+export route but required every claim to remain pending_editorial. A validated
+accepted edition therefore failed rendering. Recovery now requires the existing
+validated typed edition context, matches the claim origin to pending vs accepted,
+and renders the shared print-visible status/decision notice. No acceptance is
+created, inferred or applied; thesis approval remains separate. Original research,
+selected correction statements and exact-byte/policy gates are unchanged.
+
+Removed fixed template assertions of end-2027 scenarios, eight reviewed originals,
+six monitoring tests and a dividend convention. The source count is from the saved
+report; scenario statements retain their own periods and qualifications. Discovery
+window is explicitly separate from longitudinal analytical scope. The expanded
+source register uses the existing frozen byte-matched provenance/coverage helper;
+legacy unknown metadata stays unknown and current library metadata is not substituted.
+This repairs output fidelity and eventual accepted delivery, not the live processing
+approval gap. No broad dashboard or collector changes; synthesis remains paused.
+
+Validation: 24 focused edition/render tests; 1,763 safe backend tests; 254 frontend
+tests; Python compile and production build. Replaced shallow mocked recovery tests
+with six real synthetic edition-adapter tests covering pending/accepted rendering,
+unchanged originals, missing or tampered contexts, restricted/changed bytes,
+scenario order, escaping, missing corrections and frozen extraction limits. Isolated
+390/1280px pending and accepted renders pass overflow and print-visible black Calibri
+status checks; screenshots inspected. Accepted decisions exist only in synthetic
+fixtures. Live read-only ABT pending recovery preview returns 200 and confirms old
+hardcoded wording/no provenance before release; no approval or generation performed.
+Logs: /tmp/charlie-T344-{focused,backend,frontend,build,ui,live-before}.log.
+
+Next: verify exact deployment and re-read the same ABT pending preview; inspect
+current CVS collection receipts without waking the coordinator. Continue the selected
+processing journey when genuine collection and investor authorization exist. Do not
+mark any of the eight acceptance certifications complete. Historical valuation still
+requires the documented permitted schema/security/currency evidence.
+
 ## T343 — One-pager data and rendering failures retain independent outputs
 
 Critical-path partial delivery: optional one-pager public fundamentals retrieval
