@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T366 retains frozen event/thesis purpose and source context when recovering a saved
 final full-note response. Synthetic draft/export/replay checks pass without another
 provider call or investor acceptance. Existing versions and unknown legacy scope
-are preserved. Live connected-journey acceptance remains open.
+are preserved. Live connected-journey acceptance remains open. Exact hosted
+revision/assets and unfinished-parent/authentication reads verified; no live recovery
+was run and CVS still has zero verified receipts.
 
 T365 makes exact proposal-cancellation retries recover their saved receipt without
 rewriting the decision or reversing approved work. Synthetic retry/concurrency/race

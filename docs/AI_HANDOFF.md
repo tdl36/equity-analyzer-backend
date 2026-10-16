@@ -27,6 +27,15 @@ Collection evidence and request-specific processing approval remain open; Operat
 owns browser collection reconciliation. All eight acceptance certifications remain
 open, independently of this recovery repair.
 
+T366 production verified: Render `5ae6cba15a220fcc5a2b5938402686eeb80755d6`,
+Cloudflare `aeb4c73a-d912-449a-b178-f5bf7679ea95`. Hosted JS/service-worker
+bytes and HTML match. Read-only CVS remains running / queued with zero verified
+sources; invalid-ID/authentication and unfinished-parent processing guards pass.
+One transient 502 recovered on a bounded read-only retry.
+No live recovery, proposal approval or paid call was used for verification.
+Next: genuine collected evidence → explicitly approved selected proposal → saved
+drafts. Scope-preserving recovery is shipped; live/investor acceptance stays open.
+
 ## T365 — Exact processing-proposal cancellation retries recover their receipt
 
 A successful cancellation followed by a lost response returned 409 on exact retry,
