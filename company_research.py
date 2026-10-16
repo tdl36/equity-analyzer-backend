@@ -336,6 +336,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             if studio:
                 from research_preferences import read as read_writing_preferences
                 studio_options['writingPreferences']=read_writing_preferences(cur)
+                from research_writing import POLICY
+                studio_options['writingPolicy']=POLICY
             if not key:return jsonify(error='Configure a research model key in Settings.'),400
             if budget_check():return jsonify(error='Research budget limit reached.'),409
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',(worker_kind+'-ticker:'+ticker,))

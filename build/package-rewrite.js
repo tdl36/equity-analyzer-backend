@@ -65,6 +65,7 @@ export function PackageRewrite({
   async function prepare() {
     var body = {
       requestId: crypto.randomUUID(),
+      writingPolicy: 'synthesis-v1',
       instructions,
       fields: scope === '*' ? fields : fields.filter(f => f.id === scope)
     };
@@ -128,7 +129,7 @@ export function PackageRewrite({
   }, /*#__PURE__*/React.createElement("button", {
     disabled: disabled || busy,
     onClick: () => setShow(!show)
-  }, "Revise with AI"), show && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Rewrite existing evidence into a new alternative. No new research, automatic approval, or changes to your saved package. Stock summary and thesis share wording; the one-pager is reviewed separately."), !pending && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "What should change?", /*#__PURE__*/React.createElement("select", {
+  }, "Revise with AI"), show && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Rewrite existing evidence into a new alternative. No new research, automatic approval, or changes to your saved package. The whole-package option revises the thesis and stock summary together with the one-pager, using one consistent investment case. Individual section changes still need a consistency review."), !pending && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "What should change?", /*#__PURE__*/React.createElement("select", {
     style: {
       maxWidth: "100%"
     },
@@ -140,7 +141,7 @@ export function PackageRewrite({
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: "*"
-  }, "All sections in this document"), fields.map(f => /*#__PURE__*/React.createElement("option", {
+  }, "Whole package \xB7 thesis, summary & one-pager"), fields.map(f => /*#__PURE__*/React.createElement("option", {
     key: f.id,
     value: f.id
   }, f.label)))), /*#__PURE__*/React.createElement("label", null, "Instructions", /*#__PURE__*/React.createElement("textarea", {
@@ -156,7 +157,9 @@ export function PackageRewrite({
   })), /*#__PURE__*/React.createElement("button", {
     disabled: disabled || busy || !instructions.trim(),
     onClick: () => act(prepare)
-  }, "Review scope & cost"), plan && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, plan.quote.fieldCount, " fields \xB7 ", plan.quote.sourceCount, " saved sources \xB7 ", plan.quote.calls, " model call \xB7 estimated $", plan.quote.estimatedUsd.toFixed(3), " USD"), /*#__PURE__*/React.createElement("p", null, plan.quote.notice), /*#__PURE__*/React.createElement("p", null, "Model: ", plan.quote.model, ". Your saved writing preferences are included."), /*#__PURE__*/React.createElement("button", {
+  }, "Review scope & cost"), plan && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, plan.quote.fieldCount, " fields \xB7 ", plan.quote.sourceCount, " saved sources \xB7 ", plan.quote.calls, " model call \xB7 estimated $", plan.quote.estimatedUsd.toFixed(3), " USD"), /*#__PURE__*/React.createElement("p", null, plan.quote.notice), plan.quote.sourceLimitations?.length > 0 && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Source coverage is incomplete: ", Array.from(new Set(plan.quote.sourceLimitations)).join(" "), " This revision cannot recover omitted evidence."), /*#__PURE__*/React.createElement("p", null, "Model: ", plan.quote.model, ". Your saved writing preferences are included."), /*#__PURE__*/React.createElement("button", {
     disabled: disabled || busy || JSON.stringify(plan.body.fields) !== JSON.stringify(scope === '*' ? fields : fields.filter(f => f.id === scope)),
     onClick: () => act(start)
   }, "Authorize cost & generate alternative"))), pending && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Saved rewrite request: ", pending.body.requestId, ". ", job?.status || 'Submission awaiting confirmation'), /*#__PURE__*/React.createElement("button", {

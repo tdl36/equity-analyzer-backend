@@ -15,8 +15,23 @@ export function revisionPackage(draft,analysis,requestId) {
  return p;
 }
 export function correctionBody(claim,statement,fingerprint,requestId) {
- if(typeof statement!=='string'||!statement.trim()||statement.length>300)throw Error('Keep each one-pager field between 1 and 300 characters.');
+ if(typeof statement!=='string'||!statement.trim()||statement.length>1600)throw Error('Keep each one-pager field between 1 and 1600 characters.');
  const p=claim.proposal;
  const extras=p.additionalEvidence?.map(e=>Object.fromEntries(['sourceId','excerpt','locator','originalPage'].filter(k=>e[k]!==undefined).map(k=>[k,e[k]])));
  return {...Object.fromEntries(['path','basis','sourceId','excerpt','locator','originalPage'].filter(k=>p[k]!==undefined).map(k=>[k,p[k]])), ...(extras?.length?{additionalEvidence:extras}:{}),statement,reason:'Investor edit. Retained evidence must be reviewed against the revised wording; no independent fact-check was performed.',fingerprint,requestId};
+}
+
+export function packageFields(analysis,claims,words) {
+ return [...thesisFields(analysis).map(f=>({id:JSON.stringify(f.path),label:'Thesis & summary · '+f.label,text:f.value,limit:40000})),
+ ...claims.map(c=>({id:c.correctionId,label:'One-pager · '+c.proposal.path,text:words[c.correctionId],limit:1600}))];
+}
+export function applyPackageAlternative(analysis,words,values) {
+ let next=analysis;const updated={...words};
+ const paths=new Map(thesisFields(analysis).map(f=>[JSON.stringify(f.path),f.path]));
+ for(const [id,text] of Object.entries(values)) {
+  if(paths.has(id))next=setText(next,paths.get(id),text);
+  else if(Object.hasOwn(updated,id))updated[id]=text;
+  else throw Error('The alternative belongs to a different package.');
+ }
+ return {analysis:next,words:updated};
 }

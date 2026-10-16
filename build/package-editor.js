@@ -1,6 +1,6 @@
 import { PackageRewrite } from './package-rewrite';
 import * as React from 'react';
-import { thesisFields, setText, revisionPackage, correctionBody } from './package-editor-model.mjs';
+import { thesisFields, setText, revisionPackage, correctionBody, packageFields, applyPackageAlternative } from './package-editor-model.mjs';
 import { claimLabel, editionDecision } from './onepager-edition-model.mjs';
 export function PackageEditor({
   job,
@@ -255,27 +255,11 @@ export function PackageEditor({
     storageKey: key + ':' + tab,
     api: api,
     disabled: busy || !!attempt.current || data.draft.status !== 'pending' || data.draft.stale || !!data.edition.decision || data.edition.stale,
-    fields: tab === 'thesis' ? thesisFields(analysis).map(f => ({
-      id: JSON.stringify(f.path),
-      label: f.label,
-      text: f.value,
-      limit: 40000
-    })) : data.edition.record.claims.map(c => ({
-      id: c.correctionId,
-      label: claimLabel(c.proposal.path),
-      text: words[c.correctionId],
-      limit: 300
-    })),
+    fields: packageFields(analysis, data.edition.record.claims, words),
     onKeep: values => {
-      if (tab === 'thesis') {
-        var next = analysis;
-        for (var [id, text] of Object.entries(values)) next = setText(next, JSON.parse(id), text);
-        change(next, words);
-      } else change(analysis, {
-        ...words,
-        ...values
-      });
-      setNotice('AI alternative kept in your draft. Check the evidence and other documents before saving.');
+      var next = applyPackageAlternative(analysis, words, values);
+      change(next.analysis, next.words);
+      setNotice('Package alternative kept in your draft. Review both documents and their evidence before saving.');
     }
   }), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || !!attempt.current || data?.draft.status !== 'pending' || data?.draft.stale || data?.edition.decision || data?.edition.stale
@@ -290,13 +274,13 @@ export function PackageEditor({
     key: c.correctionId
   }, /*#__PURE__*/React.createElement("label", null, claimLabel(c.proposal.path), /*#__PURE__*/React.createElement("textarea", {
     rows: 3,
-    maxLength: 300,
+    maxLength: 1600,
     value: words[c.correctionId],
     onChange: e => change(analysis, {
       ...words,
       [c.correctionId]: e.target.value
     })
-  })), /*#__PURE__*/React.createElement("small", null, words[c.correctionId].length, "/300 characters"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Original wording & evidence"), /*#__PURE__*/React.createElement("p", null, c.proposal.statement), [c.proposal, ...(c.proposal.additionalEvidence || [])].map((e, i) => /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("small", null, words[c.correctionId].length, "/1600 characters"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Original wording & evidence"), /*#__PURE__*/React.createElement("p", null, c.proposal.statement), [c.proposal, ...(c.proposal.additionalEvidence || [])].map((e, i) => /*#__PURE__*/React.createElement("div", {
     key: i
   }, /*#__PURE__*/React.createElement("p", null, e.locator), /*#__PURE__*/React.createElement("blockquote", null, e.excerpt))))))), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",

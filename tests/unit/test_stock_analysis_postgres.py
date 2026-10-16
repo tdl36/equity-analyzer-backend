@@ -77,6 +77,15 @@ class StockPostgresTests(unittest.TestCase):
         p=payload or self.payload;r=self.client.post(self.url,json=p);self.assertEqual(r.status_code,202,r.json)
         self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
         return self.client.get('/api/research/stock-analysis-run/'+p['requestId']).json
+    def test_legacy_saved_request_keeps_original_stage_order(self):
+        response=self.client.post(self.url,json=self.payload)
+        self.assertEqual(response.status_code,202)
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE stock_analysis_runs SET input=input - 'writingPolicy' WHERE id=%s",(self.payload['requestId'],))
+        self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
+        self.assertEqual(self.calls[0],'report-0')
+        self.assertEqual(self.client.get('/api/research/stock-analysis-run/'+self.payload['requestId']).json['status'],'complete')
+
     def test_end_to_end_persistence_idempotence_canonical_company_and_visual(self):
         r=self.start();self.assertEqual(r['status'],'complete',r.get('error'));self.assertEqual(len(r['state']['completed']),12)
         self.assertIsInstance(r['input']['companyId'],int);self.assertNotIn('text',r['sources'][0])
@@ -135,7 +144,7 @@ class StockPostgresTests(unittest.TestCase):
         self.assertEqual(r['sources'],[])
 
     def test_unknown_outcome_requires_explicit_retry_and_rechecks_sources(self):
-        self.simulate_failure=True;r=self.start();self.assertEqual(r['status'],'attention');self.assertEqual(r['state']['inFlight'],'report-0')
+        self.simulate_failure=True;r=self.start();self.assertEqual(r['status'],'attention');self.assertEqual(r['state']['inFlight'],'report-1')
         path='/api/research/stock-analysis-run/'+r['id']
         self.assertEqual(self.client.post(path+'/resume',json={}).status_code,409)
         self.assertEqual(self.client.post(path+'/resume',json={'acknowledgeRetry':True}).status_code,200)
@@ -149,36 +158,36 @@ class StockPostgresTests(unittest.TestCase):
         self.assertEqual(self.thread.call_count,0)
     def test_known_provider_response_can_resume_but_is_counted(self):
         self.simulate_known=True;r=self.start();self.assertEqual(r['status'],'attention')
-        self.assertNotIn('inFlight',r['state']);self.assertEqual(r['state']['knownFailure']['stage'],'report-0')
+        self.assertNotIn('inFlight',r['state']);self.assertEqual(r['state']['knownFailure']['stage'],'report-1')
         path='/api/research/stock-analysis-run/'+r['id']
         self.assertEqual(self.client.post(path+'/resume',json={}).status_code,200)
         self.simulate_known=False
         self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
-        r=self.client.get(path).json;self.assertEqual(r['status'],'complete');self.assertEqual(r['state']['retries'],['report-0'])
+        r=self.client.get(path).json;self.assertEqual(r['status'],'complete');self.assertEqual(r['state']['retries'],['report-1'])
     def test_lossless_saved_report_recovery_avoids_rebuying_stage(self):
         self.simulate_known=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id']
-        raw=result(GROUPS[0])
+        raw=result(GROUPS[1])
         for c in raw['citations']:
             for e in c['evidence']:e['sourceId']=r['sources'][0]['id']
         text=json.dumps({'report':raw['report']})+',"citations":'+json.dumps(raw['citations'])+'}'
         with self.db(True) as (_,cur):
             cur.execute('UPDATE stock_analysis_runs SET state=state || %s::jsonb WHERE id=%s',
-                        (json.dumps({'returnedResponses':{'report-0':{'text':text,'stop_reason':'end_turn'}}}),r['id']))
+                        (json.dumps({'returnedResponses':{'report-1':{'text':text,'stop_reason':'end_turn'}}}),r['id']))
         self.assertEqual(self.client.post(path+'/resume',json={'recoverSavedResponse':True}).status_code,200)
         self.simulate_known=False;self.calls=[]
         self.thread.call_args.kwargs['target'](*self.thread.call_args.kwargs['args'])
         recovered=self.client.get(path).json
         self.assertEqual(recovered['status'],'complete',recovered.get('error'))
-        self.assertNotIn('report-0',self.calls)
-        self.assertEqual(recovered['state']['localRecoveries'][0]['stage'],'report-0')
+        self.assertNotIn('report-1',self.calls)
+        self.assertEqual(recovered['state']['localRecoveries'][0]['stage'],'report-1')
         self.assertNotIn('knownFailure',recovered['state'])
-        self.assertIn('report-0',recovered['responseRecovery']['savedStages'])
+        self.assertIn('report-1',recovered['responseRecovery']['savedStages'])
 
     def test_unrepairable_saved_response_rejects_without_dispatch(self):
         self.simulate_known=True;r=self.start();path='/api/research/stock-analysis-run/'+r['id'];count=self.thread.call_count
         with self.db(True) as (_,cur):
             cur.execute('UPDATE stock_analysis_runs SET state=state || %s::jsonb WHERE id=%s',
-                        (json.dumps({'returnedResponses':{'report-0':{'text':'invalid','stop_reason':'end_turn'}}}),r['id']))
+                        (json.dumps({'returnedResponses':{'report-1':{'text':'invalid','stop_reason':'end_turn'}}}),r['id']))
         response=self.client.post(path+'/resume',json={'recoverSavedResponse':True})
         self.assertEqual(response.status_code,409);self.assertEqual(self.thread.call_count,count)
         self.assertEqual(self.client.get(path).json['status'],'attention')
@@ -188,7 +197,7 @@ class StockPostgresTests(unittest.TestCase):
         with self.db(True) as (_,cur):
             cur.execute('UPDATE stock_analysis_runs SET error=%s WHERE id=%s',('Research response exceeded its output bound. Inspect the saved stages before retrying.',r['id']))
         self.assertEqual(self.client.post(path+'/resume',json={}).status_code,200)
-        self.assertEqual(self.client.get(path).json['state']['retries'],['report-0'])
+        self.assertEqual(self.client.get(path).json['state']['retries'],['report-1'])
     def test_explicit_quality_retry_preserves_report_and_reuses_other_groups(self):
         r=self.start();self.assertEqual(r['status'],'complete');path='/api/research/stock-analysis-run/'+r['id']
         self.assertEqual(self.client.post(path+'/resume',json={}).status_code,409)

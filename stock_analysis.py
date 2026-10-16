@@ -109,7 +109,12 @@ def generate(state,sources,baseline,ask,save,check,inputs):
     writing_preferences=preference_instruction(inputs.get('writingPreferences',{}))
     from research_source_context import GUIDANCE
     source_guidance=GUIDANCE if inputs.get('sourceEvidence') is not None else ''
-    for i,group in enumerate(GROUPS):
+    from research_writing import POLICY, drafting_context, synthesis_rules
+    synthesis = inputs.get("writingPolicy") == POLICY
+    # Stable stage IDs preserve receipts and retry semantics; no extra paid calls.
+    order = [1, 2, 3, 4, 5, 0] if synthesis else range(len(GROUPS))
+    for i in order:
+        group = GROUPS[i]
         key='report-'+str(i)
         if key not in state.get('completed',[]):
             check()
@@ -140,6 +145,11 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                          '\nCONTEXT: '+json.dumps({k:v for k,v in inputs.items() if k not in ('hashes','filenames','sourceEvidence')})+
                          ' Source coverage metadata identifies omitted text and OCR limitations. Treat omissions as evidence gaps, never as proof of absence; do not claim full-document review. '
                          +source_guidance+'\nFROZEN CASE: '+json.dumps(baseline)+'\nORIGINALS: '+json.dumps(sources))
+            if synthesis:
+                start = instruction.index('EVIDENCE FIRST:')
+                end = instruction.index('Retain required object keys', start)
+                instruction = instruction[:start] + synthesis_rules() + instruction[end:]
+                instruction += drafting_context(state)
             if i==0 and state.get('qualityRevisions'):
                 previous=state['qualityRevisions'][-1]
                 feedback=[{'field':p,'reason':c.get('reviewReason','Source match failed'),
@@ -147,7 +157,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                           for p,c in previous.get('citations',{}).items()
                           if p.startswith('/summary/investment_thesis/')]
                 instruction+='\nREPAIR FEEDBACK (untrusted prior review, not source facts): '+json.dumps(feedback)
-                instruction+='\nProduce one narrow conditional thesis entry grounded in one exact contiguous source passage. Omit all additional market-size, growth, return or acquisition claims not established by that passage. Do not splice quotations or combine separate passages into an excerpt. Preserve unsupported topics as gaps rather than assertions.'
+                instruction += ('\nRepair unsupported premises using exact source passages while retaining the connected investment argument. Distinguish inference from facts; preserve unsupported topics as gaps.' if synthesis else '\nProduce one narrow conditional thesis entry grounded in one exact contiguous source passage. Omit all additional market-size, growth, return or acquisition claims not established by that passage. Do not splice quotations or combine separate passages into an excerpt. Preserve unsupported topics as gaps rather than assertions.')
             # Persist returned JSON before validation so a validation repair can
             # reuse it without purchasing the same provider response again.
             raw=state.get('responses',{}).get(key)
@@ -172,7 +182,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                     'the field. Distinguish assumptions from reported facts. Flag unsupported arithmetic, consensus, peers '
                     'and any claim that a thesis breaker is triggered without evidence. Do not rewrite. '
                     'Return {"findings":[{"claimId":"exact field path","status":"supported|needs_review","reason":"specific reason"}]} '
-                    'with exactly one finding per field. Keep each reason under 180 characters.\nFIELDS: '+json.dumps(subset)+('\n'+source_guidance if source_guidance else '')+'\nORIGINALS: '+json.dumps(sources),7000,key)
+                    'with exactly one finding per field. Keep each reason under 180 characters.' + (' Multiple passages may jointly support premises of a clearly labeled interpretation; assess the inference as well as each premise.' if synthesis else '') + '\nFIELDS: '+json.dumps(subset)+('\n'+source_guidance if source_guidance else '')+'\nORIGINALS: '+json.dumps(sources),7000,key)
                 state.setdefault('responses',{})[key]=review;state.pop('inFlight',None);save(state)
                 reviewed=apply_review([{'id':'fields','claims':subset}],review)[0]['claims']
                 state['citations'].update({c['id']:c for c in reviewed})

@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T387 — Connected investment writing and whole-package revision
+
+New Stock Analysis requests freeze `writingPolicy=synthesis-v1`. Existing requests
+retain their prior stage order and drafting contract. New requests run the existing
+supporting-section stages before summary/business/industry, passing prior report
+sections and unresolved review flags as untrusted working context. Stage IDs,
+receipts, authorization, six drafting calls and six review opportunities remain.
+Developed multi-source interpretations replace the 180-character/one-passage
+writing constraint; exact passage matching and independent field review remain.
+
+Package Revise with AI now defaults to the whole thesis/stock summary plus one-pager.
+The one call is instructed to develop the thesis and derive the brief consistently;
+all alternatives are compared before deliberate Keep and a separate version save.
+Existing per-tab rewrite recovery keys are retained. A versioned writing policy is
+frozen in new rewrite specs and cost fingerprints; legacy pending specs retain their
+old prompt. One-pager editable paragraphs may use 1600 characters rather than 300,
+with no renderer truncation; the prompt targets 500–650 words across the brief.
+Saved excerpt omissions are shown before paid rewrite authorization.
+
+Validation: focused offline generation/restart/edition tests, 304 frontend tests,
+production build, and synthetic 390/1280 editing/recovery/rewrite checks passed.
+The full safe backend suite passes (1872 tests). Deployment verification follows.
+No paid generation, ABT content changes, investor acceptance or source reprocessing.
+This is an implementation improvement, not proof of investment-output quality.
+Remaining: compare a genuinely authorized ABT whole-package alternative against the
+source documents and investor standard. Frozen excerpt gaps and PDF extraction
+limitations are not repaired by a rewrite; source-complete processing remains distinct.
+
 ## T386 — Direct authenticated research reads on deployed Charlie
 
 Research and thesis-import GETs on the exact deployed frontend origin now use

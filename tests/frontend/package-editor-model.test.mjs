@@ -14,5 +14,17 @@ test('revision is deterministic for replay and never claims approval',()=>{
 });
 test('onepager retains evidence without promoting editorial changes to verification',()=>{
  const body=correctionBody({proposal:{path:'/summary/one_liner',basis:'interpretation',sourceId:'s',excerpt:'original passage',locator:'page 1',before:'old',reviewOrigin:'investor',additionalEvidence:[{sourceId:'s2',excerpt:'more evidence',locator:'page 2',filename:'original.pdf',sha256:'hash',originalPage:2}]}},'new','f','id');
- assert.equal(body.excerpt,'original passage');assert.deepEqual(body.additionalEvidence,[{sourceId:'s2',excerpt:'more evidence',locator:'page 2',originalPage:2}]);assert.equal(body.reviewOrigin,undefined);assert.match(body.reason,/no independent fact-check/);assert.throws(()=>correctionBody({proposal:{}},'x'.repeat(301),'f','id'));
+ assert.equal(body.excerpt,'original passage');assert.deepEqual(body.additionalEvidence,[{sourceId:'s2',excerpt:'more evidence',locator:'page 2',originalPage:2}]);assert.equal(body.reviewOrigin,undefined);assert.match(body.reason,/no independent fact-check/);assert.throws(()=>correctionBody({proposal:{}},'x'.repeat(1601),'f','id'));
+});
+
+import {packageFields,applyPackageAlternative} from '../../src/package-editor-model.mjs';
+test('whole package alternative updates both documents atomically and preserves originals',()=>{
+ const claims=[{correctionId:'brief',proposal:{path:'/summary/one_liner'}}],words={brief:'Old brief'};
+ const fields=packageFields(analysis,claims,words);
+ assert.equal(fields.length,thesisFields(analysis).length+1);
+ const result=applyPackageAlternative(analysis,words,{[fields[0].id]:'Connected thesis',brief:'Derived brief'});
+ assert.equal(result.analysis.thesis.summary,'Connected thesis');assert.equal(result.words.brief,'Derived brief');
+ assert.equal(words.brief,'Old brief');assert.notEqual(analysis.thesis.summary,'Connected thesis');
+ assert.throws(()=>applyPackageAlternative(analysis,words,{brief:'change',unknown:'bad'}));
+ assert.equal(words.brief,'Old brief');
 });

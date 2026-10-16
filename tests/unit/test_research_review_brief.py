@@ -12,7 +12,7 @@ from tests.unit.test_onepager_edition_contract import edition_fixture
 from stock_evidence import report_fields
 
 
-def fixture():
+def fixture(statement='Qualified FY2029 assumption <not a target>.'):
     run, assignment, body, records, docs, financials = edition_fixture()
     run['state']['report'] = {
         'summary': {'one_liner': 'Old claim', 'investment_thesis': ['Old claim'], 'earnings_direction': 'Old claim'},
@@ -34,7 +34,7 @@ def fixture():
         if path.endswith('/name'):
             continue
         correction = {key: proposal[key] for key in ('basis', 'reason', 'sourceId', 'excerpt', 'locator')}
-        correction.update(requestId=str(uuid.uuid4()), path=path, fingerprint=fingerprint, statement='Qualified FY2029 assumption <not a target>.')
+        correction.update(requestId=str(uuid.uuid4()), path=path, fingerprint=fingerprint, statement=statement)
         ident, signature, prepared = prepare(run, correction, docs['fixture.txt'])
         records.append(dict(id=ident, run_id=run['id'], fingerprint=fingerprint, payload_hash=signature, proposal=prepared))
     body.update({key: value for key, value in baseline(run, assignment, financials).items() if key != 'ticker'})
@@ -44,6 +44,13 @@ def fixture():
 
 
 class RecoveryBriefTests(unittest.TestCase):
+    def test_developed_paragraph_is_rendered_whole_without_silent_truncation(self):
+        paragraph = ('Synthetic recurring demand supports earnings only if retention and cash conversion persist. ' * 7).strip()
+        args = fixture(paragraph)
+        rendered = render(args[0], args[1]['input'], preview=pending_evidence(*args))
+        self.assertIn(paragraph, rendered)
+        self.assertIn('Pending editorial preview', rendered)
+
     def test_pending_status_and_scope_come_from_saved_edition(self):
         args = fixture(); before = copy.deepcopy(args)
         rendered = render(args[0], args[1]['input'], preview=pending_evidence(*args))

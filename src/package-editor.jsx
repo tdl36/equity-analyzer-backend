@@ -1,6 +1,6 @@
 import {PackageRewrite} from './package-rewrite';
 import * as React from 'react';
-import {thesisFields,setText,revisionPackage,correctionBody} from './package-editor-model.mjs';
+import {thesisFields,setText,revisionPackage,correctionBody,packageFields,applyPackageAlternative} from './package-editor-model.mjs';
 import {claimLabel,editionDecision} from './onepager-edition-model.mjs';
 
 export function PackageEditor({job,api}) {
@@ -59,10 +59,11 @@ export function PackageEditor({job,api}) {
  {(data.draft.status!=='pending'||data.draft.stale||data.edition.decision||data.edition.stale)&&<p role="status">This saved version has been decided or its baseline has changed. Editing is disabled to preserve that decision; a fresh research revision is required.</p>}
  <p className="pe-note">{tab==='thesis'?'The stock summary and proposed thesis share these sections. Saving updates both. Review the one-pager separately: concise wording is never silently rewritten.':'Edit the one-pager’s saved claims. Evidence references remain attached; changing wording does not prove the new claim. Keep each field concise.'}</p>
  <PackageRewrite key={tab} runId={job.result.reportId} storageKey={key+':'+tab} api={api} disabled={busy||!!attempt.current||data.draft.status!=='pending'||data.draft.stale||!!data.edition.decision||data.edition.stale}
- fields={tab==='thesis'?thesisFields(analysis).map(f=>({id:JSON.stringify(f.path),label:f.label,text:f.value,limit:40000})):data.edition.record.claims.map(c=>({id:c.correctionId,label:claimLabel(c.proposal.path),text:words[c.correctionId],limit:300}))}
- onKeep={values=>{if(tab==='thesis'){let next=analysis;for(const [id,text] of Object.entries(values))next=setText(next,JSON.parse(id),text);change(next,words);}else change(analysis,{...words,...values});setNotice('AI alternative kept in your draft. Check the evidence and other documents before saving.');}}/>
+ fields={packageFields(analysis,data.edition.record.claims,words)}
+ onKeep={values=>{const next=applyPackageAlternative(analysis,words,values);change(next.analysis,next.words);setNotice('Package alternative kept in your draft. Review both documents and their evidence before saving.');}}/>
+
  <fieldset disabled={busy||!!attempt.current||data?.draft.status!=='pending'||data?.draft.stale||data?.edition.decision||data?.edition.stale}>
- {tab==='thesis'?thesisFields(analysis).map(f=><label key={JSON.stringify(f.path)}>{f.label}<textarea rows={f.path.at(-1)==='summary'?8:3} maxLength={40000} value={f.value} onChange={e=>change(setText(analysis,f.path,e.target.value),words)}/></label>):data.edition.record.claims.map(c=><article key={c.correctionId}><label>{claimLabel(c.proposal.path)}<textarea rows={3} maxLength={300} value={words[c.correctionId]} onChange={e=>change(analysis,{...words,[c.correctionId]:e.target.value})}/></label><small>{words[c.correctionId].length}/300 characters</small><details><summary>Original wording & evidence</summary><p>{c.proposal.statement}</p>{[c.proposal,...(c.proposal.additionalEvidence||[])].map((e,i)=><div key={i}><p>{e.locator}</p><blockquote>{e.excerpt}</blockquote></div>)}</details></article>)}
+ {tab==='thesis'?thesisFields(analysis).map(f=><label key={JSON.stringify(f.path)}>{f.label}<textarea rows={f.path.at(-1)==='summary'?8:3} maxLength={40000} value={f.value} onChange={e=>change(setText(analysis,f.path,e.target.value),words)}/></label>):data.edition.record.claims.map(c=><article key={c.correctionId}><label>{claimLabel(c.proposal.path)}<textarea rows={3} maxLength={1600} value={words[c.correctionId]} onChange={e=>change(analysis,{...words,[c.correctionId]:e.target.value})}/></label><small>{words[c.correctionId].length}/1600 characters</small><details><summary>Original wording & evidence</summary><p>{c.proposal.statement}</p>{[c.proposal,...(c.proposal.additionalEvidence||[])].map((e,i)=><div key={i}><p>{e.locator}</p><blockquote>{e.excerpt}</blockquote></div>)}</details></article>)}
  </fieldset>
  <label><input type="checkbox" checked={ack} disabled={busy} onChange={e=>setAck(e.target.checked)}/> I checked my revised wording against its evidence and reviewed both the summary/thesis and the one-pager.</label>
  <div className="pe-actions"><button disabled={busy||!ack||(!dirty&&!attempt.current)} onClick={()=>act(save)}>{attempt.current?'Retry saving this exact revision':'Save new package version'}</button>{dirty&&!attempt.current&&<button disabled={busy} onClick={discard}>Discard unsaved edits</button>}</div>

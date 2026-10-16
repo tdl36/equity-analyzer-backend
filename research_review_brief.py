@@ -17,7 +17,7 @@ def render(run, assignment, *, preview):
         c=evidence.get(path)
         if not c or c.get('reviewOrigin') != origin:
             raise ValueError('Recovery brief requires an explicit edition correction for '+path)
-        if len(c['statement'])>300:raise ValueError('Shorten the brief claim without truncating its meaning.')
+        if len(c['statement'])>1600:raise ValueError('Brief paragraphs must stay within 1600 characters; preserve their reasoning.')
         ids=sorted({refs[e['sourceId']] for e in c.get('evidence',[]) if e.get('matched') and e.get('sourceId') in refs})
         if not ids:raise ValueError('Recovery brief source reference missing.')
         return esc(c['statement'])+'<sup>['+','.join(map(str,ids))+']</sup>'
