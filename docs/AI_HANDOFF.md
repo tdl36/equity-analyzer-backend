@@ -31,6 +31,27 @@ and fresh control snapshots, then inspect actual originals and selected processi
 readiness. No live journey, investor acceptance or eight-priority completion is
 claimed. Historical-reference schema remains open; backfill synthesis stays paused.
 
+T341 production verified: Render aa8f00631422d0cd85065df72d79b9b927b98217;
+Cloudflare c6b448dd-7082-45bf-af28-8e8a92942b54. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent restarted with the prescribed launchctl command
+after read-only checks found zero running pipeline jobs and zero live transcription
+jobs; stderr confirms the new control lane and later heartbeat startup. A fresh
+snapshot at 00:49:21 UTC arrived during startup before the 00:50:13 UTC heartbeat
+thread. Deployment temporarily returned HTTP errors; sync retained retry behavior.
+Agent health verified at 22.8s. Activity unavailable=[], unchanged truncation, zero
+full-note inventory. Verification log: /tmp/charlie-T341-verify.log. The verifier's
+initial local import-path error was corrected with PYTHONPATH=. before this run.
+
+CVS remains queued with no assignment source receipts; local attempt-receipt count
+is still zero, so Operations adoption of T340 is not demonstrated. No browser claim,
+queue reorder, research dispatch or investor decision was made here. Next inspect
+fresh collection reporting and actual worker receipts. While live collection is
+pending, audit the existing assignment output-failure path: meeting/thesis derivative
+errors currently precede full-note enqueueing. Determine whether independently
+approved full-note delivery is unnecessarily blocked; preserve saved partial outputs,
+provider ambiguity fences and explicit approval. Do not widen the shared dashboard
+or claim live acceptance. Docs-only receipt uses [skip render].
+
 ## T340 — Recover an interrupted collector claim without taking another turn
 
 Critical-path collection recovery: a repeated bare claim returns null while an
