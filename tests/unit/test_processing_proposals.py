@@ -488,3 +488,26 @@ class ProcessingProposalTests(unittest.TestCase):
         self.assertEqual(self.client.get(self.url+'?requestId='+self.ident).json['proposals'],[])
         self.assertEqual(self.row(proposal['id'])['status'],'pending')
         self.assertFalse(self.submits)
+
+    def test_selected_library_metadata_is_exact_bounded_scoped_and_read_only(self):
+        self.parent();old=self.extra();foreign=self.extra(ticker='OTHER')
+        with self.db(True) as (_,cur):
+            cur.execute("SELECT id::text AS id FROM document_files WHERE ticker=%s AND filename='one.txt'",(self.ticker,));collected=cur.fetchone()['id']
+            cur.execute("UPDATE document_files SET metadata=%s::jsonb WHERE id=%s",(json.dumps({'usage':'reference_only','private':'SECRET_FIXTURE'}),int(old)))
+            cur.execute("INSERT INTO document_files(ticker,filename,metadata) SELECT %s,'new-'||n||'.txt','{}' FROM generate_series(1,220)n",(self.ticker,))
+            cur.execute('SELECT id,metadata,file_data FROM document_files ORDER BY id');before=cur.fetchall()
+        url=self.url.replace('processing-proposals','processing-library')
+        selected=[old,foreign,collected,'9223372036854775807']
+        response=self.client.get(url,query_string={'selected':','.join(selected)})
+        self.assertEqual(response.status_code,200);d=response.json
+        self.assertEqual((d['ticker'],d['collectionId']),(self.ticker,self.ident))
+        self.assertEqual(d['selectedIds'],sorted(selected));self.assertEqual(d['missingIds'],sorted([foreign,collected,'9223372036854775807']))
+        self.assertEqual([r['id'] for r in d['documents']],['thesis_'+old]);self.assertFalse(d['documents'][0]['eligible'])
+        self.assertEqual(response.headers['Cache-Control'],'private, no-store');self.assertNotIn('file_data',response.text);self.assertNotIn('SECRET_FIXTURE',response.text)
+        for value in ('',old+','+old,'01','-1','1.0','9223372036854775808',','.join(str(i) for i in range(1,102))):
+            self.assertEqual(self.client.get(url,query_string={'selected':value}).status_code,400)
+        self.assertEqual(self.client.get(url+'?selected='+old+'&after=1').status_code,400)
+        self.assertEqual(self.client.get(url+'?selected='+old+'&selected='+old).status_code,400)
+        with self.db() as (_,cur):
+            cur.execute('SELECT id,metadata,file_data FROM document_files ORDER BY id');self.assertEqual(cur.fetchall(),before)
+        self.assertFalse(self.submits)

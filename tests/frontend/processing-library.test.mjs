@@ -20,3 +20,14 @@ test('foreign, incomplete, repeated and out-of-order library pages cannot become
  assert.throws(()=>processingLibraryPage({...page(),after:'20'},{...scope,after:'20'}),/could not be verified/);
  assert.throws(()=>processingLibraryPage({...page(),after:'bad'},{...scope,after:'bad'}),/could not be verified/);
 });
+
+test('selected metadata accounts for every exact identity, including explicit missing records',async()=>{
+ const {selectedLibraryMetadata}=await import('../../src/processing-library-model.mjs');
+ const scope={ticker:'ABT',collectionId:'collection',selected:['20','42','999']};
+ const response={ticker:'ABT',collectionId:'collection',selectedIds:['20','42','999'],documents:[document('42'),{...document('20'),eligible:false}],missingIds:['999']};
+ assert.equal(selectedLibraryMetadata(response,scope).documents.length,2);
+ for(const edit of [p=>p.ticker='CVS',p=>p.collectionId='wrong',p=>p.selectedIds.reverse(),p=>p.missingIds=[],p=>p.missingIds.push('42'),p=>p.documents.push(document('19')),p=>p.documents=[]]){
+  const p=structuredClone(response);edit(p);assert.throws(()=>selectedLibraryMetadata(p,scope));
+ }
+ assert.throws(()=>selectedLibraryMetadata(response,{...scope,selected:Array.from({length:101},(_,i)=>String(i+1))}));
+});

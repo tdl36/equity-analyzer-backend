@@ -1,3 +1,4 @@
+import { useSelectedLibraryMetadata } from './selected-library-metadata';
 import { processingLibraryPage } from './processing-library-model.mjs';
 import { OriginalDownload } from './original-download';
 import * as React from 'react';
@@ -21,6 +22,16 @@ export function ProcessingSourceLibrary({
     [cursor, setCursor] = React.useState(null),
     [query, setQuery] = React.useState(''),
     [type, setType] = React.useState('All');
+  var [selectionRevision, setSelectionRevision] = React.useState(0);
+  var selection = useSelectedLibraryMetadata({
+    call,
+    path,
+    ticker,
+    collectionId,
+    selected,
+    revision: selectionRevision
+  });
+  var combined = React.useMemo(() => [...documents.filter(d => !selected.includes(d.id.slice(7))), ...selection.documents], [documents, selection.documents, JSON.stringify(selected)]);
   var lock = React.useRef(false),
     live = React.useRef(true),
     lastRead = React.useRef(null);
@@ -33,6 +44,7 @@ export function ProcessingSourceLibrary({
   var load = async (after = null) => {
     if (lock.current) return;
     lock.current = true;
+    if (after === null) setSelectionRevision(n => n + 1);
     lastRead.current = after;
     setBusy(true);
     setError('');
@@ -59,16 +71,16 @@ export function ProcessingSourceLibrary({
   };
   React.useEffect(() => {
     onInventory({
-      rows: labDocuments(documents, []),
-      loaded,
-      busy,
-      error,
-      cursor
+      rows: labDocuments(combined, []),
+      loaded: !selection.busy && !selection.error,
+      busy: busy || selection.busy,
+      error: error || selection.error,
+      cursor: loaded ? cursor : 'unloaded'
     });
-  }, [documents, loaded, busy, error, cursor, onInventory]);
+  }, [combined, selection.busy, selection.error, loaded, busy, error, cursor, onInventory]);
   var rows = labDocuments(documents, []),
     shown = visibleLabDocuments(rows, query, type, 'date');
-  var missing = selected.filter(id => !documents.some(d => d.id === 'thesis_' + id));
+  var missing = selection.missingIds;
   return /*#__PURE__*/React.createElement("section", {
     "aria-label": "Supplemental source library",
     style: {
@@ -82,7 +94,7 @@ export function ProcessingSourceLibrary({
   }, "Browse wider source library") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => load()
-  }, "Refresh library metadata"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Refresh restarts the library listing and preserves your selected originals. Load more entries to confirm selections outside the refreshed page.")), /*#__PURE__*/React.createElement("p", null, selected.length, " supplemental originals selected \xB7 ", documents.length, " library entries loaded", cursor ? ' · more available' : '', ". No library documents are selected automatically."), /*#__PURE__*/React.createElement("div", {
+  }, "Refresh library metadata"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Refresh restarts the library listing and rechecks your selected originals directly, including older entries outside this page.")), /*#__PURE__*/React.createElement("p", null, selected.length, " supplemental originals selected \xB7 ", documents.length, " library entries loaded", cursor ? ' · more available' : '', ". No library documents are selected automatically."), /*#__PURE__*/React.createElement("div", {
     className: "sa-form-grid"
   }, /*#__PURE__*/React.createElement("label", null, "Find library sources", /*#__PURE__*/React.createElement("input", {
     "aria-label": "Find library sources",
@@ -139,9 +151,18 @@ export function ProcessingSourceLibrary({
   }, error, " Previously loaded metadata is unconfirmed; selected library sources cannot be saved until this read succeeds. ", /*#__PURE__*/React.createElement("button", {
     disabled: busy,
     onClick: () => load(lastRead.current)
-  }, "Retry library read")), missing.length > 0 && /*#__PURE__*/React.createElement("p", {
+  }, "Retry library read")), selection.busy && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Checking your selected historical sources directly\u2026"), selection.error && /*#__PURE__*/React.createElement("p", {
     role: "alert"
-  }, missing.length, " selected identities are outside the currently loaded entries. Review them before saving. ", /*#__PURE__*/React.createElement("button", {
+  }, selection.error, " Saving is blocked until this read succeeds. ", /*#__PURE__*/React.createElement("button", {
+    disabled: selection.busy,
+    onClick: () => setSelectionRevision(n => n + 1)
+  }, "Retry selected source metadata")), !!selected.length && !selection.busy && !selection.error && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Checked metadata for ", selection.documents.length, " selected originals without paging the library. This does not verify original bytes; saving checks them again."), " ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSelectionRevision(n => n + 1)
+  }, "Recheck selected sources")), missing.length > 0 && /*#__PURE__*/React.createElement("p", {
+    role: "alert"
+  }, missing.length, " selected originals are missing or no longer available in this collection\u2019s supplemental library. Review the selected evidence list before saving. ", /*#__PURE__*/React.createElement("button", {
     onClick: () => onChange(selected.filter(id => !missing.includes(id)))
-  }, "Remove unseen selections")));
+  }, "Remove unavailable selections")));
 }

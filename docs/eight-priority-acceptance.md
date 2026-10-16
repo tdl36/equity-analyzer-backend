@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T355 restores selected historical-source metadata directly, without manually
+paging the library. Missing/restricted records and failed or stale reads cannot
+enable saving. Synthetic 201-source and full-app draft-reload checks pass; original
+bytes and investor acceptance still require their existing separate gates.
+
 T354 binds supplemental source pages to exact company, collection and cursor,
 preserving selections and blocking save on unverified reads. A 201-document
 synthetic full-app recovery check passes on phone/desktop; no live collection,

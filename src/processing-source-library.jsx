@@ -1,3 +1,4 @@
+import {useSelectedLibraryMetadata} from './selected-library-metadata';
 import {processingLibraryPage} from './processing-library-model.mjs';
 import {OriginalDownload} from './original-download';
 import * as React from 'react';
@@ -5,24 +6,27 @@ import {labDocuments,visibleLabDocuments,groupLabDocuments,labSourceDate,taskSou
 
 export function ProcessingSourceLibrary({api,ticker,collectionId,call,path,selected,onChange,purpose,remaining,onInventory}){
  const [documents,setDocuments]=React.useState([]),[loaded,setLoaded]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[cursor,setCursor]=React.useState(null),[query,setQuery]=React.useState(''),[type,setType]=React.useState('All');
+ const [selectionRevision,setSelectionRevision]=React.useState(0);
+ const selection=useSelectedLibraryMetadata({call,path,ticker,collectionId,selected,revision:selectionRevision});
+ const combined=React.useMemo(()=>[...documents.filter(d=>!selected.includes(d.id.slice(7))),...selection.documents],[documents,selection.documents,JSON.stringify(selected)]);
  const lock=React.useRef(false),live=React.useRef(true),lastRead=React.useRef(null);
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
- const load=async(after=null)=>{if(lock.current)return;lock.current=true;lastRead.current=after;setBusy(true);setError('');try{
+ const load=async(after=null)=>{if(lock.current)return;lock.current=true;if(after===null)setSelectionRevision(n=>n+1);lastRead.current=after;setBusy(true);setError('');try{
   const data=await call(path+(after?'?after='+encodeURIComponent(after):''));
   const page=processingLibraryPage(data,{ticker,collectionId,after});
   const merged=after?[...documents,...page.documents]:page.documents;
   labDocuments(merged,[]); // Reject ambiguous identities across pages before showing choices.
   if(live.current){setDocuments(merged);setCursor(page.nextCursor);setLoaded(true);}
  }catch(e){if(live.current)setError(e.message);}finally{lock.current=false;if(live.current)setBusy(false);}};
- React.useEffect(()=>{onInventory({rows:labDocuments(documents,[]),loaded,busy,error,cursor});},[documents,loaded,busy,error,cursor,onInventory]);
+ React.useEffect(()=>{onInventory({rows:labDocuments(combined,[]),loaded:!selection.busy&&!selection.error,busy:busy||selection.busy,error:error||selection.error,cursor:loaded?cursor:'unloaded'});},[combined,selection.busy,selection.error,loaded,busy,error,cursor,onInventory]);
  const rows=labDocuments(documents,[]),shown=visibleLabDocuments(rows,query,type,'date');
- const missing=selected.filter(id=>!documents.some(d=>d.id==='thesis_'+id));
+ const missing=selection.missingIds;
  return <section aria-label="Supplemental source library" style={{margin:'16px 0',padding:12,border:'1px solid var(--border-color,#d8dedd)'}}>
   <strong>{purpose==='event_note'?'Add historical context for this event':'Add foundational and historical evidence'}</strong>
   <p>Stored originals for this company outside this collection. Older sources remain eligible. Metadata suggests relevance; review the original before selecting. Files are checked byte-for-byte when the proposal is saved and approved.</p>
   {!loaded?<button disabled={busy} onClick={()=>load()}>Browse wider source library</button>:<>
    <button disabled={busy} onClick={()=>load()}>Refresh library metadata</button>
-   <p><small>Refresh restarts the library listing and preserves your selected originals. Load more entries to confirm selections outside the refreshed page.</small></p>
+   <p><small>Refresh restarts the library listing and rechecks your selected originals directly, including older entries outside this page.</small></p>
    <p>{selected.length} supplemental originals selected · {documents.length} library entries loaded{cursor?' · more available':''}. No library documents are selected automatically.</p>
    <div className="sa-form-grid"><label>Find library sources<input aria-label="Find library sources" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Filename, publisher or author"/></label><label>Source type<select aria-label="Library source type" value={type} onChange={e=>setType(e.target.value)}>{['All',...new Set(rows.map(r=>r.type))].map(t=><option key={t}>{t}</option>)}</select></label></div>
    <p><small>Newest recorded publication dates first; unknown dates last. Filtering covers loaded entries only. A filename-based type suggestion is labeled below.</small></p>
@@ -33,6 +37,9 @@ export function ProcessingSourceLibrary({api,ticker,collectionId,call,path,selec
    {cursor&&<button disabled={busy||!!error} onClick={()=>load(cursor)}>Load more library sources</button>}
   </>}
   {busy&&<p role="status">Loading source metadata…</p>}{error&&<p role="alert">{error} Previously loaded metadata is unconfirmed; selected library sources cannot be saved until this read succeeds. <button disabled={busy} onClick={()=>load(lastRead.current)}>Retry library read</button></p>}
-  {missing.length>0&&<p role="alert">{missing.length} selected identities are outside the currently loaded entries. Review them before saving. <button onClick={()=>onChange(selected.filter(id=>!missing.includes(id)))}>Remove unseen selections</button></p>}
+  {selection.busy&&<p role="status">Checking your selected historical sources directly…</p>}
+  {selection.error&&<p role="alert">{selection.error} Saving is blocked until this read succeeds. <button disabled={selection.busy} onClick={()=>setSelectionRevision(n=>n+1)}>Retry selected source metadata</button></p>}
+  {!!selected.length&&!selection.busy&&!selection.error&&<p><small>Checked metadata for {selection.documents.length} selected originals without paging the library. This does not verify original bytes; saving checks them again.</small> <button onClick={()=>setSelectionRevision(n=>n+1)}>Recheck selected sources</button></p>}
+  {missing.length>0&&<p role="alert">{missing.length} selected originals are missing or no longer available in this collection’s supplemental library. Review the selected evidence list before saving. <button onClick={()=>onChange(selected.filter(id=>!missing.includes(id)))}>Remove unavailable selections</button></p>}
  </section>;
 }

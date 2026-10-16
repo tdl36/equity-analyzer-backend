@@ -1,5 +1,6 @@
 """Full-app synthetic handoff at 390/1280px; serve .worker-assets on port 3012. All API calls are intercepted."""
 import json,copy,re,hashlib
+from urllib.parse import urlparse,parse_qs
 from playwright.sync_api import sync_playwright, expect
 SOURCE=b'Synthetic original for download verification'
 HASH=hashlib.sha256(SOURCE).hexdigest()
@@ -31,6 +32,11 @@ with sync_playwright() as p:
    elif '/processing-library' in u:
     docs=[{'id':'thesis_'+str(i),'filename':'library-fixture-'+str(i)+'.pdf','eligible':True} for i in range(202,4,-1)]+[{'id':'thesis_4','filename':'reference-only.pdf','eligible':False},{'id':'thesis_3','filename':'annual-2024-10-K.pdf','publishedDate':'2024-03-01','publisher':'Company','eligible':True}]
     d={'collectionId':NOTE,'ticker':'ABT','after':'3' if 'after=' in u else None,'documents':docs if 'after=' not in u else [{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':None,'recordedSha256':HASH,'eligible':True}],'nextCursor':'3' if 'after=' not in u else None}
+    query=parse_qs(urlparse(u).query)
+    if 'selected' in query:
+     ids=sorted(query['selected'][0].split(','));all_docs=docs+[{'id':'thesis_2','filename':'historical-transcript.pdf','publishedDate':None,'recordedSha256':HASH,'eligible':True}]
+     found=[r for r in all_docs if r['id'][7:] in ids]
+     d={'collectionId':NOTE,'ticker':'ABT','selectedIds':ids,'documents':found,'missingIds':[i for i in ids if not any(r['id']=='thesis_'+i for r in found)]}
     if library_mode=='company':d['ticker']='CVS'
     if library_mode=='collection':d['collectionId']='other'
     if library_mode=='cursor':d['after']=None
@@ -128,14 +134,14 @@ with sync_playwright() as p:
   for invalid in ('company','collection'):
    library_mode=invalid
    library.get_by_role('button',name='Refresh library metadata',exact=True).click()
-   expect(library.get_by_role('alert').filter(has_text='could not be verified')).to_be_visible()
+   expect(library.get_by_role('alert').filter(has_text='Source library page could not be verified')).to_be_visible()
    expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
    expect(save).to_be_disabled()
    library_mode='ok';library.get_by_role('button',name='Retry library read',exact=True).click()
    expect(save).to_be_enabled()
   library_mode='cursor'
   library.get_by_role('button',name='Load more library sources',exact=True).click()
-  expect(library.get_by_role('alert').filter(has_text='could not be verified')).to_be_visible()
+  expect(library.get_by_role('alert').filter(has_text='Source library page could not be verified')).to_be_visible()
   expect(save).to_be_disabled()
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   library.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T354-'+str(width)+'-library-recovery.png')
@@ -176,8 +182,8 @@ with sync_playwright() as p:
   expect(review.get_by_label('Processing event title')).to_have_value('Guidance update')
   expect(review.get_by_label('Processing meeting type')).to_have_value('expert')
   expect(review.get_by_role('checkbox',name='Full versioned Lab note',exact=False)).to_be_checked()
-  expect(save).to_be_disabled()
-  expect(review.get_by_role('region',name='Evidence review before save',exact=True).get_by_text('1 selected originals have no loaded metadata.',exact=False)).to_be_visible()
+  expect(save).to_be_enabled()
+  expect(review.get_by_text('Checked metadata for 1 selected originals without paging the library.',exact=False)).to_be_visible()
   review.get_by_role('button',name='Browse wider source library',exact=True).click()
   expect(library.get_by_role('checkbox',name='annual-2024-10-K.pdf',exact=False)).to_be_checked()
   assert writes==[]

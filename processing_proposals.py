@@ -137,11 +137,15 @@ def register(co):
         if not parent or parent['status'] != 'complete' or not obj(parent['input']).get('collectionOnly'):
             return jsonify(error='Choose a completed source-only collection.'), 409
         try:
-            if set(request.args) - {'after'} or len(request.args.getlist('after')) > 1:
+            if set(request.args) - {'after', 'selected'} or len(request.args) > 1 or any(len(request.args.getlist(k)) > 1 for k in request.args):
                 raise ValueError('Invalid source-library filters.')
-            from processing_proposal_sources import inventory
+            from processing_proposal_sources import inventory, selected_inventory
+            names = [s['filename'] for s in obj(parent['result']).get('sources', [])]
             with co.db() as (_, cur):
-                data = inventory(cur, parent['ticker'], [s['filename'] for s in obj(parent['result']).get('sources', [])], request.args.get('after'))
+                if 'selected' in request.args:
+                    data = selected_inventory(cur, parent['ticker'], names, request.args['selected'])
+                else:
+                    data = inventory(cur, parent['ticker'], names, request.args.get('after'))
             response = jsonify(**data, collectionId=collection_id, ticker=parent['ticker'], after=request.args.get('after')); response.headers['Cache-Control'] = 'private, no-store'
             return response
         except ValueError as exc:

@@ -16,3 +16,16 @@ export function processingLibraryPage(data,{ticker,collectionId,after=null}){
  if(data.nextCursor!==null&&(data.documents.length!==200||data.nextCursor!==previous))fail();
  return {documents:data.documents,nextCursor:data.nextCursor};
 }
+
+export function selectedLibraryMetadata(data,{ticker,collectionId,selected}){
+ const fail=()=>{throw Error('Selected source metadata could not be verified. Retry the read; your selections are retained.');};
+ const expected=[...selected].sort();
+ if(!expected.length||expected.length>100||expected.some(v=>!id(v))||new Set(expected).size!==expected.length||
+  !data||data.ticker!==ticker||data.collectionId!==collectionId||!Array.isArray(data.selectedIds)||
+  JSON.stringify(data.selectedIds)!==JSON.stringify(expected)||!Array.isArray(data.missingIds)||
+  data.missingIds.some(v=>!expected.includes(v))||new Set(data.missingIds).size!==data.missingIds.length)fail();
+ const page=processingLibraryPage({...data,after:null,nextCursor:null},{ticker,collectionId});
+ const found=page.documents.map(r=>r.id.slice(7)),all=[...found,...data.missingIds].sort();
+ if(JSON.stringify(all)!==JSON.stringify(expected))fail();
+ return {documents:page.documents,missingIds:data.missingIds};
+}

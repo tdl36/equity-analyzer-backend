@@ -59,3 +59,20 @@ def collected_inventory(cur, ticker, receipts):
                               filename=receipt['filename'], receiptSha256=receipt['sha256'],
                               availability=state, **fields(row['metadata'] if row else {})))
     return documents
+
+
+def selected_inventory(cur, ticker, collected_names, selected):
+    """Exact metadata recovery, bounded separately from browsing; no original bodies."""
+    ids = selected.split(',') if isinstance(selected, str) else []
+    if not 1 <= len(ids) <= 100:
+        raise ValueError('Choose 1–100 stored identities per metadata read.')
+    ids = supplemental_ids(ids, 0)
+    if any(int(value) > 9223372036854775807 for value in ids):
+        raise ValueError('Invalid stored source identity.')
+    cur.execute('SELECT id,filename,metadata FROM document_files WHERE ticker=%s AND id=ANY(%s) AND NOT(filename=ANY(%s)) ORDER BY id DESC', (ticker, [int(value) for value in ids], collected_names))
+    rows = list(cur.fetchall())
+    found = {str(r['id']) for r in rows}
+    return {'selectedIds': ids,
+            'documents': [dict(id='thesis_' + str(r['id']), filename=r['filename'],
+                               **fields(r['metadata']), eligible=eligible(r['metadata'] or {})) for r in rows],
+            'missingIds': [value for value in ids if value not in found]}

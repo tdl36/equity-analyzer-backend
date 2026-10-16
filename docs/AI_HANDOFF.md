@@ -2,6 +2,42 @@
 
 Updated: October 14, 2026
 
+## T355 — Restore selected historical sources without paging
+
+Processing proposals now re-read previously selected supplemental metadata by exact
+stored IDs, automatically when the saved browser draft opens or its selection
+changes. The existing library endpoint supports a scoped metadata-only selected
+read, capped at 100 IDs per request; the UI reads larger selections in bounded
+batches. The read excludes other companies and collected originals and explicitly
+accounts for missing IDs. Restricted metadata stays visible but ineligible. No
+source is selected automatically, and metadata does not certify original bytes.
+
+Selected metadata and browsing have independent state. Reopening a draft no longer
+requires paging the library to recover older selections. A refresh also rechecks
+selected IDs outside the first page. Missing/restricted/read-failure states block
+saving; retry retains choices. Changed selections immediately invalidate metadata
+readiness, and late responses cannot confirm another selection or purpose. The
+existing frozen save/approval byte checks and investor decisions are unchanged.
+
+Validation: 78 focused backend tests, 1,797 full backend / 275 frontend safe tests,
+Python compilation and production build pass. Disposable PostgreSQL verifies exact
+company/collection exclusion, missing/restricted IDs, query bounds, unchanged stored
+rows and no dispatch. Synthetic component checks restore 201 selected originals
+in three reads, preserve missing/restricted blockers, recover on retry and ignore
+late prior-selection responses. Full-app checks at 390/1280px verify restored draft
+readiness without browsing, plus existing selection, download, scope failures,
+lost submission and mock approval behavior. Phone recovery screenshot inspected;
+no overflow. All browser API writes are intercepted fixtures, not live approvals.
+Logs: /tmp/charlie-T355-{focused,backend,frontend,build,selected,ui}.log.
+
+Next: verify hosted release and unfinished-collection/authorization guards, then
+resume the real collection-to-proposal handoff when receipts arrive. A genuine
+completed collection-only parent and request-specific investor processing approval
+are still absent; do not claim the synthetic 201-source recovery as live end-to-end
+proof. Preserve Operations collection ownership and paused synthesis. Do not repeat
+T354/T355 metadata identity/recovery work or T350–T353 meeting fixes. Historical
+schema and all eight acceptance certifications remain open.
+
 ## T354 — Company/collection-bound supplemental evidence pages
 
 The processing proposal's wider library previously returned no company/collection
