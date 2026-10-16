@@ -41,6 +41,31 @@ expansion waits for connected-journey proof. Historical-reference schema and all
 eight live/investor acceptance certifications remain open. Backfill synthesis
 remains paused. Agent and original Pipeline unchanged; no restart required.
 
+T339 production verified: Render 3416776232b865a46af11dda08e41957a2ab5e45;
+Cloudflare 827a3aa7-a549-490a-851b-67fd053836a9. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy (4.0s), no restart required. Read-only
+source/proposal authentication and scope guards pass; Activity has no unavailable
+dependencies, unchanged research/audio truncation and zero full-note rows. Event
+note content/layout is synthetic proof; no live note was generated or accepted.
+Verification: /tmp/charlie-T339-verify.log.
+
+Material collection checkpoint: CVS briefly reported collecting, then returned to
+queued at position 53 of 53 (snapshot age 2s), all four searches pending and zero
+saved assignment-source receipts. Its saved issue reports that the prior worker
+turn was interrupted before browser collection and its lease released for the next
+scheduled wake. This explains requeueing, not the underlying interruption cause.
+Read-only code inspection confirms fair-turn order advances when a lease is claimed,
+so this unstarted claim moved behind unclaimed work; no collection progress occurred.
+No claims, retries, cancellations or Operations messages were sent here.
+
+Next critical action: inspect evidence for the interrupted collection turn and
+consider bounded recovery for unstarted attempts without removing fair-queue or
+single-worker safeguards. Do not launch a second collector or silently reorder
+live work. When existing Operations produces original/import receipts, complete the
+selected evidence proposal handoff without approving paid processing. Keep live
+journey/investor acceptance and historical schema gaps explicit. Docs-only receipt
+uses [skip render]; unrelated dirty files preserved.
+
 ## T338 — Durable stop intent and verified child-stop receipts
 
 Critical-path job recovery: assignment Stop previously ignored a rejected child
