@@ -6,20 +6,27 @@ from research_commands import obj
 def delivery_contract(payload, command, collection, source_reuse, prep, versions, reports, proposal, dispatch):
     """Delivery means a stored output exists, not that work was dispatched."""
     def stage(key,label,state,detail):return dict(key=key,label=label,state=state,detail=detail)
-    failed={'failed','error','blocked','cancelled','canceled','needs_attention','attention_required','needs_review','dismissed','reverted'}
+    failed={'failed','error','blocked','cancelled','canceled','needs_attention','attention','needs_auth','attention_required','needs_review','dismissed','reverted','stopped'}
     collection=collection or {};prep=prep or {};proposal=proposal or {};dispatch=dispatch or {}
     collected=bool(source_reuse or collection.get('status')=='complete')
+    collection_detail=collection.get('issue') or command.get('error') or (
+        'AlphaSense sign-in needs attention. Open signed-in Chrome and inspect Collection controls; saved originals are retained.'
+        if collection.get('status')=='needs_auth' else collection.get('status') or 'Waiting for the Mac collection snapshot')
     steps=[stage('collection','Source collection','delivered' if collected else 'attention' if collection.get('status') in failed or command.get('status') in failed else 'pending',
-                 'Saved sources reused' if source_reuse else collection.get('issue') or collection.get('status') or 'Waiting for the Mac collection snapshot')]
-    has_report=any(r.get('has_report') for r in reports)
+                 'Saved sources reused' if source_reuse else collection_detail)]
+    # Rows are newest-first. Earlier saved outputs remain available, but cannot
+    # establish delivery of the current attempt.
+    has_report=bool(reports and reports[0].get('has_report'))
+    older_report=any(r.get('has_report') for r in reports[1:])
     recap_failed=bool(reports and reports[0].get('status') in failed)
     if not source_reuse:
         steps.append(stage('recap','Analyst recap','attention' if recap_failed else 'delivered' if has_report else 'pending',
-                           'Latest recap needs attention; an earlier saved report may still be available in Analyst Inbox' if recap_failed else 'Report saved in Analyst Inbox; approval is separate' if has_report else 'Recap not saved yet; dispatch alone is not completion'))
+                           'Latest recap needs attention; an earlier saved report may still be available in Analyst Inbox' if recap_failed else 'Report saved in Analyst Inbox; approval is separate' if has_report else 'Latest recap is not saved yet; an earlier report remains available in Analyst Inbox' if older_report else 'Recap not saved yet; dispatch alone is not completion'))
     if payload.get('meetingPrep'):
-        ready=prep.get('status')=='done' and any(v.get('status')=='ready' for v in versions)
-        steps.append(stage('questions','Meeting question pack','delivered' if ready else 'attention' if prep.get('status') in failed else 'pending',
-                           'Question pack saved; open questions to inspect its supporting passages' if ready else prep.get('error') or prep.get('stage') or ('Preparing from saved originals; no new recap requested' if source_reuse else 'Waiting for verified sources and the analyst recap')))
+        ready=prep.get('status')=='done' and bool(versions and versions[0].get('status')=='ready')
+        questions_failed=prep.get('status') in failed or bool(versions and versions[0].get('status') in failed)
+        steps.append(stage('questions','Meeting question pack','delivered' if ready else 'attention' if questions_failed else 'pending',
+                           'Question pack saved; open questions to inspect its supporting passages' if ready else prep.get('error') or ('Latest question version needs attention; earlier saved versions remain available' if questions_failed else None) or prep.get('stage') or ('Preparing from saved originals; no new recap requested' if source_reuse else 'Waiting for verified sources and the analyst recap')))
     if payload.get('autoProposal'):
         status=proposal.get('status')
         steps.append(stage('proposal','Thesis change proposal','delivered' if status in ('awaiting_approval','applied') else 'attention' if status in failed or dispatch.get('status') in failed else 'pending',

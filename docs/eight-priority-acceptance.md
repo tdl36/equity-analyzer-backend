@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T348 repairs existing command/meeting assignment delivery status: collector auth/
+attention blockers are visible, and older saved reports or question versions do not
+prove current-attempt delivery. Synthetic branch checks pass; live acceptance stays open.
+
 T347 confirms the exact saved edit revision and text before releasing local recovery;
 rejected older edits retain their original baseline. These are synthetic recovery
 checks, not live note edits, processing proof or investor acceptance.

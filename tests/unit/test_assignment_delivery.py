@@ -29,3 +29,49 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(result['expected'],2)
     def test_blocked_dispatch_requires_attention(self):
         self.assertEqual(self.run_contract(payload={'autoProposal':True},dispatch={'status':'blocked'})['state'],'attention')
+
+    def test_actual_collection_attention_and_auth_states_are_not_pending(self):
+        for status in ('attention', 'needs_auth', 'needs_attention', 'stopped'):
+            with self.subTest(status=status):
+                result=self.run_contract(collection={'status':status,'issue':'Preserved collector reason'})
+                self.assertEqual(result['state'],'attention')
+                self.assertEqual(result['steps'][0]['state'],'attention')
+                self.assertEqual(result['steps'][0]['detail'],'Preserved collector reason')
+                self.assertEqual(result['delivered'],0)
+
+    def test_newer_unfinished_recap_cannot_inherit_an_older_saved_report(self):
+        for status in ('queued','running','pending'):
+            with self.subTest(status=status):
+                result=self.run_contract(reports=[{'status':status,'has_report':False},
+                                                 {'status':'completed','has_report':True}])
+                self.assertEqual(result['state'],'in_progress')
+                self.assertEqual(result['steps'][1]['state'],'pending')
+                self.assertIn('earlier report remains available',result['steps'][1]['detail'])
+                self.assertEqual(result['delivered'],1)
+
+    def test_latest_saved_recap_and_attention_remain_distinct(self):
+        result=self.run_contract(reports=[{'status':'completed','has_report':True},
+                                         {'status':'failed','has_report':False}])
+        self.assertEqual(result['state'],'delivered')
+        for status in ('attention','needs_auth','stopped'):
+            result=self.run_contract(reports=[{'status':status,'has_report':True}])
+            self.assertEqual(result['steps'][1]['state'],'attention')
+
+    def test_latest_question_version_controls_delivery_without_losing_history(self):
+        args=dict(source_reuse=True,payload={'meetingPrep':{'duration':60}},prep={'status':'done'})
+        for status in ('pending','generating','failed','attention'):
+            versions=[{'status':status},{'status':'ready'}]
+            with self.subTest(status=status):
+                result=self.run_contract(**args,versions=versions)
+                expected='attention' if status in ('failed','attention') else 'pending'
+                self.assertEqual(result['steps'][1]['state'],expected)
+                self.assertEqual(result['delivered'],1)
+                self.assertEqual(versions,[{'status':status},{'status':'ready'}])
+        self.assertEqual(self.run_contract(**args,versions=[{'status':'ready'},{'status':'failed'}])['state'],'delivered')
+
+    def test_missing_collector_issue_exposes_auth_or_command_failure(self):
+        result=self.run_contract(collection={'status':'needs_auth'})
+        self.assertIn('AlphaSense sign-in',result['steps'][0]['detail'])
+        result=self.run_contract(collection=None,command={'status':'failed','error':'Command was not acknowledged'})
+        self.assertEqual(result['state'],'attention')
+        self.assertEqual(result['steps'][0]['detail'],'Command was not acknowledged')

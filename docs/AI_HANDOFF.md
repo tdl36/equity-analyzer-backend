@@ -2,6 +2,46 @@
 
 Updated: October 14, 2026
 
+## T348 — Current assignment delivery cannot hide behind older outputs
+
+Existing command/meeting assignment workspace delivery omitted the collector's
+actual `attention` and `needs_auth` states, showing these blockers as ordinary
+progress. The read-only delivery contract now recognizes these plus stopped/
+needs-attention states, retains collector or command errors and supplies explicit
+AlphaSense sign-in guidance when no issue text exists. No worker or queue mutation.
+
+The same contract formerly counted any older saved analyst recap or ready question
+version as current delivery. It now uses the newest-first report/version rows for
+the current attempt. A newer unfinished recap remains pending with an explicit
+older-report availability message. A newer failed question version needs attention;
+earlier saved versions remain available. Current saved outputs still count, source
+reuse retains its existing scope, and no output is regenerated, removed or accepted.
+This applies to the existing command/meeting/My Work assignment inspector, not a
+new Lab dashboard or changed coordinated-assignment authorization.
+
+Validation: 12 focused contract tests, 1,773 full safe backend and 265 frontend
+tests pass; Python compilation and production build pass. Actual workspace browser
+fixtures use backend-generated synthetic statuses at 390/1280px, covering auth,
+new recap pending, latest question failure and complete delivery with retained
+history. GET-only, no overflow or browser errors; screenshots inspected. No paid
+calls, original changes, active-job mutations or investor decisions.
+Logs: /tmp/charlie-T348-{focused,backend,frontend,build,ui}.log.
+
+Read-only live audit: four command inventory entries, three workspaces inspected
+(two MDT, one ABT); their collection snapshots are absent, while some saved recap/
+question outputs exist. Existing in-progress state remains; do not infer historical
+collection completion from those outputs or synthetic scenarios. No inspected live
+workspace exercised the new auth/latest-failure branch. Log:
+/tmp/charlie-T348-live-before.log. Focused CVS at 02:27 UTC remains queued with zero
+source receipts, collection-only true; no end-to-end proof or processing approval.
+
+Next verify exact deployed revision and read-only workspace contracts, preserving
+collection evidence and request-specific processing approval gates. Reconcile
+actual source receipts when they arrive. Missing historical collection snapshots
+must remain explicit rather than inferred complete. All eight acceptance items and
+historical valuation reference-schema gap stay open; original Pipeline and backfill
+synthesis pause unchanged.
+
 ## T347 — Edit recovery opens the confirmed immutable revision
 
 Critical-path saved-output repair: full-note edit saves formerly ignored the write
