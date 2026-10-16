@@ -7,7 +7,9 @@ None of the eight priorities is certified complete merely by this audit.
 T353 verifies saved-meeting/company identity before Home/Activity links open it.
 Missing or unavailable identities preserve jobs and explain fallback navigation.
 Synthetic database and phone/desktop route checks pass; this is output-access
-engineering, not collection-to-processing or investor acceptance.
+engineering, not collection-to-processing or investor acceptance. Hosted inventory
+and three retained meeting destinations verified; no current live meeting-work
+rows exist, so the new route cases remain synthetic validation.
 
 T352 isolates answer/history/quality failures and retries, preserves local drafts,
 and binds quality checks to the displayed saved pack. Synthetic outage/navigation
