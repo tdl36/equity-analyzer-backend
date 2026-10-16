@@ -38,6 +38,31 @@ fixtures before changing behavior. Continue the existing selected-processing
 handoff; no wider dashboard or second collector. Historical schema, real approved
 processing and all eight investor/live acceptance certifications remain open.
 
+T343 production verified: Render 26507e09c179198f1d55b7503c9195c84084c04a;
+Cloudflare 39b585dc-f619-4dcf-9fe2-2638d1b24d79. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy at 0.4s; unchanged source, no restart.
+Read-only source/proposal authentication and scope guards pass. Activity has no
+unavailable dependencies, unchanged research/audio truncation and zero full-note
+rows. Verification: /tmp/charlie-T343-verify.log. No live paid generation or investor
+acceptance was performed. Operations is active and reports 3M browser source
+screening; that message is not a completed download/import receipt.
+
+Follow-up inspection resolves the speculative duplicate-filename concern: production
+schema app_v3.py defines UNIQUE(ticker,filename), whereas the small assignment test
+fixture omits that constraint. No demonstrated live ambiguity or schema drift was
+found; do not spend another release “fixing” fixture-only duplicate rows. Collection
+completion already consolidates receipts by filename, and proposal inventory also
+fails closed on ambiguous identities. No production schema/data changes made.
+
+Next: inspect genuine existing collection receipts and selected processing readiness,
+then trace saved output links/review once request-specific processing is authorized.
+While waiting for external evidence, continue bounded real saved-output quality and
+source-provenance audits against the established one-pager acceptance checklist;
+repair demonstrated delivery defects rather than inventing another orchestration
+layer or cosmetic milestone. Historical reference-schema and all eight live/investor
+acceptance certifications remain open. Docs-only receipt uses [skip render]; unrelated
+runtime files and inherited handoff changes preserved.
+
 ## T342 — Independently requested full notes survive derivative failures
 
 Critical-path source-to-output repair: a meeting-prep or thesis-derivative ValueError
