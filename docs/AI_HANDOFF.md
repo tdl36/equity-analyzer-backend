@@ -2,6 +2,42 @@
 
 Updated: October 14, 2026
 
+## T343 — One-pager data and rendering failures retain independent outputs
+
+Critical-path partial delivery: optional one-pager public fundamentals retrieval
+and local HTML rendering previously stopped all later outputs. After the common
+original/source/report gates succeed, retrieval failure now records a visual-only
+error and does not render a data-less substitute one-pager. Other explicitly
+requested drafts can proceed. A local rendering exception similarly records an
+output-specific safe error and allows later derivatives to finish. Private exception
+bodies are not exposed. Database/store failures remain outside the rendering catch.
+
+Explicit resume retries missing outputs and reuses saved report/note identities;
+saved artifacts and thesis drafts are not recreated. A saved visual artifact does
+not cause another public-data fetch. The parent remains attention while any output
+fails; thesis errors retain first position for the bounded quality-repair gate.
+Collection-only, source-hash, shared-research, stop and provider-ambiguity gates
+are unchanged. No additional generation is authorized and no automatic synthesis
+setting or accepted research is changed. Original Pipeline and Mac agent unchanged.
+
+Validation: 53 focused assignment tests, 1,759 full safe backend tests, 254 frontend tests,
+Python compilation and production build. Isolated tests cover no visual fallback,
+retained independent drafts, public-data retry, missing-only rendering, frozen
+note replay, mixed thesis/visual errors, private-error redaction and shared-report
+attention blocking all output work. Actual component fixtures at 390/1280px show
+partial saved outputs, per-output errors, retained full-note destination and no
+false one-pager preview or overflow. Screenshots inspected. Synthetic providers
+and isolated PostgreSQL only; no paid QA or investor approval.
+Logs: /tmp/charlie-T343-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify exact deployment and inspect genuine collection/import receipts. While
+live evidence is pending, inspect source-only completion's filename-only lookup for
+ambiguous same-name records: verify exact source identity/hash and prevent false
+availability claims without modifying originals. Prove any defect with isolated
+fixtures before changing behavior. Continue the existing selected-processing
+handoff; no wider dashboard or second collector. Historical schema, real approved
+processing and all eight investor/live acceptance certifications remain open.
+
 ## T342 — Independently requested full notes survive derivative failures
 
 Critical-path source-to-output repair: a meeting-prep or thesis-derivative ValueError

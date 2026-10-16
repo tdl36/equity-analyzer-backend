@@ -197,6 +197,91 @@ class AssignmentPostgresTests(unittest.TestCase):
         out=self.client.get('/api/research/assignments/'+self.ident+'/artifact/visual');self.assertEqual(out.status_code,200);self.assertIn('sandbox',out.headers['Content-Security-Policy'])
         public=self.client.get('/api/research/assignments?ticker='+self.ticker).json['assignments'][0]
         self.assertNotIn('thesisPackage',public['result']);self.assertNotIn('html',public['result']['artifacts'][0])
+    def start_visual_data_assignment(self):
+        self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Frozen fixture'}
+        self.note_calls=[]
+        def dispatch(ident,p,pack):
+            self.note_calls.append((ident,copy.deepcopy(pack)))
+            return {'noteId':child(ident,'full-lab-note'),'status':'draft'}
+        self.co.lab_note_dispatch=dispatch
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['visual','summary_note','thesis'],
+              'visualFundamentals':True,'labFullNote':{'allowPdfText':False}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+
+    def test_visual_data_failure_retains_other_requested_drafts_without_fallback_visual(self):
+        self.start_visual_data_assignment()
+        with patch('stock_visual_fundamentals.collect',side_effect=RuntimeError('Private provider payload')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention')
+        self.assertNotIn('visual',row['result']['artifacts'])
+        self.assertIn('summary_note',row['result']['artifacts'])
+        self.assertTrue(row['result']['thesisDraftId']);self.assertEqual(row['result']['labNoteStatus'],'draft')
+        self.assertEqual(set(row['result']['outputErrors']),{'visual'})
+        self.assertNotIn('Private',json.dumps(row['result'])+row['error'])
+        self.assertEqual(self.client.get('/api/research/assignments/'+self.ident+'/artifact/visual').status_code,404)
+
+    def test_visual_data_retry_preserves_saved_outputs_and_reuses_research(self):
+        self.start_visual_data_assignment()
+        with patch('stock_visual_fundamentals.collect',side_effect=TimeoutError):row=self.advance()
+        before=copy.deepcopy(row['result']);original_note=note;original_invoke=self.co.invoke
+        def render(run,kind,p):
+            self.assertEqual(kind,'visual');return original_note(run,kind,p)
+        def invoke(endpoint,method,body,params):
+            if endpoint=='thesis_imports.drafts':raise AssertionError('Saved draft must not be recreated')
+            return original_invoke(endpoint,method,body,params)
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={}).status_code,200)
+        f={'version':2,'asOf':'2026-10-10','annuals':[]}
+        with patch('stock_visual_fundamentals.collect',return_value=f) as collect,patch('research_assignment_outputs.note',side_effect=render),patch.object(self.co,'invoke',side_effect=invoke):
+            row=self.advance()
+        self.assertEqual(row['status'],'complete',row['error']);self.assertEqual(collect.call_count,1)
+        self.assertEqual(row['result']['artifacts']['summary_note'],before['artifacts']['summary_note'])
+        self.assertEqual(row['result']['thesisDraftId'],before['thesisDraftId'])
+        self.assertEqual(row['result']['outputErrors'],{});self.assertEqual(len(self.submits),1)
+        self.assertEqual(self.note_calls[0],self.note_calls[1])
+
+    def test_renderer_failure_does_not_hide_later_outputs_and_retry_only_renders_missing(self):
+        self.start(['summary_note','stock_summary','thesis']);self.collected()
+        original=note
+        def render(run,kind,p):
+            if kind=='summary_note':raise RuntimeError('Private licensed source body')
+            return original(run,kind,p)
+        with patch('research_assignment_outputs.note',side_effect=render):row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertEqual(set(row['result']['outputErrors']),{'summary_note'})
+        self.assertIn('stock_summary',row['result']['artifacts']);self.assertTrue(row['result']['thesisDraftId'])
+        self.assertNotIn('Private',json.dumps(row['result'])+row['error'])
+        saved=copy.deepcopy(row['result']['artifacts']['stock_summary'])
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={}).status_code,200)
+        with patch('research_assignment_outputs.note',wraps=original) as rendering:row=self.advance()
+        self.assertEqual([c.args[1] for c in rendering.call_args_list],['summary_note'])
+        self.assertEqual(row['status'],'complete');self.assertEqual(row['result']['artifacts']['stock_summary'],saved)
+        self.assertEqual(len(self.submits),1)
+
+    def test_combined_visual_and_thesis_errors_keep_thesis_repair_first(self):
+        self.start_visual_data_assignment()
+        with patch('stock_visual_fundamentals.collect',side_effect=TimeoutError),patch('research_assignment_outputs.thesis',side_effect=ValueError('No supported thesis statements: fixture')):
+            row=self.advance()
+        self.assertEqual(set(row['result']['outputErrors']),{'visual','thesis'})
+        self.assertTrue(row['error'].startswith('No supported thesis statements'))
+        self.assertEqual(row['result']['labNoteStatus'],'draft')
+
+    def test_saved_visual_is_not_rebuilt_or_refetched_during_other_output_recovery(self):
+        self.start_visual_data_assignment()
+        with patch('stock_visual_fundamentals.collect',return_value={'version':2,'annuals':[]}):row=self.advance()
+        self.assertEqual(row['status'],'complete');saved=copy.deepcopy(row['result']['artifacts'])
+        state=row['result'];state.pop('visualFundamentals',None)
+        self.co.store(self.ident,state,'running')
+        with patch('stock_visual_fundamentals.collect',side_effect=AssertionError('Saved visual does not require new retrieval')),patch('research_assignment_outputs.note',side_effect=AssertionError('Saved drafts must not be rendered again')):
+            row=self.advance()
+        self.assertEqual(row['status'],'complete');self.assertEqual(row['result']['artifacts'],saved)
+
+    def test_shared_report_attention_still_blocks_all_output_work(self):
+        self.start_visual_data_assignment();self.report_status='attention'
+        with patch('stock_visual_fundamentals.collect') as collect,patch('research_assignment_outputs.note') as render:
+            row=self.advance()
+        self.assertEqual(row['status'],'attention');collect.assert_not_called();render.assert_not_called()
+        self.assertFalse(self.note_calls);self.assertFalse(row['result'].get('artifacts'))
+
     def test_visual_refresh_is_read_only_and_original_remains_available(self):
         self.start(['visual']);self.collected();self.advance()
         before=self.co.read(self.ident)

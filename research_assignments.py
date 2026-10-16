@@ -160,22 +160,30 @@ class Coordinator:
                     resumed=self.invoke('stock_analysis.control','POST',{},dict(ident=report_id,action='resume'))
                     if resumed[1]>=400 and 'active' not in resumed[0].get('error','').lower():raise ValueError(resumed[0].get('error','Research resume needs attention.'))
                     state['step']='Research and source review';self.store(ident,state,'running');return
-                if p.get('visualFundamentals') and 'visual' in p['outputs'] and not state.get('visualFundamentals'):
+                output_errors={}
+                state['outputErrors']=output_errors
+                artifacts=state.setdefault('artifacts',{})
+                if p.get('visualFundamentals') and 'visual' in p['outputs'] and 'visual' not in artifacts and not state.get('visualFundamentals'):
                     from stock_visual_fundamentals import collect
                     state['step']='Collecting historical filings and dated market data';self.store(ident,state,'running')
                     try:state['visualFundamentals']=collect(ticker)
-                    except Exception:raise ValueError('Public fundamentals could not be validated. Saved research is retained; resume to retry public data retrieval without new model calls.')
+                    except Exception:
+                        output_errors['visual']='Public fundamentals could not be validated. The one-pager remains pending; other requested drafts are retained. Resume to retry public data retrieval without new model calls.'
                     self.store(ident,state,'running')
                 # Use raw saved source metadata; detail intentionally removes source text.
                 from research_assignment_outputs import note,thesis
-                artifacts=state.setdefault('artifacts',{})
                 for kind in p['outputs']:
-                    if kind in ('thesis','meeting_prep'):continue
+                    if kind in ('thesis','meeting_prep') or kind in output_errors:continue
                     if kind not in artifacts:
-                        artifacts[kind]={'html':note(report,kind,{**p,'_visualFundamentals':state.get('visualFundamentals')}),'reviewRequired':True}
+                        try:
+                            rendered=note(report,kind,{**p,'_visualFundamentals':state.get('visualFundamentals')})
+                        except Exception:
+                            # Rendering is local and independent; never expose
+                            # exception text that may contain licensed evidence.
+                            output_errors[kind]='This draft could not be rendered. Saved research and other outputs are retained; resume to retry this output.'
+                        else:
+                            artifacts[kind]={'html':rendered,'reviewRequired':True}
                         state['step']='Preparing requested deliverables';self.store(ident,state,'running')
-                output_errors={}
-                state['outputErrors']=output_errors
                 if 'meeting_prep' in p['outputs'] and not state.get('meetingId'):
                     try:
                         from research_assignment_meeting import selection
@@ -222,7 +230,7 @@ class Coordinator:
                     # Keep thesis errors first for the existing bounded repair gate.
                     # Attention requires explicit resume; it must not repeatedly
                     # retry failed derivatives while the note worker continues.
-                    raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep','lab_note') if k in output_errors))
+                    raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep','lab_note','visual','summary_note','stock_summary') if k in output_errors))
                 if note_pending:
                     state['step']='Writing full Lab note from the shared originals';self.store(ident,state,'running');return
                 state['step']='Ready for investor review';self.store(ident,state,'complete')
