@@ -38,6 +38,34 @@ processing journey when genuine collection and investor authorization exist. Do 
 mark any of the eight acceptance certifications complete. Historical valuation still
 requires the documented permitted schema/security/currency evidence.
 
+T344 production verified: Render 8d22fa3a3fa610bdd5f5444a4aa32749f5289337;
+Cloudflare f78f27da-b52b-4927-99ac-8aabb832018d. Hosted JS/service-worker bytes
+and HTML marker match. Agent healthy, 10.3s heartbeat age; agent unchanged and not
+restarted. Read-only authentication, original/proposal scope and saved-history guards
+pass. Activity unavailable [], retained research/audio truncation, full-note count 0.
+Verification: /tmp/charlie-T344-verify.log. Backend briefly returned 502 during rollout,
+then exact revision and authenticated reads passed; no paid call was attempted.
+
+Live ABT same pending edition 6a8c989e-4ca2-45e8-8b57-273480bb31bd returns 200
+with correct pending label and eight source-provenance entries. Browser checks at
+390/1280px confirm no horizontal overflow, expanded register, print-visible status
+and identical main/scenario claim text to the pre-release preview. Accepted export
+is synthetic-tested only; no real edition decision was made. Private HTML/screenshots
+remain outside repo in /tmp/charlie-T344-private. Safe logs:
+/tmp/charlie-T344-live-{before,after,ui}.log.
+
+CVS read-only check at 01:36 UTC: assignment running, linked collection queued,
+zero source receipts, collection-only true, snapshot two seconds old; existing worker
+reports awake. This is not completed collection or processing evidence. All eight
+acceptance certifications remain open. Next critical-path action: inspect exact
+collection/import receipts and readiness of the existing selected processing proposal
+when available, then trace the genuinely investor-authorized generation to saved
+review outputs. While that external dependency remains, audit existing saved draft
+review/version links against immutable source/edition identities; repair only demonstrated
+defects. Keep broader dashboard expansion deferred and automatic synthesis paused.
+Docs-only checkpoint uses [skip render]; unrelated files and inherited handoff edits
+remain untouched.
+
 ## T343 — One-pager data and rendering failures retain independent outputs
 
 Critical-path partial delivery: optional one-pager public fundamentals retrieval
