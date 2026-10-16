@@ -52,6 +52,23 @@ export function readSubmission(storage,key){
  }catch{return {value:null,error:'Local submission recovery is unavailable or damaged. Saved server proposals can still be reviewed. Restore browser storage and refresh before creating or retrying a submission; the local record has not been discarded.'};}
 }
 
+// A request may leave this browser only after its exact recovery payload is read
+// back. Never overwrite another unresolved request or trust silent storage writes.
+export function writeSubmission(storage,key,body){
+ const raw=JSON.stringify(body),checked=readSubmission({getItem:()=>raw},key);
+ if(checked.error||!checked.value)throw Error('Invalid proposal recovery payload.');
+ const previous=storage.getItem(key);
+ if(previous!=null&&previous!==raw)throw Error('Another proposal submission needs reconciliation first.');
+ storage.setItem(key,raw);
+ if(storage.getItem(key)!==raw)throw Error('Proposal recovery could not be verified.');
+}
+export function clearSubmission(storage,key,requestId){
+ const previous=readSubmission(storage,key);
+ if(previous.error||previous.value&&previous.value.requestId!==requestId)throw Error('Proposal recovery identity changed.');
+ storage.removeItem(key);
+ if(storage.getItem(key)!=null)throw Error('Proposal recovery could not be cleared.');
+}
+
 // Keep unfinished event and longitudinal work independent; migrate a legacy
 // single draft without copying its sources or instructions to another purpose.
 export function emptyPurposeDraft(purpose){return {...emptyDraft(),purpose,outputs:purpose==='event_note'?['summary_note']:['thesis']};}

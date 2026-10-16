@@ -50,3 +50,21 @@ test('purpose workspace rejects mixed identities and silent storage failures wit
  assert.throws(()=>writeDraftWorkspace({getItem:()=>null,setItem(){}},'key',emptyPurposeDraft('event_note'),{}),/verified/);
  assert.ok(readDraftWorkspace({getItem:()=>'{bad'},'key').error);
 });
+
+
+test('submission recovery verifies writes and cleanup without overwriting another identity',async()=>{
+ const {writeSubmission,clearSubmission}=await import('../../src/processing-proposal-draft.mjs');
+ const body={requestId:'11111111-1111-4111-8111-111111111111',filenames:['one.pdf'],plan:{researchPurpose:{kind:'thesis_review'},outputs:['thesis']}};
+ const store=storage();writeSubmission(store,'request',body);writeSubmission(store,'request',body);
+ const raw=store.getItem('request');
+ assert.throws(()=>writeSubmission(store,'request',{...body,filenames:['different.pdf']}),/reconciliation/);
+ assert.throws(()=>clearSubmission(store,'request','22222222-2222-4222-8222-222222222222'),/identity/);
+ assert.equal(store.getItem('request'),raw);
+ assert.throws(()=>writeSubmission({getItem:()=>null,setItem(){}},'request',body),/verified/);
+ assert.throws(()=>clearSubmission({...store,removeItem(){}},'request',body.requestId),/cleared/);
+ assert.equal(store.getItem('request'),raw);
+ clearSubmission(store,'request',body.requestId);assert.equal(store.getItem('request'),undefined);
+ clearSubmission(store,'request',body.requestId);
+ store.setItem('request','{damaged');assert.throws(()=>clearSubmission(store,'request',body.requestId),/identity/);
+ assert.equal(store.getItem('request'),'{damaged');
+});

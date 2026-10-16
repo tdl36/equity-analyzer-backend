@@ -191,7 +191,33 @@ with sync_playwright() as p:
   assert writes==[]
   expect(save).to_be_enabled()
   review.get_by_label('Processing research horizon',exact=True).fill('6–9 months')
+  # Simulate storage silently dropping only request recovery; authoring still works.
+  page.evaluate('''() => { window.originalSubmissionSet=Storage.prototype.setItem;
+   Storage.prototype.setItem=function(k,v){if(k.startsWith('charlie-processing-proposal:'))return;return window.originalSubmissionSet.call(this,k,v);}; }''')
   save.click()
+  expect(review.get_by_text('No proposal was sent. Browser recovery storage is unavailable.',exact=True)).to_be_visible()
+  assert writes==[]
+  expect(save).to_be_disabled()
+  page.evaluate('() => { Storage.prototype.setItem=window.originalSubmissionSet; }')
+  review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
+  expect(save).to_be_enabled()
+  if width==390:
+   page.evaluate('''() => { window.originalSubmissionRemove=Storage.prototype.removeItem;
+    Storage.prototype.removeItem=function(k){if(k.startsWith('charlie-processing-proposal:'))return;return window.originalSubmissionRemove.call(this,k);}; }''')
+  save.click()
+  if width==390:
+   expect(review.get_by_text('Proposal recovery could not be cleared.',exact=True)).to_be_visible()
+   expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
+   expect(review.get_by_label('Processing event title')).to_be_disabled()
+   assert len(writes)==1 and len(proposals)==1
+   review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
+   expect(review.get_by_text('The saved proposal was found, but its local recovery record could not be cleared.',exact=False)).to_be_visible()
+   expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_disabled()
+   page.evaluate('() => { Storage.prototype.removeItem=window.originalSubmissionRemove; }')
+   review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
+   expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_have_count(0)
+   assert len(writes)==1 and len(proposals)==1
+  print(width,'verified recovery storage blocks silent writes; confirmed receipts reconcile without duplicate submission',flush=True)
   if width==1280:
    expect(review.get_by_role('button',name='Retry saved proposal submission',exact=True)).to_be_visible()
    assert len(writes)==1

@@ -5,7 +5,7 @@ import { ProcessingSelectionReview } from './processing-selection-review';
 import { OriginalDownload } from './original-download';
 import { CollectedSourcePicker } from './collected-source-picker';
 import { processingProposal, processingProposalPage, mergeProcessingProposals } from './processing-proposal-status.mjs';
-import { emptyDraft, emptyPurposeDraft, draftKey, readDraftWorkspace, writeDraftWorkspace, readSubmission } from './processing-proposal-draft.mjs';
+import { emptyDraft, emptyPurposeDraft, draftKey, readDraftWorkspace, writeDraftWorkspace, readSubmission, writeSubmission, clearSubmission } from './processing-proposal-draft.mjs';
 import { ProcessingCoverage } from './processing-coverage';
 import { ProcessingSourceLibrary } from './processing-source-library';
 import * as React from 'react';
@@ -235,7 +235,7 @@ function ProposalReview({
         if (!current()) return;
         if (proposals.some(p => p.id === recovered.value.requestId)) {
           try {
-            sessionStorage.removeItem(key);
+            clearSubmission(sessionStorage, key, recovered.value.requestId);
             if (live.current) {
               setPending(null);
               resetForm();
@@ -340,7 +340,7 @@ function ProposalReview({
       }
     };
     try {
-      sessionStorage.setItem(key, JSON.stringify(body));
+      writeSubmission(sessionStorage, key, body);
     } catch {
       setSubmissionIssue('Submission was not sent because browser recovery could not be saved. Restore browser storage and refresh before submitting.');
       throw Error('No proposal was sent. Browser recovery storage is unavailable.');
@@ -349,12 +349,12 @@ function ProposalReview({
     try {
       var receipt = processingProposal(await call(path, body), job);
       if (receipt.id !== body.requestId) throw Error('Proposal receipt mismatch. Refresh saved proposals.');
-      sessionStorage.removeItem(key);
+      clearSubmission(sessionStorage, key, body.requestId);
       setPending(null);
       resetForm();
     } catch (e) {
       if (e.status === 409) {
-        sessionStorage.removeItem(key);
+        clearSubmission(sessionStorage, key, body.requestId);
         setPending(null);
       }
       throw e;

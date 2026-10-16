@@ -2,6 +2,33 @@
 
 Updated: October 14, 2026
 
+## T373 — Verify proposal recovery before submission and after receipt
+
+Processing-proposal submission previously trusted sessionStorage writes/removals
+without reading them back. A silently dropped recovery write followed by a lost
+response could forget the submitted identity; a silently failed cleanup could
+present an editable form while retaining an unresolved recovery record.
+
+Submission now validates and reads back its exact payload before any network write,
+refuses to overwrite another unresolved payload, and checks the expected identity
+before clearing recovery. Cleanup is read back too. Failed cleanup retains the
+pending request and frozen form; refreshing can reconcile the saved server proposal
+without resubmitting. Restore storage and refresh to clear the verified receipt.
+The same helper protects successful responses, rejection cleanup and reload recovery.
+No processing authorization, collection worker or original source behavior changes.
+
+Validation: 10 focused frontend tests, all 292 frontend and 1848 safe backend tests,
+and production build pass. Synthetic full-app checks at 390/1280 inject silent
+request-storage failure (zero submissions), silent receipt-cleanup failure (one
+saved proposal, frozen editing), recovery after storage is restored, lost-response
+reconciliation, separate-purpose drafts and explicit mock approval. No production
+proposal, processing approval, model work or investor acceptance was performed.
+
+Next: verify hosted T373 and record the actual collection state. Genuine collection
+receipts, request-specific processing authorization, saved outputs and investor
+review remain the critical-path proof; all eight acceptance certifications remain
+open. Continue demonstrated delivery/recovery repairs while Operations collects.
+
 ## T372 — Revise a blocked proposal without rebuilding its intent
 
 Saved proposal cards now offer Revise as a new proposal. This copies editable

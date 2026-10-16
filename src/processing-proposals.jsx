@@ -5,7 +5,7 @@ import {ProcessingSelectionReview} from './processing-selection-review';
 import {OriginalDownload} from './original-download';
 import {CollectedSourcePicker} from './collected-source-picker';
 import {processingProposal,processingProposalPage,mergeProcessingProposals} from './processing-proposal-status.mjs';
-import {emptyDraft,emptyPurposeDraft,draftKey,readDraftWorkspace,writeDraftWorkspace,readSubmission} from './processing-proposal-draft.mjs';
+import {emptyDraft,emptyPurposeDraft,draftKey,readDraftWorkspace,writeDraftWorkspace,readSubmission,writeSubmission,clearSubmission} from './processing-proposal-draft.mjs';
 import {ProcessingCoverage} from './processing-coverage';
 import {ProcessingSourceLibrary} from './processing-source-library';
 import * as React from 'react';
@@ -66,7 +66,7 @@ function ProposalReview({api,job}){
    }
    if(!current())return;
    if(proposals.some(p=>p.id===recovered.value.requestId)){
-    try{sessionStorage.removeItem(key);if(live.current){setPending(null);resetForm();}}
+    try{clearSubmission(sessionStorage,key,recovered.value.requestId);if(live.current){setPending(null);resetForm();}}
     catch{issue='The saved proposal was found, but its local recovery record could not be cleared. Restore browser storage and refresh before submitting again.';}
    }else if(live.current)setPending(recovered.value);
   }else if(!issue&&live.current)setPending(null);
@@ -81,10 +81,10 @@ function ProposalReview({api,job}){
  const save=()=>act(async()=>{
   if(submissionIssue)throw Error(submissionIssue);
   const body=pending||{requestId:crypto.randomUUID(),filenames:[...selected].sort(),supplementalIds:[...supplements].sort(),plan:{researchPurpose:purpose==='event_note'?{kind:purpose,event:{title:title.trim(),date:eventDate}}:{kind:purpose},outputs:[...outputs].sort(),instruction,horizon,...(visualFundamentals?{visualFundamentals:true}:{}),...(fullNote?{labFullNote:{allowPdfText}}:{}),...(outputs.includes('meeting_prep')?{meeting:{date:meetingDate,type:meetingType}}:{})}};
-  try{sessionStorage.setItem(key,JSON.stringify(body));}catch{setSubmissionIssue('Submission was not sent because browser recovery could not be saved. Restore browser storage and refresh before submitting.');throw Error('No proposal was sent. Browser recovery storage is unavailable.');}
+  try{writeSubmission(sessionStorage,key,body);}catch{setSubmissionIssue('Submission was not sent because browser recovery could not be saved. Restore browser storage and refresh before submitting.');throw Error('No proposal was sent. Browser recovery storage is unavailable.');}
   setPending(body);
-  try{const receipt=processingProposal(await call(path,body),job);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');sessionStorage.removeItem(key);setPending(null);resetForm();}
-  catch(e){if(e.status===409){sessionStorage.removeItem(key);setPending(null);}throw e;}
+  try{const receipt=processingProposal(await call(path,body),job);if(receipt.id!==body.requestId)throw Error('Proposal receipt mismatch. Refresh saved proposals.');clearSubmission(sessionStorage,key,body.requestId);setPending(null);resetForm();}
+  catch(e){if(e.status===409){clearSubmission(sessionStorage,key,body.requestId);setPending(null);}throw e;}
  });
  return <section aria-label="Processing approval" style={{padding:'12px 0',overflowWrap:'anywhere'}}>
   <p><strong>Collected library → selected evidence → your processing approval</strong></p>
