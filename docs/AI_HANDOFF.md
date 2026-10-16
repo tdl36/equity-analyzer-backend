@@ -35,6 +35,18 @@ selected proposal, investor processing authorization and saved draft outputs rem
 the critical milestone. Operations owns browser collection; all eight acceptance
 certifications and the deferred shared approval dashboard remain open.
 
+T371 production verified: Render `56c2c6f0f76582d537c66d1441d30373e3d36ccc`,
+Cloudflare `d2c35cf8-71d6-4dff-90bd-55f414aed557`. Hosted JS/service-worker
+bytes and HTML match. New readiness missing-proposal, invalid-identity/filter and
+authentication guards pass. Positive saved-proposal readiness remains synthetic
+because no production proposal was created or approved for QA. Read-only CVS is
+still running / collection queued / zero verified sources, with processing
+preparation guarded. No collection worker, model call or investor decision invoked.
+Next: inspect genuine collection completion and selected proposal readiness when
+available; retain explicit processing authorization and subsequent investor review.
+Continue independent demonstrated workflow repairs without widening to a shared
+approval dashboard before the connected journey is proven.
+
 ## T370 — Saved original one-pagers stay reachable during render outages
 
 A visual preview previously depended on reading and re-rendering its saved report,
