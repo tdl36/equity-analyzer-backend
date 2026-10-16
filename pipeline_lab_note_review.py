@@ -100,16 +100,13 @@ def create_blueprint(get_db,authenticated,investor_identity,docx_export):
     @bp.get('/api/pipeline-lab/note-jobs/<ticker>')
     def listing(ticker):
         if not re.fullmatch('[A-Z0-9][A-Z0-9.-]{0,19}',ticker):return jsonify(error='Invalid ticker.'),400
-        with get_db() as (_,cur):
-            cur.execute('''SELECT j.note_id,j.status,j.reason,j.created_at,
-                (SELECT MAX(revision) FROM pipeline_lab_note_versions v WHERE v.note_id=j.note_id) AS revision,
-                (SELECT MAX(revision) FROM pipeline_lab_note_acceptances a WHERE a.note_id=j.note_id) AS accepted_revision
-                FROM pipeline_lab_note_jobs j JOIN pipeline_lab_note_plans p USING(note_id)
-                WHERE p.plan->>'ticker'=%s ORDER BY j.created_at DESC LIMIT 30''',(ticker,))
-            rows=[{'noteId':str(r['note_id']),'status':r['status'],'reason':r['reason'],
-                   'revision':r['revision'],'acceptedRevision':r['accepted_revision'],
-                   'createdAt':r['created_at'].isoformat()} for r in cur.fetchall()]
-        return jsonify(jobs=rows)
+        from pipeline_lab_note_archive import read_page
+        try:
+            if set(request.args)-{'cursor'} or len(request.args.getlist('cursor'))>1:
+                raise ValueError('Invalid saved-note archive filters.')
+            with get_db() as (_,cur):result=read_page(cur,ticker,request.args.get('cursor'))
+            return jsonify(result)
+        except ValueError as exc:return jsonify(error=str(exc)),400
     @bp.post('/api/pipeline-lab/notes/<note_id>/accept')
     def acceptance(note_id):
         if not investor_identity():return jsonify(error='Investor sign-in is required; machine credentials cannot accept research.'),403

@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T368 adds a read-only full-note archive beyond the recent 30 jobs, preserving exact
+saved/accepted revision choices and unsaved-edit recovery. Synthetic pagination,
+identity and responsive checks pass. This closes an older-output discoverability
+gap, not the genuine generation/investor acceptance milestone.
+
 T367 closes a coordinated saved-output navigation gap: assignment review now reads
 the exact delivered meeting-question version, separately from the current meeting
 workspace. Synthetic newer-version, identity, availability and responsive checks

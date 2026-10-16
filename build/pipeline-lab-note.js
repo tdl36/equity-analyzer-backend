@@ -1,6 +1,7 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { checkedNote, checkedNoteHistory, confirmedNoteEdit } from './pipeline-lab-note-model.mjs';
+import { LabNoteArchive } from './lab-note-archive';
 import NoteProvenance from './lab-note-provenance';
 import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
 var reasons = {
@@ -394,7 +395,16 @@ function LabNoteWorkspace({
       await post(`/api/pipeline-lab/note-job/${job.noteId}/recover`, {});
       await load();
     })
-  }, "Reconcile saved progress")))), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No recent full-note jobs in this list."), draft && /*#__PURE__*/React.createElement("div", {
+  }, "Reconcile saved progress")))), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No recent full-note jobs in this list."), /*#__PURE__*/React.createElement(LabNoteArchive, {
+    api: api,
+    ticker: ticker,
+    read: read,
+    describeReason: reason => reasons[reason],
+    disabled: busy || pendingEdit,
+    onOpen: (id, revision) => {
+      if (!unsaved || window.confirm('Leave these edits in browser-session recovery and open this saved revision?')) action(() => open(id, revision));
+    }
+  }), draft && /*#__PURE__*/React.createElement("div", {
     ref: review,
     style: {
       borderTop: '2px solid #8885',

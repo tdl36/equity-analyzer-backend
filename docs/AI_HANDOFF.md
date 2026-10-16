@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T368 — Older full Lab notes remain discoverable
+
+The full-note job list stopped at the newest 30 creations, leaving older notes
+accessible only through an already-known identity. Lab now has Find older full
+notes: a separate read-only archive with stable created-time/ID pages, saved titles,
+current job state, latest saved revision and exact accepted-revision links. Existing
+recent-job polling and the original Research Pipeline remain unchanged. Archive
+status is explicitly last-read; it does not infer investor acceptance or resume work.
+
+Company-bound cursors reject malformed, duplicate or mismatched filters. Timestamp
+ties and concurrent new arrivals do not skip older rows. Failed pages retain loaded
+entries. Opening an archive revision uses the existing exact-note reader, pending-
+edit lock and unsaved-edit/session-recovery guard. No generation or acceptance is
+triggered by browsing. Old interrupted jobs without a draft remain visible as such;
+this release does not reconcile uncertain provider outcomes.
+
+Validation: 6 focused backend and 2 focused frontend tests, all 1836 backend and
+283 frontend tests, Python compilation and production build pass. Disposable-DB
+checks traverse 65 notes with tied timestamps and a later insertion, preserve older
+acceptance/newer edits, and verify no new provider journal calls. Synthetic Chrome
+checks at 390/1280 pixels cover page failure/retry, exact draft/accepted opening,
+unsaved-edit cancel/confirm/recovery and no writes, errors or horizontal overflow.
+The phone archive render was inspected. No production notes were changed.
+
+Next: verify hosted T368. Genuine collection receipts → explicitly approved selected
+proposal → saved research remains the main live acceptance milestone. Operations
+owns collection reconciliation. Continue substantive saved-output reconciliation;
+shared approval expansion and all eight acceptance certifications remain open.
+
 ## T367 — Assignment review retains the delivered meeting-question version
 
 Coordinated assignments already retained meetingId and meetingQuestionSetId, but
