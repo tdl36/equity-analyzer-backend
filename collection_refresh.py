@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timedelta
 import json
+import re
 from pathlib import Path
 import time
 import uuid
@@ -29,6 +30,8 @@ class RefreshManager:
                 id INTEGER PRIMARY KEY CHECK(id=1), checked REAL, status TEXT);
             CREATE TABLE IF NOT EXISTS refresh_claim_order (
                 request_id TEXT PRIMARY KEY, turn INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS refresh_claim_receipts (
+                attempt_id TEXT PRIMARY KEY, target TEXT, request_id TEXT, owner TEXT, created REAL);
         ''')
 
     def validate(self, config):
@@ -213,9 +216,11 @@ class RefreshManager:
             return self._enqueue(row,manual=True)
 
     def due(self):
-        with self.c.lock():
-            rows = self.db.execute('SELECT * FROM refresh_policies WHERE next_due IS NOT NULL AND next_due<=?', (self.clock(),)).fetchall()
-            return [self._enqueue(r) for r in rows if json.loads(r['config'])['enabled']]
+        with self.c.lock():return self._due()
+
+    def _due(self):
+        rows = self.db.execute('SELECT * FROM refresh_policies WHERE next_due IS NOT NULL AND next_due<=?', (self.clock(),)).fetchall()
+        return [self._enqueue(r) for r in rows if json.loads(r['config'])['enabled']]
 
     def status(self):
         policies = []
@@ -252,13 +257,34 @@ class RefreshManager:
         from collection_original_sync import snapshot
         return {'policies':policies,'requests':requests,'worker':dict(worker) if worker else None,'folders':folders,'originalImports':snapshot(self.c)}
 
-    def claim(self, request_id=None):
-        self.due()
+    def _claim_result(self, row):
+        result=dict(row);result.pop('policy_config',None)
+        result.update(config=json.loads(row['config']),collection=self.c.status(row['run']))
+        return result
+
+    def claim(self, request_id=None, attempt_id=None):
+        if attempt_id is not None and (not isinstance(attempt_id,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,159}',attempt_id)):
+            raise ValueError('Use a stable collection attempt ID of 1–160 letters, digits, dots, colons, underscores or hyphens.')
         with self.c.lock():
+            if attempt_id is not None:
+                receipt=self.db.execute('SELECT * FROM refresh_claim_receipts WHERE attempt_id=?',(attempt_id,)).fetchone()
+                if receipt:
+                    if receipt['target']!=request_id:raise ValueError('This collection attempt ID belongs to a different request selection.')
+                    if receipt['request_id'] is None:return None
+                    # Read-only reconciliation. Never renew, steal, requeue or
+                    # dispatch work after the original lease has ended.
+                    row=self._require_active(receipt['request_id'],receipt['owner'])
+                    return self._claim_result(row)
+            self._due()
             stamp = self.clock()
+            def record(row):
+                if attempt_id is not None:
+                    self.db.execute('INSERT INTO refresh_claim_receipts(attempt_id,target,request_id,owner,created) VALUES(?,?,?,?,?)',
+                        (attempt_id,request_id,row['id'] if row else None,row['owner'] if row else None,stamp))
+                return self._claim_result(row) if row else None
             self.db.execute("INSERT INTO refresh_worker VALUES(1,?,'awake') ON CONFLICT(id) DO UPDATE SET checked=excluded.checked,status=excluded.status", (stamp,))
             if self.db.execute("SELECT id FROM refresh_requests WHERE lease_until>? AND status IN ('collecting','verifying')", (stamp,)).fetchone():
-                return None
+                return record(None)
             row = self.db.execute("""SELECT q.* FROM refresh_requests q JOIN refresh_policies p ON p.ticker=q.ticker
                 LEFT JOIN refresh_claim_order c ON c.request_id=q.id
                 WHERE q.status IN ('queued','collecting','verifying') AND (q.lease_until IS NULL OR q.lease_until<=?)
@@ -266,7 +292,7 @@ class RefreshManager:
                 AND (? IS NULL OR q.id=?)
                 ORDER BY COALESCE(c.turn,0),q.created,q.id LIMIT 1""", (stamp,request_id,request_id)).fetchone()
             if not row:
-                return None
+                return record(None)
             owner = str(uuid.uuid4())
             # Persist fair turns under the same worker lock as the lease. A
             # requeued import wait must not monopolize the oldest queue entry.
@@ -275,9 +301,7 @@ class RefreshManager:
             self.db.execute('''INSERT INTO refresh_claim_order(request_id,turn) VALUES(?,?)
                 ON CONFLICT(request_id) DO UPDATE SET turn=excluded.turn''', (row['id'],turn))
             self.db.execute("UPDATE refresh_requests SET status='collecting',owner=?,lease_until=?,issue=NULL WHERE id=?", (owner,stamp+1800,row['id']))
-            result = dict(row)
-            result.update(owner=owner, lease_until=stamp+1800, status='collecting', config=json.loads(row['config']), collection=self.c.status(row['run']))
-            return result
+            return record({**dict(row),'owner':owner,'lease_until':stamp+1800,'status':'collecting','issue':None})
 
     def include_meeting_presentations(self, request_id, owner):
         """Repair a pre-presentation meeting request without changing its dates or destination."""
@@ -475,10 +499,10 @@ def main():
     parser.add_argument('--stocks',type=Path,default=DEFAULT_STOCKS)
     parser.add_argument('command',choices=['status','due','claim','preflight','trigger','mark','complete','retry','cancel'])
     parser.add_argument('--ticker');parser.add_argument('--request');parser.add_argument('--owner')
-    parser.add_argument('--status');parser.add_argument('--issue',default='')
+    parser.add_argument('--attempt-id');parser.add_argument('--status');parser.add_argument('--issue',default='')
     args=parser.parse_args();c=Collector(args.state,args.stocks);m=RefreshManager(c)
     try:
-        if args.command=='claim':result=m.claim(args.request)
+        if args.command=='claim':result=m.claim(args.request,args.attempt_id)
         elif args.command=='trigger':result=m.trigger(args.ticker)
         elif args.command=='mark':result=m.mark(args.request,args.owner,args.status,args.issue)
         elif args.command=='complete':result=m.complete(args.request,args.owner)

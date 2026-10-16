@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T340 adds durable collector attempt receipts so lost claim responses can recover
+the same active lease without another fair turn. Isolated CLI/concurrency/restart
+tests pass. Operations adoption and a genuine recovered collection remain unproven;
+CVS legacy ownership and live queue order were not changed.
+
 T339 retains event-specific results, supported expectations and follow-up questions
 in event debrief derivatives while preserving source checks and separate thesis
 approval. Synthetic evidence/layout checks pass; no live note generation or investor

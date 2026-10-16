@@ -2,6 +2,44 @@
 
 Updated: October 14, 2026
 
+## T340 — Recover an interrupted collector claim without taking another turn
+
+Critical-path collection recovery: a repeated bare claim returns null while an
+existing lease is active, even when that lease belongs to the caller's interrupted
+attempt. Operations' recent record includes claim/context-compaction/repeated-claim
+turns with no browser collection; it does not establish the original interruption
+cause. CVS's released legacy lease and fair queue position are not altered here.
+
+Added optional stable --attempt-id to the existing collection_refresh claim command.
+The local receipt, original lease and fair turn commit atomically. Repeating the
+same attempt/target returns only its still-active, still-authorized lease and current
+progress. Recovery does not enqueue due work, renew expiry, consume another turn,
+change frozen source scope or dispatch research. Null receipts remain null. Changed
+targets, expired/released/cancelled/reassigned leases and paused scheduled policies
+are refused; the existing explicit manual-policy exception remains. Concurrent
+processes cannot create two claims for one attempt. A receipt-write failure rolls
+back claim/turn mutations. Owner tokens stay private and out of cloud snapshots.
+
+The existing Operations runbook now directs the collector to use the automation ID,
+heartbeat timestamp and attempt number, retaining that identity through response loss
+or compaction. No duplicate worker, scheduled task, API entitlement or orchestrator.
+No automation schedule or existing live request was changed. Old claims lack receipts
+and cannot be retroactively adopted. Real worker adoption/recovery still needs
+observation; this change is not proof that browser collection is now uninterrupted.
+
+Validation: 51 focused tests, 1,730 full safe backend tests, 252 frontend tests,
+Python compilation and production build pass. Temporary-ledger tests include real
+CLI replay, independent concurrent processes, restart/lost-response recovery, fair
+queue order, null receipts, token privacy and atomic rollback. No production claim,
+lease renewal, queue reorder, source download, generation or approval was used for QA.
+Logs: /tmp/charlie-T340-{focused,backend,frontend,build,deploy,verify}.log.
+
+Next: verify exact release, then observe Operations using the receipt protocol and
+inspect genuine CVS original/import progress. No live end-to-end or investor
+acceptance is claimed; historical schema and all eight acceptance certifications
+remain open. Backfill synthesis remains paused. Agent source and original Pipeline
+unchanged; no restart required. Local CLI loads the updated module on invocation.
+
 ## T339 — Event debriefs retain event-specific evidence from the saved report
 
 Critical-path purpose separation: event summary-note derivatives previously reused
