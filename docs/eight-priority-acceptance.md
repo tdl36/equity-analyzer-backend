@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T350 adds exact saved meeting-version inspection from historical assignments,
+including retained passages and explicit missing-evidence labels. Read-only live
+meeting destinations match; synthetic identity/recovery checks pass. This is saved-
+output access, not new processing or investor acceptance.
+
 T349 retains display-only exact-request collection terminal receipts through the
 existing sync, including bounded legacy backfill. Missing historical evidence stays
 unknown. Synthetic retention/replay/isolation tests pass; processing and research

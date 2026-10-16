@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T350 — Inspect exact saved meeting versions from assignments
+
+Read-only live checks confirmed the three recovered historical command links open
+the correct MDT/ABT meetings and latest saved pack (one, one and two versions).
+Existing MeetingSession history compares question text; assignment version rows
+were metadata only and the main link opens latest. Each assignment row now opens
+its exact retained version with context, source references, supporting passages,
+follow-up and saved research-origin link. Missing passages are explicitly labelled.
+No generation, answer capture or investor acceptance occurs in this inspector.
+
+The read endpoint joins exact command, linked preparation, meeting, ticker and
+question-set identity; missing/wrong IDs never fall back to latest. Private no-store
+responses retain old content unchanged. Frontend verifies all identities, permits
+same-version read retry and ignores late reads after closure. No worker changes.
+
+Validation: 17 focused tests including disposable PostgreSQL exact older-version,
+wrong assignment/company, missing and corrupt content; 1,785 backend / 265 frontend
+safe tests pass. Python compilation and production build pass. Actual-component
+synthetic browser checks at 390/1280px cover passages/absent passages, identity
+mismatch, failed read retry, late closure, GET-only behavior and no overflow/errors;
+phone screenshot inspected. Logs /tmp/charlie-T350-{focused,backend,frontend,build,ui}.log.
+
+Next: verify exact release and read all four retained versions through their
+hosted assignment links. Then audit saved meeting follow-through identity across
+versions and Home/company delivery links, addressing demonstrated defects only.
+CVS at 02:58 UTC remains collection-only, queued, zero source receipts; actual
+collection-to-processing proof still needs receipts and investor processing approval.
+Historical valuation schema and all eight acceptance certifications remain open.
+
 ## T349 — Durable display-only collection history
 
 Repairs the four historical command delivery gaps identified in T348. Existing

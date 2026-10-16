@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { AssignmentMeetingVersion } from './assignment-meeting-version';
 export function AssignmentWorkspace({
   api,
   id,
@@ -59,9 +60,15 @@ export function AssignmentWorkspace({
     key: c.url
   }, /*#__PURE__*/React.createElement("strong", null, c.decision), " \xB7 ", c.publisher, " \xB7 ", c.title, /*#__PURE__*/React.createElement("br", null), c.reason))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, data.documents.length, " meeting originals \xB7 ", data.preparation?.cachedSources || 0, " analyses reused"), data.documents.map(d => /*#__PURE__*/React.createElement("p", {
     key: d.filename
-  }, d.filename))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, data.versions.length, " saved meeting versions"), data.versions.map(v => /*#__PURE__*/React.createElement("p", {
+  }, d.filename))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, data.versions.length, " saved meeting versions"), data.versions.map(v => /*#__PURE__*/React.createElement("div", {
     key: v.id
-  }, "Version ", v.version, " \xB7 ", v.status, " \xB7 ", new Date(v.created_at).toLocaleString(), " \xB7 ", v.generation_model))), data.assignment.sourcePolicy && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen source preferences"), /*#__PURE__*/React.createElement("p", null, "Mode: ", data.assignment.sourcePolicy.mode), (data.assignment.sourcePolicy.rules || []).map((r, i) => /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("p", null, "Version ", v.version, " \xB7 ", v.status, " \xB7 ", new Date(v.created_at).toLocaleString(), " \xB7 ", v.generation_model), /*#__PURE__*/React.createElement(AssignmentMeetingVersion, {
+    api: api,
+    assignmentId: data.command.id,
+    meetingId: data.meetingId,
+    ticker: data.command.ticker,
+    version: v
+  })))), data.assignment.sourcePolicy && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Frozen source preferences"), /*#__PURE__*/React.createElement("p", null, "Mode: ", data.assignment.sourcePolicy.mode), (data.assignment.sourcePolicy.rules || []).map((r, i) => /*#__PURE__*/React.createElement("p", {
     key: i
   }, r.name, " \xB7 ", r.analyst || 'all analysts', " \xB7 ", r.ticker || r.subsector || 'all companies', " \xB7 ", r.disposition))), data.meetingId && /*#__PURE__*/React.createElement("button", {
     onClick: () => {

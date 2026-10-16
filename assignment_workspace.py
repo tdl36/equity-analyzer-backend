@@ -65,3 +65,41 @@ def routes(bp,get_db):
             delivery=delivery_contract(payload,command,collection,result.get('savedSources'),prep,versions,reports,proposal,dispatch)
             response=jsonify(command={k:command[k] for k in ('id','ticker','status','error','created_at','updated_at')},assignment=payload,collection=collection,sourceReuse=result.get('savedSources',False),selection=obj(selection['value']) if selection else None,preparation=prep,meetingId=meeting,documents=documents,versions=versions,reports=reports,proposal=proposal,delivery=delivery)
             response.headers['Cache-Control']='no-store';return response
+
+    @bp.route('/api/research/assignments/<cid>/meeting-versions/<int:version_id>', methods=['GET'])
+    def meeting_version(cid, version_id):
+        """Read one retained version through its exact assignment, never latest."""
+        try:
+            uuid.UUID(cid)
+        except ValueError:
+            return jsonify(error='Invalid assignment'), 400
+        with get_db() as (_, cur):
+            cur.execute("""
+                SELECT q.id, q.meeting_id, q.version, q.status, q.topics_json,
+                       q.created_at, q.generation_model, c.ticker
+                FROM mp_jobs command
+                JOIN mp_jobs prep ON prep.stage='command_meeting'
+                    AND prep.input->>'commandId'=command.id::text
+                JOIN mp_meetings m ON m.id::text=prep.input->>'meetingId'
+                JOIN mp_companies c ON c.id=m.company_id AND c.ticker=command.ticker
+                JOIN mp_question_sets q ON q.meeting_id=m.id
+                WHERE command.id=%s AND command.stage='collection_control' AND q.id=%s
+            """, (cid, version_id))
+            row=cur.fetchone()
+            if not row:
+                response=jsonify(error='Saved meeting version not found for this assignment')
+                response.status_code=404
+            else:
+                data=dict(row)
+                raw=data.pop('topics_json')
+                try:
+                    topics=json.loads(raw) if isinstance(raw,str) else raw
+                    if not isinstance(topics,list):
+                        raise ValueError('Invalid stored topics')
+                except (ValueError,TypeError):
+                    response=jsonify(error='Saved meeting version content is unavailable')
+                    response.status_code=409
+                else:
+                    response=jsonify(assignmentId=cid,questionSet=data|{'topics':topics})
+            response.headers['Cache-Control']='private, no-store'
+            return response
