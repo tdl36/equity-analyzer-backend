@@ -40,6 +40,24 @@ failures before changing their recovery. Preserve existing saved drafts and expl
 retry. Historical-reference schema and all eight acceptance certifications remain
 open. Agent unchanged; no restart required. Original Pipeline remains unchanged.
 
+T342 production verified: Render d8970eeb6c1847b52d55b5be6cebc9c59a01fe3d;
+Cloudflare ad240e92-c611-4602-b408-f50a7a1fcc61. Exact hosted JS/service-worker
+bytes and HTML marker match. Agent healthy at 2.8s; unchanged source, no restart.
+Read-only source/proposal authentication and scope guards pass. Activity has no
+unavailable dependencies, unchanged research/audio truncation and zero full-note
+rows. Log: /tmp/charlie-T342-verify.log. No production note was generated or approved
+for validation. Existing Operations reports active McKesson browser collection;
+that progress message is not proof of completed download/import, and no message
+or second collector was dispatched from this engineering chat.
+
+Next substantive repair to investigate: isolate output-local one-pager public-data
+failures from other approved outputs while retaining a blocked visual result and
+explicit retries. Confirm with isolated regressions before changing recovery;
+shared source/report failures must still block all generation. Continue observing
+CVS original/import receipts and actual T340 worker adoption. Live connected-journey,
+investor acceptance and historical-schema gaps remain open. Docs-only checkpoint
+uses [skip render]; inherited dirty handoff content and runtime files preserved.
+
 ## T341 — Collection controls stay responsive during slow file and job work
 
 Critical-path collection reliability: the existing Mac collection-control sync ran
