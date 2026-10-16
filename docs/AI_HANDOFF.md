@@ -2,6 +2,33 @@
 
 Updated: October 14, 2026
 
+## T359 — Reject duplicate original bytes in every new processing proposal
+
+The new-proposal save path checked duplicate SHA-256 values only when the optional
+supplementalIds field was present. A collection-only selection could therefore
+freeze identical original bytes under different filenames. The regression test
+reproduced a 201 response instead of the required 409. The same duplicate-byte
+check now applies to every new proposal after exact receipt/byte validation.
+Distinct originals remain eligible. Existing frozen proposals and exact replay
+return unchanged through the existing idempotency checks; no legacy migration,
+file deletion, source rewrite, dispatch or approval was added.
+
+Validation: 81 focused proposal tests, 1,806 backend and 277 frontend safe tests,
+Python compilation and production frontend build pass. New synthetic tests cover rejection
+without optional fields, preservation of original files and parent collection,
+distinct-source success, and exact replay of an existing frozen duplicate pack.
+No production proposal was created or approved and no model work was launched.
+Logs: /tmp/charlie-T359-{reproduction,focused,backend,frontend,build,journey}.log.
+
+Next checkpoint: verify T359 exact hosted revision and unfinished-collection
+read guards. Then resume the genuine collection receipt → chosen frozen evidence
+→ investor processing approval → saved draft/review journey. A focused read at
+05:19 UTC found CVS still queued with zero receipts, retained issue, collectionOnly
+true and existing worker reporting awake. Operations owns collection; do not
+start another worker. Shared dashboard expansion waits for the connected journey;
+historical reference schema and all eight acceptance certifications remain open.
+Do not repeat T350–T359 output/source-recovery repairs as new completion evidence.
+
 ## T358 — Preserve source provenance during explicit metadata repair
 
 The original-import endpoint's explicit restoreEmptyMetadata path previously

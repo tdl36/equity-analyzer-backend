@@ -215,11 +215,11 @@ def register(co):
                     raise ValueError('An added original belongs to this collection. Select it in the collected evidence list.')
                 if any(s['sha256'] != hashes[s['filename']] for s in sources if s['filename'] in filenames):
                     raise ValueError('Original bytes no longer match the completed collection receipt.')
+                if len({s['sha256'] for s in sources}) != len(sources):
+                    raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
                 frozen = dict(collectionId=collection_id, plan=normalized, sources=sources,
                               baseline=baseline, caseRevision=revision, intentHash=intent_hash)
                 if 'supplementalIds' in data:
-                    if len({s['sha256'] for s in sources}) != len(sources):
-                        raise ValueError('Selected originals contain identical bytes under different identities. Keep one copy before saving.')
                     frozen['sourceContext'] = context(cur, parent['ticker'], sources, filenames, baseline_package)
                     from research_source_context import freeze as freeze_source_context
                     frozen['sourceEvidence'] = freeze_source_context(sources, frozen['sourceContext'])

@@ -153,6 +153,44 @@ class ProcessingProposalTests(unittest.TestCase):
             cur.execute('INSERT INTO document_files(ticker,filename,file_data,file_type,metadata) VALUES(%s,%s,%s,%s,%s::jsonb) RETURNING id', (ticker or self.ticker, filename, base64.b64encode(raw).decode(), 'txt', json.dumps(metadata or {'published':'2024-03-01'})))
             return str(cur.fetchone()['id'])
 
+    def collected_pair(self, raw):
+        import hashlib
+        self.extra(filename='two.txt',raw=raw)
+        self.body['filenames']=['one.txt','two.txt']
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE mp_jobs SET result=%s::jsonb WHERE id=%s',(json.dumps({'sources':[{'filename':'one.txt','sha256':self.sha},{'filename':'two.txt','sha256':hashlib.sha256(raw).hexdigest()}]}),self.ident))
+
+    def test_collected_only_duplicate_bytes_block_new_save_without_optional_field(self):
+        self.parent();self.collected_pair(self.raw);before=self.row(self.ident)
+        response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,409,response.json);self.assertIn('identical bytes',response.json['error'])
+        self.assertIsNone(self.row(self.body['requestId']));self.assertEqual(self.row(self.ident),before);self.assertFalse(self.submits)
+        with self.db() as (_,cur):
+            cur.execute('SELECT filename,file_data FROM document_files WHERE ticker=%s ORDER BY filename',(self.ticker,))
+            rows=list(cur.fetchall());self.assertEqual([r['filename'] for r in rows],['one.txt','two.txt'])
+            self.assertEqual(rows[0]['file_data'],rows[1]['file_data'])
+
+    def test_collected_only_distinct_originals_remain_eligible_without_optional_field(self):
+        self.parent();self.collected_pair(b'Different evidence')
+        response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,201,response.json);self.assertEqual(len(response.json['sources']),2)
+        self.assertFalse(self.submits)
+
+    def test_existing_frozen_duplicate_proposal_exact_replay_is_preserved(self):
+        from processing_proposals import digest
+        proposal=self.save();stored=self.row(proposal['id']);frozen=stored['input']
+        self.collected_pair(self.raw)
+        extra_id=None
+        with self.db() as (_,cur):
+            cur.execute("SELECT id FROM document_files WHERE ticker=%s AND filename='two.txt'",(self.ticker,));extra_id=str(cur.fetchone()['id'])
+        frozen['sources'].append({**frozen['sources'][0],'filename':'two.txt','reference':'charlie:thesis_'+extra_id,'documentId':extra_id})
+        frozen['intentHash']=digest({'collectionId':self.ident,'plan':frozen['plan'],'filenames':sorted(self.body['filenames'])})
+        frozen.pop('digest');frozen['digest']=digest(frozen)
+        with self.db(True) as (_,cur):cur.execute('UPDATE mp_jobs SET input=%s::jsonb WHERE id=%s',(json.dumps(frozen),proposal['id']))
+        before=self.row(proposal['id']);response=self.client.post(self.url,json=self.body)
+        self.assertEqual(response.status_code,200,response.json);self.assertEqual(response.json['digest'],frozen['digest'])
+        self.assertEqual(self.row(proposal['id']),before);self.assertFalse(self.submits)
+
     def test_supplemental_history_freezes_roles_and_dispatches_exact_pack(self):
         self.parent();extra=self.extra()
         self.body['supplementalIds']=[extra]
