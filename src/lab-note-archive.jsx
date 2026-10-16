@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {noteArchivePage,appendNoteArchive} from './lab-note-archive-model.mjs';
-export function LabNoteArchive({api,ticker,read,onOpen,disabled,describeReason}) {
+export function LabNoteArchive({api,ticker,read,onOpen,onInspect,disabled,describeReason}) {
  const [open,setOpen]=React.useState(false),[state,setState]=React.useState({rows:[],cursor:null,loaded:false,busy:false,error:''});
  const serial=React.useRef(0),locked=React.useRef(false);
  const load=async(more=false)=>{
@@ -22,7 +22,7 @@ export function LabNoteArchive({api,ticker,read,onOpen,disabled,describeReason})
    {state.rows.map(row=><article key={row.noteId} style={{borderTop:'1px solid #8884',padding:'12px 0'}}><strong>{row.title}</strong><p>{new Date(row.createdAt).toLocaleString()} · {row.status==='draft'?'Draft saved':row.status}</p>
     {row.reason&&<p>{describeReason?.(row.reason)||'Inspect saved progress before retrying; an uncertain paid outcome must not be repeated.'}</p>}
     {row.acceptedRevision&&<p>Investor accepted revision {row.acceptedRevision}{row.revision>row.acceptedRevision?' · newer edits need review':''}</p>}
-    <div className="workspace-actions">{row.revision&&<button disabled={disabled} onClick={()=>onOpen(row.noteId,row.revision)}>Open saved revision {row.revision}</button>}{row.acceptedRevision&&row.acceptedRevision!==row.revision&&<button disabled={disabled} onClick={()=>onOpen(row.noteId,row.acceptedRevision)}>Open accepted revision {row.acceptedRevision}</button>}</div>
+    <div className="workspace-actions"><button onClick={()=>onInspect(row.noteId)}>Inspect this note’s progress</button>{row.revision&&<button disabled={disabled} onClick={()=>onOpen(row.noteId,row.revision)}>Open saved revision {row.revision}</button>}{row.acceptedRevision&&row.acceptedRevision!==row.revision&&<button disabled={disabled} onClick={()=>onOpen(row.noteId,row.acceptedRevision)}>Open accepted revision {row.acceptedRevision}</button>}</div>
     {!row.revision&&<p>No saved draft revision is available for this job.</p>}
    </article>)}
    {state.cursor&&<button disabled={state.busy} onClick={()=>load(true)}>{state.error?'Retry older full notes':'Load older full notes'}</button>}

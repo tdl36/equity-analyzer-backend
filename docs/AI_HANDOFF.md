@@ -2,6 +2,36 @@
 
 Updated: October 14, 2026
 
+## T369 — Exact note-job progress is accessible beyond the recent list
+
+Direct full-note links previously opened only the draft reader, while progress and
+recovery controls came from the newest 30 jobs. An older interrupted job without
+a draft therefore had no usable focused recovery view. Direct links now also open
+an exact company-checked progress panel; archive entries can inspect the same panel
+without leaving unsaved edits. It exposes frozen batch count/model, recorded batch
+outcomes, latest saved revision and separate accepted revision, without source
+bodies, prompts, replies, credentials or worker leases.
+
+Inspection is read-only. Dispatch recorded, reply saved, uncertain outcome and no
+record are distinct; none claims investor acceptance or establishes billing. Failed
+or mismatched reads retain a warning and disable recovery actions. Explicit
+reconciliation uses the existing endpoint/worker rules: stopped parents remain
+stopped, uncertain calls are never repeated, and safe unfinished batches may resume
+under the original authorization. No new execution layer or automatic retry added.
+
+Validation: 12 focused backend and 4 focused frontend tests, all 1839 backend
+and 285 frontend tests, Python compilation and build pass. Synthetic browser checks
+at 390/1280 pixels cover an old direct link without a draft/recent row, saved versus
+uncertain batches, wrong-company/503 guards, exact explicit mocked recovery and
+parent-stop controls. No page errors/overflow; phone render inspected. Disposable-DB
+reads preserve job rows and call counts and exclude private request/reply data.
+No production recovery, processing approval or paid research was performed.
+
+Next: verify T369 hosting and inspection guards. The genuine collection → selected
+proposal → explicit processing approval → saved research milestone is still open.
+Operations owns browser coverage reconciliation. Continue source-to-output repairs;
+shared approval expansion and all eight acceptance certifications remain open.
+
 ## T368 — Older full Lab notes remain discoverable
 
 The full-note job list stopped at the newest 30 creations, leaving older notes

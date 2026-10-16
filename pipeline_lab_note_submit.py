@@ -69,6 +69,15 @@ def create_blueprint(get_db,authenticated,build_plan):
             with get_db() as (_,cur):result=status(cur,note_id)
             return jsonify(result) if result else (jsonify(error='Note job not found.'),404)
         except ValueError as exc:return jsonify(error=str(exc)),400
+    @bp.get('/api/pipeline-lab/note-job/<note_id>/inspection')
+    def inspection(note_id):
+        from pipeline_lab_note_inspection import inspect
+        try:
+            if set(request.args)!={'ticker'} or len(request.args.getlist('ticker'))!=1:
+                raise ValueError('An exact company ticker is required.')
+            with get_db() as (_,cur):result=inspect(cur,note_id,request.args.get('ticker'))
+            return jsonify(result) if result else (jsonify(error='Note job not found for this company.'),404)
+        except ValueError as exc:return jsonify(error=str(exc)),400
     @bp.post('/api/pipeline-lab/note-job/<note_id>/recover')
     def resume(note_id):
         try:

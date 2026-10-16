@@ -5,6 +5,7 @@ export function LabNoteArchive({
   ticker,
   read,
   onOpen,
+  onInspect,
   disabled,
   describeReason
 }) {
@@ -77,7 +78,9 @@ export function LabNoteArchive({
     }
   }, /*#__PURE__*/React.createElement("strong", null, row.title), /*#__PURE__*/React.createElement("p", null, new Date(row.createdAt).toLocaleString(), " \xB7 ", row.status === 'draft' ? 'Draft saved' : row.status), row.reason && /*#__PURE__*/React.createElement("p", null, describeReason?.(row.reason) || 'Inspect saved progress before retrying; an uncertain paid outcome must not be repeated.'), row.acceptedRevision && /*#__PURE__*/React.createElement("p", null, "Investor accepted revision ", row.acceptedRevision, row.revision > row.acceptedRevision ? ' · newer edits need review' : ''), /*#__PURE__*/React.createElement("div", {
     className: "workspace-actions"
-  }, row.revision && /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => onInspect(row.noteId)
+  }, "Inspect this note\u2019s progress"), row.revision && /*#__PURE__*/React.createElement("button", {
     disabled: disabled,
     onClick: () => onOpen(row.noteId, row.revision)
   }, "Open saved revision ", row.revision), row.acceptedRevision && row.acceptedRevision !== row.revision && /*#__PURE__*/React.createElement("button", {

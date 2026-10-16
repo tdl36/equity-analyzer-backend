@@ -1,6 +1,7 @@
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 import * as React from 'react';
 import { checkedNote, checkedNoteHistory, confirmedNoteEdit } from './pipeline-lab-note-model.mjs';
+import { LabNoteProgress } from './lab-note-progress';
 import { LabNoteArchive } from './lab-note-archive';
 import NoteProvenance from './lab-note-provenance';
 import { readEditBuffer, writeEditBuffer } from './pipeline-lab-edit-buffer.mjs';
@@ -43,6 +44,8 @@ function LabNoteWorkspace({
   var [localRecovery, setLocalRecovery] = React.useState(null),
     [bufferError, setBufferError] = React.useState(''),
     [compareEdits, setCompareEdits] = React.useState(false);
+  var [selectedJob, setSelectedJob] = React.useState(focusId),
+    progressPanel = React.useRef(null);
   var [noteLoading, setNoteLoading] = React.useState(false),
     [noteTarget, setNoteTarget] = React.useState(null),
     [historyLoading, setHistoryLoading] = React.useState(false),
@@ -183,7 +186,7 @@ function LabNoteWorkspace({
       var d = checkedNote(await read(api, `/api/pipeline-lab/notes/${encodeURIComponent(id)}${revision !== undefined ? '?revision=' + revision : ''}`), id, ticker, revision);
       displayNote(d, token);
     } catch (e) {
-      if (current(token)) setError(e.status === 404 ? 'The requested note revision is unavailable. No other note was substituted.' : e.message);
+      if (current(token)) setError(e.status === 404 ? 'The requested note revision is unavailable. Inspect saved job progress separately; no other note was substituted.' : e.message);
     } finally {
       if (current(token)) setNoteLoading(false);
     }
@@ -370,7 +373,23 @@ function LabNoteWorkspace({
     onClick: () => {
       if (!unsaved || window.confirm('Leave these edits in browser-session recovery and retry opening the saved note?')) action(() => open(noteTarget.id, noteTarget.revision));
     }
-  }, "Retry saved note")), jobs.map(job => /*#__PURE__*/React.createElement("article", {
+  }, "Retry saved note")), selectedJob && /*#__PURE__*/React.createElement("div", {
+    ref: progressPanel
+  }, /*#__PURE__*/React.createElement(LabNoteProgress, {
+    api: api,
+    ticker: ticker,
+    id: selectedJob,
+    read: read,
+    disabled: busy || pendingEdit,
+    describeReason: reason => reasons[reason],
+    onOpen: (id, revision) => {
+      if (!unsaved || window.confirm('Leave these edits in browser-session recovery and open this saved revision?')) action(() => open(id, revision));
+    },
+    onRecover: id => action(async () => {
+      await post(`/api/pipeline-lab/note-job/${id}/recover`, {});
+      await load();
+    })
+  })), jobs.map(job => /*#__PURE__*/React.createElement("article", {
     key: job.noteId,
     style: {
       borderTop: '1px solid #8884',
@@ -396,6 +415,12 @@ function LabNoteWorkspace({
       await load();
     })
   }, "Reconcile saved progress")))), !jobs.length && /*#__PURE__*/React.createElement("p", null, "No recent full-note jobs in this list."), /*#__PURE__*/React.createElement(LabNoteArchive, {
+    onInspect: id => {
+      setSelectedJob(id);
+      requestAnimationFrame(() => progressPanel.current?.scrollIntoView({
+        block: 'start'
+      }));
+    },
     api: api,
     ticker: ticker,
     read: read,

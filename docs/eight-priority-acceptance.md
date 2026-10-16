@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T369 gives old/direct-linked Lab jobs an exact progress and existing recovery view,
+independent of recent-list membership or draft existence. Saved/uncertain batch
+outcomes remain distinct, stopped parents remain stopped, and inspection cannot
+dispatch work. Synthetic checks pass; no actual paid outcome was reconciled.
+
 T368 adds a read-only full-note archive beyond the recent 30 jobs, preserving exact
 saved/accepted revision choices and unsaved-edit recovery. Synthetic pagination,
 identity and responsive checks pass. This closes an older-output discoverability
