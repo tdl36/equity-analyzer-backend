@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T371 adds an explicit read-only saved-proposal readiness check before processing
+approval, sharing frozen evidence validation with dispatch. Changed bytes,
+permissions, baselines and dispatch prerequisites remain blockers. Positive
+readiness/approval behavior is synthetic; live connected acceptance remains open.
+
 T369 gives old/direct-linked Lab jobs an exact progress and existing recovery view,
 independent of recent-list membership or draft existence. Saved/uncertain batch
 outcomes remain distinct, stopped parents remain stopped, and inspection cannot

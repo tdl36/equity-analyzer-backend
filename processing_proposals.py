@@ -45,6 +45,22 @@ def original_pack(cur, ticker, filenames, supplemental_ids=()):
     return [dict(r, documentId=r['reference'][len('charlie:thesis_'):]) for r in checked['verified']]
 
 
+def verify_evidence(cur, ticker, frozen):
+    """Shared read-only checks for inspection and atomic dispatch."""
+    from thesis_imports import current, row_hash
+    if row_hash(current(cur, ticker)) != frozen['baseline']['hash']:
+        raise ValueError('The accepted thesis changed. Save a fresh processing proposal.')
+    pack = original_pack(cur, ticker, [s['filename'] for s in frozen['sources']])
+    if pack != frozen['sources']:
+        raise ValueError('Selected originals changed. Save a fresh proposal before processing.')
+    if frozen['plan'].get('labFullNote'):
+        if not frozen.get('labNotePlan'):
+            raise ValueError('Full-note settings are missing. Save a fresh proposal.')
+        from processing_proposal_note import verify_sources
+        verify_sources(cur, ticker, pack, frozen['labNotePlan'])
+    return pack
+
+
 def dispatch(cur, proposed_plan, ident):
     """Called inside the existing assignment insertion transaction; all or nothing."""
     ref = proposed_plan['processingProposal']
@@ -59,17 +75,8 @@ def dispatch(cur, proposed_plan, ident):
         raise ValueError('Processing choices changed. Save a new proposal before approving.')
     if proposed_plan['thesisBaseline'].get('baseline') != frozen['baseline'] or proposed_plan['caseRevision'] != frozen['caseRevision']:
         raise ValueError('The thesis or research baseline changed. Save a fresh processing proposal.')
-    from thesis_imports import current, row_hash
-    if row_hash(current(cur, row['ticker'])) != frozen['baseline']['hash']:
-        raise ValueError('The accepted thesis changed. Save a fresh processing proposal.')
-    pack = original_pack(cur, row['ticker'], [s['filename'] for s in frozen['sources']])
-    if pack != frozen['sources']:
-        raise ValueError('Selected originals changed. Save a fresh proposal before processing.')
+    pack = verify_evidence(cur, row['ticker'], frozen)
     if frozen['plan'].get('labFullNote'):
-        if not frozen.get('labNotePlan'):
-            raise ValueError('Full-note settings are missing. Save a fresh proposal.')
-        from processing_proposal_note import verify_sources
-        verify_sources(cur, row['ticker'], pack, frozen['labNotePlan'])
         proposed_plan['labNotePlan'] = frozen['labNotePlan']
     if frozen.get('sourceContext'):
         proposed_plan['processingSourceContext'] = frozen['sourceContext']
@@ -248,6 +255,24 @@ def register(co):
             return jsonify(saved), 201
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             return jsonify(error=str(exc) if isinstance(exc, ValueError) else 'Invalid processing proposal.'), 409
+
+    @bp.get('/api/research/assignments/<collection_id>/processing-proposals/<ident>/readiness')
+    def proposal_readiness(collection_id, ident):
+        from processing_proposal_readiness import inspect
+        try:
+            if request.args:
+                raise ValueError('Readiness does not accept filters.')
+            collection_id = str(uuid.UUID(collection_id)); ident = str(uuid.UUID(ident))
+        except (ValueError, TypeError, AttributeError):
+            return jsonify(error='Invalid saved proposal identity or filters.'), 400
+        try:
+            result = inspect(co, collection_id, ident)
+            if result is None:
+                return jsonify(error='Saved proposal not found for this collection.'), 404
+            response = jsonify(result); response.headers['Cache-Control'] = 'private, no-store'
+            return response
+        except Exception:
+            return jsonify(error='Readiness could not be checked. No processing was requested; retry this read.'), 503
 
     @bp.post('/api/research/processing-proposals/<ident>/<action>')
     def decide_processing_proposal(ident, action):

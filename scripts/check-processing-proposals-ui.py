@@ -40,6 +40,8 @@ with sync_playwright() as p:
     if library_mode=='company':d['ticker']='CVS'
     if library_mode=='collection':d['collectionId']='other'
     if library_mode=='cursor':d['after']=None
+   elif u.endswith('/readiness'):
+    saved=proposals[0];d={'proposalId':saved['id'],'collectionId':NOTE,'ticker':'ABT','revision':1,'digest':HASH,'status':'pending','readOnly':True,'ready':True,'blockers':[],'checkedAt':'2026-10-16T08:00:00Z'}
    elif '/processing-proposals' in u:
     if route.request.method=='POST':
      body=route.request.post_data_json
@@ -233,7 +235,10 @@ with sync_playwright() as p:
    expect(review.get_by_text('Meeting preparation · 2026-10-20 · expert',exact=True)).to_be_visible()
    assert len(writes)==1
   read_mode='ok';review.get_by_role('button',name='Refresh saved proposals',exact=True).click()
+  expect(approve).to_be_disabled()
+  review.get_by_role('button',name='Check processing readiness · no generation',exact=True).click()
   expect(approve).to_be_enabled()
+  assert len(writes)==1
   approve.click()
   link=review.get_by_role('link',name='Open saved processing job and outputs')
   expect(link).to_have_attribute('href', '#view=stockanalysis&ticker=ABT&section=stock-analysis&work=assignment%3A'+NOTE)

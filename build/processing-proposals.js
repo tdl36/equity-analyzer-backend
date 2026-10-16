@@ -1,3 +1,4 @@
+import { ProcessingReadiness } from './processing-readiness';
 import { processingSelection } from './processing-selection-model.mjs';
 import { ProcessingSelectionReview } from './processing-selection-review';
 import { OriginalDownload } from './original-download';
@@ -446,16 +447,19 @@ function ProposalReview({
     url: api + '/api/pipeline-lab/original/' + encodeURIComponent(p.ticker) + '/thesis_' + s.documentId,
     filename: s.filename,
     sha256: s.sha256
-  }), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
-    className: "workspace-primary",
+  }), " \xB7 ", (s.bytes / 1000000).toFixed(2), " MB", p.sourceContext?.[s.documentId] && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, p.sourceContext[s.documentId].role === 'supplemental' ? 'Supplemental history; not collected by this request' : 'From collection receipt', " \xB7 Published: ", p.sourceContext[s.documentId].publishedDate || 'unknown', " \xB7 ", p.sourceContext[s.documentId].referencedBySavedThesis ? 'Exact bytes referenced by saved thesis; incorporation still needs review' : 'No exact-hash reference found in saved thesis register; incorporation unknown')))))), p.status === 'pending' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ProcessingReadiness, {
+    key: p.id + ':' + p.digest + ':' + readEpoch.current,
+    proposal: p,
+    call: call,
+    path: path,
     disabled: busy || !!readIssue || !loaded,
-    onClick: () => act(async () => {
+    onApprove: () => act(async () => {
       await call('/api/research/processing-proposals/' + p.id + '/approve', {
         revision: p.revision,
         digest: p.digest
       });
     })
-  }, "Approve processing \xB7 uses research credits"), " ", /*#__PURE__*/React.createElement("button", {
+  }), " ", /*#__PURE__*/React.createElement("button", {
     disabled: busy || !!readIssue || !loaded,
     onClick: () => act(async () => {
       await call('/api/research/processing-proposals/' + p.id + '/cancel', {

@@ -2,6 +2,39 @@
 
 Updated: October 14, 2026
 
+## T371 — Inspect saved processing blockers before approval
+
+Pending proposal cards previously revealed changed source/baseline blockers only
+when the investor attempted processing approval. An explicit, company/collection-
+scoped readiness read now reuses the exact dispatch checks for accepted-thesis
+identity, stored original identities/bytes/permissions and frozen full-note source
+representations. It also checks the current case revision, model-key presence,
+unfinished assignments and required full-note integration. It reads no mutable
+note defaults, wakes no worker and creates no reservation, proposal or paid call.
+
+The proposal card requires a matching successful check before enabling its separate
+processing approval button. Failed/mismatched reads retain a warning and disable
+approval. Refreshing saved proposals clears the old check. Approval still performs
+its atomic validations and may discover a later change; a successful inspection is
+not a provider-availability guarantee or investor acceptance. Cancelled/dispatched
+proposals report their decided state without re-reading original bodies. There is
+no polling of potentially large source packs and no shared dashboard expansion.
+
+Validation: 1846 backend tests and 288 frontend tests pass, plus all 7 focused
+readiness tests after adding explicit case-revision/full-note checks; the shared
+proposal regression suite, compilation and production build pass. Disposable-DB
+checks preserve proposal/parent state, retain changed-evidence blockers, avoid model
+calls/default refresh, scope reads and sanitize unexpected failures. Synthetic
+390/1280 browser checks cover blocked/matched/mismatched/failed reads and separate
+mock approval. The full-app source selection, lost-save reconciliation and approval
+journey passes at both widths. Phone rendering inspected. Positive readiness and
+approval evidence remains synthetic; no production processing was authorized.
+
+Next: verify T371 hosting and read-only guards. Genuine completed collection receipts,
+selected proposal, investor processing authorization and saved draft outputs remain
+the critical milestone. Operations owns browser collection; all eight acceptance
+certifications and the deferred shared approval dashboard remain open.
+
 ## T370 — Saved original one-pagers stay reachable during render outages
 
 A visual preview previously depended on reading and re-rendering its saved report,
