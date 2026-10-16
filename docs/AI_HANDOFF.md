@@ -2,6 +2,35 @@
 
 Updated: October 14, 2026
 
+## T341 — Collection controls stay responsive during slow file and job work
+
+Critical-path collection reliability: the existing Mac collection-control sync ran
+inside the manifest loop, after original uploads, and could be delayed by startup
+inventory, iCloud reads or synchronous jobs despite a healthy heartbeat. It now
+has one serial daemon lane in the existing agent, started before startup inventory.
+The manifest-loop call is removed. Sync waits 60 seconds after each attempt,
+never overlaps itself, retries failures and responds promptly to shutdown waits.
+Existing command receipts, ledger locks, source policy and cloud snapshot behavior
+remain unchanged. Each attempt owns its SQLite connection; exception logs expose
+only the error type. This is not a second browser collector or orchestrator.
+No downloads, claims, paid processing, approvals or auto-synthesis settings changed.
+Network/ledger failures still produce stale reporting; no uninterrupted-service
+claim is made. In-flight HTTP calls retain their existing bounded timeouts.
+
+Validation: 25 focused tests, 1,735 full safe backend tests, 252 frontend tests,
+Python compilation and production build pass. Isolated scheduling fixtures prove
+control delivery while a file lane is blocked, single-attempt execution, shutdown,
+retry cadence and private-error redaction. Structural coverage verifies one sync
+call site and startup ordering. No production command was created for QA.
+Logs: /tmp/charlie-T341-{focused,backend,frontend,build,deploy,verify}.log.
+
+Before release the collection snapshot was fresh again, CVS remained queued,
+and the local ledger had zero attempt receipts. T340 worker adoption and genuine
+CVS collection/import still need evidence. Next: verify deployment/agent restart
+and fresh control snapshots, then inspect actual originals and selected processing
+readiness. No live journey, investor acceptance or eight-priority completion is
+claimed. Historical-reference schema remains open; backfill synthesis stays paused.
+
 ## T340 — Recover an interrupted collector claim without taking another turn
 
 Critical-path collection recovery: a repeated bare claim returns null while an

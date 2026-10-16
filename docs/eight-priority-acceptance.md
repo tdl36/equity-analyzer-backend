@@ -4,6 +4,10 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T341 isolates the existing collection-control sync from slow file/job work in the
+Mac agent. Synthetic scheduling/recovery tests pass; live browser collection and
+processing approval remain unproven. No second collector or approval changes.
+
 T340 adds durable collector attempt receipts so lost claim responses can recover
 the same active lease without another fair turn. Isolated CLI/concurrency/restart
 tests pass. Operations adoption and a genuine recovered collection remain unproven;

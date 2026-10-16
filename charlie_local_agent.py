@@ -1097,6 +1097,22 @@ def sync_collection_control():
         log.debug('Catalyst scan request unavailable; next heartbeat will retry')
 
 
+def collection_control_loop(shutdown, interval=60):
+    """Keep existing command/snapshot sync independent of slow file/job work.
+
+    One serial lane per agent; this does not claim browser work or import files.
+    Each sync owns its SQLite connection. Existing ledger locks and command
+    receipts still arbitrate concurrent CLI operations and lost acknowledgements.
+    """
+    while not shutdown.is_set():
+        try:
+            sync_collection_control()
+        except Exception as exc:
+            log.warning("Collection control sync failed (%s); queued commands have not been acknowledged and will retry", type(exc).__name__)
+        if shutdown.wait(interval):
+            return
+
+
 def push_file_manifest() -> None:
     """Scan all ticker folders recursively and push file manifest to backend.
     Includes both STOCKS/<ticker>/ (main + subfolders) AND CATALYSTS/<ticker>/<topic>/.
@@ -4064,6 +4080,13 @@ def main() -> None:
 
     log.info(f"Polling for jobs every {POLL_INTERVAL}s (Ctrl+C to stop)")
 
+    # Start before startup inventory: iCloud/network reads can take minutes.
+    # This replaces the manifest-loop call; it is not another browser collector.
+    collection_thread = threading.Thread(target=collection_control_loop, args=(shutdown,),
+                                         daemon=True, name='charlie-collection-control')
+    collection_thread.start()
+    log.info("Collection control sync started (60s after each completed attempt)")
+
     # One-time import of existing notes + documents from iCloud to Charlie
     try:
         import_existing_notes()
@@ -4152,8 +4175,6 @@ def main() -> None:
                         from collection_original_sync import sync as sync_collected_originals
                         sync_collected_originals()
                     except Exception as exc: log.warning("Original import queue unavailable: %s",type(exc).__name__)
-                    try: sync_collection_control()
-                    except Exception as exc: log.warning("Collection control sync failed (%s); queued commands have not been acknowledged and will retry",type(exc).__name__)
                     from pipeline_lab_icloud_agent import poll as poll_lab_import
                     poll_lab_import(CHARLIE_API, _agent_headers(), STOCKS_DIR, CATALYSTS_DIR)
                     push_file_manifest()
