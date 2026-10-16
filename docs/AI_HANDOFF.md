@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T367 — Assignment review retains the delivered meeting-question version
+
+Coordinated assignments already retained meetingId and meetingQuestionSetId, but
+saved-output review navigated to the current meeting, which can contain later
+questions. The assignment review now reads its exact delivered question set with
+its context, source references, saved passages, report link and follow-up angle.
+A separate explicitly labeled current-workspace link remains available for answers
+and follow-through. The history link is also labeled as the current workspace.
+
+The read-only endpoint checks assignment stage, report handoff, exact question-set
+and meeting identities, and company. Missing or unlinked receipts/content remain
+explicitly unavailable; no latest-version fallback, source reread, coordinator wake,
+research call or acceptance occurs. Legacy records without an exact receipt retain
+an explicit gap and can still open their current meeting. Original Pipeline and
+existing legacy command-meeting version inspection are unchanged.
+
+Validation: 60 focused backend and 8 focused frontend tests; all 1834 backend
+and 281 frontend tests, Python compilation and production build pass. Synthetic
+Chrome checks at 390/1280 pixels cover long evidence, later-version substitution,
+503/retry recovery, separate workspace navigation, no writes/errors/overflow. The
+phone render was visually inspected. This validates saved-output fidelity, not real
+source quality or investor acceptance. No production meeting was changed.
+
+Next: verify hosted T367. The main acceptance milestone still requires genuine
+collection receipts, an explicitly approved selected processing proposal and saved
+drafts. Operations owns collection reconciliation. Shared approval expansion stays
+deferred; all eight acceptance certifications remain open.
+
 ## T366 — Saved-response recovery retains full-note research scope
 
 Normal full-note execution passed frozen researchProvenance into draft storage,

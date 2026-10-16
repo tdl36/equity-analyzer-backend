@@ -19,7 +19,7 @@ export function reviewDocuments(job) {
  const thesis=p?.thesisDraftId||s.thesisDraftId||s.separateThesisProposal?.id;
  if(thesis)docs.push({id:'thesis',label:'Thesis changes',actionLabel:'Review thesis changes',description:'Compare the proposed changes with your current thesis and inspect the source evidence. Decisions remain in the thesis review screen.',href:'?thesisDraft='+encodeURIComponent(thesis)+'#view=thesisimports&ticker='+encodeURIComponent(job.ticker)});
  for(const a of s.artifacts||[])if(!['visual','stock_summary'].includes(a.kind))docs.push({id:a.kind,label:a.kind==='summary_note'?'Summary note':a.kind.replaceAll('_',' '),url:a.url});
- if(s.meetingId)docs.push({id:'meeting',label:'Meeting questions',actionLabel:'Open meeting questions',description:'Open the saved questions from this research pack.',href:'#view=meetingprep&ticker='+encodeURIComponent(job.ticker)+'&work=meeting%3A'+encodeURIComponent(s.meetingId)});
+ if(s.meetingId)docs.push({id:'meeting',meetingOutput:true,label:'Meeting questions',actionLabel:'Open meeting questions',description:'Open the saved questions from this research pack.',href:'#view=meetingprep&ticker='+encodeURIComponent(job.ticker)+'&work=meeting%3A'+encodeURIComponent(s.meetingId)});
  const note=assignmentLabNote(job);
  if(note?.saved)docs.push({id:'lab_note',label:'Full Lab note',href:note.href,actionLabel:'Review full Lab note',description:'Open the saved versioned note, its research purpose and frozen sources. Review, edits, exports and revision-specific acceptance are available in Pipeline Lab. Opening it starts no generation and changes no thesis.'});
  return docs;
@@ -33,4 +33,15 @@ export function verifiedReviewPage(value, doc, job) {
     typeof value.html!=='string' || !value.html.trim())
   throw Error('This response does not match the saved edition. Reload the assignment; no other document was substituted.');
  return {html:value.html,status:value.status};
+}
+
+// A meeting ID alone selects the current workspace; delivery requires its exact version.
+export function checkedAssignmentMeeting(value, job) {
+ const q=value?.questionSet,s=job.result||{};
+ if(value?.assignmentId!==job.id||!s.reportId||value.reportId!==s.reportId||
+    !Number.isSafeInteger(s.meetingQuestionSetId)||q?.id!==s.meetingQuestionSetId||
+    q.meeting_id!==s.meetingId||q.ticker!==job.ticker||!Number.isSafeInteger(q.version)||q.version<1||
+    !Array.isArray(q.topics)||q.topics.some(t=>!t||!Array.isArray(t.questions)||t.questions.some(r=>!r||typeof r.question!=='string')))
+  throw Error('This response does not match the assignment’s delivered meeting version. No current version has been substituted.');
+ return q;
 }

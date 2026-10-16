@@ -394,7 +394,7 @@ export function ResearchAssignment({
     href: routeHash('pipelinelab', ticker, '', 'labnote:' + j.result.labNoteId)
   }, "Review full Lab note \xB7 ", j.result.labNoteStatus), j.result.meetingId && /*#__PURE__*/React.createElement("a", {
     href: routeHash('meetingprep', ticker, '', 'meeting:' + j.result.meetingId)
-  }, "Open meeting questions from this pack"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
+  }, "Open current meeting workspace"), j.result.thesisDraftId && /*#__PURE__*/React.createElement("a", {
     href: `?thesisDraft=${j.result.thesisDraftId}#view=thesisimports&ticker=${encodeURIComponent(ticker)}`
   }, "Review thesis proposal")), preview?.id === j.id && /*#__PURE__*/React.createElement("div", {
     className: "sa-visual-preview"

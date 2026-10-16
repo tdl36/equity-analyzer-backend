@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {reviewDocuments,assignmentLabNote,verifiedReviewPage} from './assignment-review-model.mjs';
+import {AssignmentMeetingOutput} from './assignment-meeting-output';
 import {HistoricalReview} from './historical-review';
 import {downloadText} from './stock-analysis-model.mjs';
 export function AssignmentReview({job,api}) {
@@ -13,7 +14,7 @@ export function AssignmentReview({job,api}) {
  {note&&!note.saved&&<div className="review-evidence" role="status"><h3>Full Lab note · {note.status}</h3><p>{note.status==='Needs attention'?'Inspect the saved note progress before any retry. Other completed outputs remain available.':'A saved full-note draft has not been confirmed. Collection or parent completion alone does not establish delivery.'}</p>{note.href?<a className="review-link" href={note.href}>Open full-note progress and recovery</a>:<p>No note identity is available yet. Check Sources, progress &amp; history below for the assignment’s next step.</p>}</div>}
  {docs.length>0&&<><div role="tablist" aria-label="Saved deliverables">{docs.map((d,i)=><button key={d.id} id={'review-tab-'+job.id+'-'+d.id} role="tab" aria-selected={d.id===doc?.id} aria-controls={'review-panel-'+job.id} tabIndex={d.id===doc?.id?0:-1} onClick={()=>setSelected(d.id)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?0:e.key==='End'?docs.length-1:(i+(e.key==='ArrowRight'?1:-1)+docs.length)%docs.length;setSelected(docs[n].id);e.currentTarget.parentElement.children[n].focus();}}}>{d.label}</button>)}</div>
  <div role="tabpanel" id={'review-panel-'+job.id} aria-labelledby={'review-tab-'+job.id+'-'+doc?.id}>
- {doc?.href?<div className="review-decision"><h3>{doc.label}</h3><p>{doc.description}</p><a className="review-link" href={doc.href}>{doc.actionLabel}</a></div>:<>
+ {doc?.meetingOutput?<AssignmentMeetingOutput api={api} job={job} doc={doc}/>:doc?.href?<div className="review-decision"><h3>{doc.label}</h3><p>{doc.description}</p><a className="review-link" href={doc.href}>{doc.actionLabel}</a></div>:<>
  <div className="review-toolbar"><strong>{doc?.label}</strong><span>{page.status==='accepted'?'Investor-accepted edition':page.status==='pending'?'Pending edition — review required':'Saved preview'} · no generation</span><button disabled={page.loading} onClick={()=>setRetry(x=>x+1)}>Refresh saved version</button><button disabled={!page.html} onClick={()=>downloadText(page.html,`${job.ticker}-${doc.id}-review.html`)}>Download</button><button disabled={!page.html} onClick={()=>frame.current?.contentWindow?.print()}>Print</button></div>
  {page.loading&&<p role="status" className="review-message">Opening your saved {doc.label.toLowerCase()}…</p>}{page.error&&<div role="alert" className="review-message">{page.error} <button onClick={()=>setRetry(x=>x+1)}>Retry loading</button></div>}
  {page.html&&<iframe ref={frame} title={`${job.ticker} ${doc.label} review`} sandbox="allow-same-origin allow-modals" srcDoc={page.html}/>}

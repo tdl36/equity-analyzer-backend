@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { reviewDocuments, assignmentLabNote, verifiedReviewPage } from './assignment-review-model.mjs';
+import { AssignmentMeetingOutput } from './assignment-meeting-output';
 import { HistoricalReview } from './historical-review';
 import { downloadText } from './stock-analysis-model.mjs';
 export function AssignmentReview({
@@ -87,7 +88,11 @@ export function AssignmentReview({
     role: "tabpanel",
     id: 'review-panel-' + job.id,
     "aria-labelledby": 'review-tab-' + job.id + '-' + doc?.id
-  }, doc?.href ? /*#__PURE__*/React.createElement("div", {
+  }, doc?.meetingOutput ? /*#__PURE__*/React.createElement(AssignmentMeetingOutput, {
+    api: api,
+    job: job,
+    doc: doc
+  }) : doc?.href ? /*#__PURE__*/React.createElement("div", {
     className: "review-decision"
   }, /*#__PURE__*/React.createElement("h3", null, doc.label), /*#__PURE__*/React.createElement("p", null, doc.description), /*#__PURE__*/React.createElement("a", {
     className: "review-link",

@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T367 closes a coordinated saved-output navigation gap: assignment review now reads
+the exact delivered meeting-question version, separately from the current meeting
+workspace. Synthetic newer-version, identity, availability and responsive checks
+pass; genuine source/output quality and investor acceptance remain open.
+
 T366 retains frozen event/thesis purpose and source context when recovering a saved
 final full-note response. Synthetic draft/export/replay checks pass without another
 provider call or investor acceptance. Existing versions and unknown legacy scope

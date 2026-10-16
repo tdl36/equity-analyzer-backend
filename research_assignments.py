@@ -34,6 +34,8 @@ class Coordinator:
         self.lock=threading.Lock();self.bp=Blueprint('research_assignments',__name__)
         self.lab_note_defaults=None;self.lab_note_dispatch=None;self.lab_note_stop=None
         self.routes()
+        from research_assignment_meeting_read import register as meeting_reads
+        meeting_reads(self)
         from processing_proposals import register
         register(self)
     def read(self,ident):

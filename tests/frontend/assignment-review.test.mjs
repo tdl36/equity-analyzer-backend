@@ -52,3 +52,15 @@ test('saved review rejects substituted identity, rejected status and missing con
  assert.throws(()=>verifiedReviewPage(response,pageDoc,{...pageJob,result:{}}));
  assert.throws(()=>verifiedReviewPage(null,pageDoc,pageJob));
 });
+
+import {checkedAssignmentMeeting} from '../../src/assignment-review-model.mjs';
+test('assignment review opens its exact meeting version, keeping current workspace separate',()=>{
+ const job={id:'assignment',ticker:'MDT',result:{reportId:'report',meetingId:24,meetingQuestionSetId:30}};
+ const q={id:30,meeting_id:24,version:1,ticker:'MDT',topics:[{topic:'Synthetic',questions:[{question:'Original question'}]}]};
+ const response={assignmentId:'assignment',reportId:'report',questionSet:q};
+ const doc=reviewDocuments(job)[0];assert.equal(doc.meetingOutput,true);assert.match(doc.href,/meeting%3A24/);
+ assert.deepEqual(checkedAssignmentMeeting(response,job),q);
+ for(const change of [{id:31},{meeting_id:26},{ticker:'ABT'},{version:0},{topics:[null]},{topics:[{questions:[null]}]}])assert.throws(()=>checkedAssignmentMeeting({...response,questionSet:{...q,...change}},job),/does not match/);
+ for(const change of [{assignmentId:'other'},{reportId:'other'}])assert.throws(()=>checkedAssignmentMeeting({...response,...change},job));
+ assert.throws(()=>checkedAssignmentMeeting(response,{...job,result:{...job.result,meetingQuestionSetId:undefined}}));
+});
