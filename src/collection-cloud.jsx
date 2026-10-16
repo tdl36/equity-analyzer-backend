@@ -15,6 +15,10 @@ function CollectionCloudSession({api,coverage=[],initialTicker='',routeWork='',o
   const [data,setData]=React.useState(null),[cfg,setCfg]=React.useState(blank),[error,setError]=React.useState(''),[loadError,setLoadError]=React.useState(''),[message,setMessage]=React.useState(''),[busy,setBusy]=React.useState(false),[uncertain,setUncertain]=React.useState(!!restored.body||!!restored.error);
   const [bulk,setBulk]=React.useState(''),[custom,setCustom]=React.useState(false);
   const [query,setQuery]=React.useState(initialTicker),[policyOpen,setPolicyOpen]=React.useState(false);
+  // Route changes select the requested company's collection without remounting
+  // the editor or discarding unfinished policy settings and command recovery.
+  React.useEffect(()=>{setQuery(initialTicker);},[initialTicker]);
+  React.useEffect(()=>{if(workId(routeWork,'collection'))setQuery(initialTicker);},[routeWork,initialTicker]);
   const policyEditor=React.useRef(null);
   const parsed=parseTickers(bulk);
   const alive=React.useRef(true),lock=React.useRef(false),pending=React.useRef(restored.body),readSerial=React.useRef(0);
@@ -52,7 +56,8 @@ function CollectionCloudSession({api,coverage=[],initialTicker='',routeWork='',o
     {(error||loadError)&&<p role="alert" className="workspace-error">{error||loadError}</p>}{message&&<p role="status">{message}</p>}
     <a className="workspace-primary" href="#view=desk&section=ready" style={{display:'inline-block',marginBottom:16}}>Ready to process — choose synthesis jobs →</a>
     <CollectionSynthesisStatus api={api}/>
-    <CollectionRequests focusId={workId(routeWork,'collection')} onClearFocus={()=>onWorkChange?.('')} requests={snapshot?.requests||[]} query={query} onQuery={setQuery} busy={busy||uncertain} onAction={send} available={!!snapshot}/>
+    {(stale||loadError)&&snapshot&&<p role="status">Collection request actions are paused until a fresh status read succeeds. Previously reported requests remain visible; their current state is unverified.</p>}
+    <CollectionRequests focusId={workId(routeWork,'collection')} onClearFocus={()=>onWorkChange?.('')} requests={snapshot?.requests||[]} query={query} onQuery={setQuery} busy={busy||uncertain||stale||!!loadError} onAction={send} available={!!snapshot}/>
     <details ref={policyEditor} open={policyOpen} onToggle={e=>setPolicyOpen(e.currentTarget.open)}><summary>Create or edit a collection policy</summary><p>Choose a reported policy below to edit its existing settings, or configure a new one. Nothing changes until you save.</p>
     <fieldset className="desk-form" disabled={busy||uncertain}><div className="desk-filter"><label>Ticker<input value={cfg.ticker} maxLength={20} onChange={e=>setCfg({...cfg,ticker:e.target.value.toUpperCase().trim()})} placeholder="MDT"/></label><label>Frequency<select value={custom?'custom':cfg.hours} onChange={e=>{setCustom(e.target.value==='custom');setCfg({...cfg,hours:e.target.value==='custom'?(cfg.hours||168):Number(e.target.value)});}}>{[[0,'Manual'],[1,'Hourly'],[4,'Every 4 hours'],[12,'Every 12 hours'],[24,'Daily'],[168,'Weekly'],[336,'Biweekly (14 days)'],[720,'Monthly (30 days)'],['custom','Custom interval']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>{custom&&<label>Custom interval (hours)<input type="number" min="1" max="8760" step="1" value={cfg.hours||1} onChange={e=>setCfg({...cfg,hours:Number(e.target.value)})}/></label>}<label>Initial lookback days<input type="number" min="1" max="365" value={cfg.lookbackDays} onChange={e=>setCfg({...cfg,lookbackDays:Number(e.target.value)})}/></label></div>
     <label>Destination and workflow<select value={cfg.workflow} onChange={e=>setCfg({...cfg,workflow:e.target.value})}><option value="thesis">STOCKS → thesis proposal intake</option><option value="note">STOCKS → draft note and existing intake</option><option value="recap">CATALYSTS → event recap</option></select></label>

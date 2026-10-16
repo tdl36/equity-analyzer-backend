@@ -55,6 +55,14 @@ function CollectionCloudSession({
     [custom, setCustom] = React.useState(false);
   var [query, setQuery] = React.useState(initialTicker),
     [policyOpen, setPolicyOpen] = React.useState(false);
+  // Route changes select the requested company's collection without remounting
+  // the editor or discarding unfinished policy settings and command recovery.
+  React.useEffect(() => {
+    setQuery(initialTicker);
+  }, [initialTicker]);
+  React.useEffect(() => {
+    if (workId(routeWork, 'collection')) setQuery(initialTicker);
+  }, [routeWork, initialTicker]);
   var policyEditor = React.useRef(null);
   var parsed = parseTickers(bulk);
   var alive = React.useRef(true),
@@ -211,13 +219,15 @@ function CollectionCloudSession({
     }
   }, "Ready to process \u2014 choose synthesis jobs \u2192"), /*#__PURE__*/React.createElement(CollectionSynthesisStatus, {
     api: api
-  }), /*#__PURE__*/React.createElement(CollectionRequests, {
+  }), (stale || loadError) && snapshot && /*#__PURE__*/React.createElement("p", {
+    role: "status"
+  }, "Collection request actions are paused until a fresh status read succeeds. Previously reported requests remain visible; their current state is unverified."), /*#__PURE__*/React.createElement(CollectionRequests, {
     focusId: workId(routeWork, 'collection'),
     onClearFocus: () => onWorkChange?.(''),
     requests: snapshot?.requests || [],
     query: query,
     onQuery: setQuery,
-    busy: busy || uncertain,
+    busy: busy || uncertain || stale || !!loadError,
     onAction: send,
     available: !!snapshot
   }), /*#__PURE__*/React.createElement("details", {

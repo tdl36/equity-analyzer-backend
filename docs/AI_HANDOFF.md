@@ -2,6 +2,34 @@
 
 Updated: October 14, 2026
 
+## T375 — Keep assignment-to-Operations navigation scoped to the requested company
+
+CollectionCloud retained its initial company filter when the existing mounted view
+received a new company/request route. Following another assignment's exact Operations
+link could therefore hide that request under the previous company's filter. Route
+changes now update the filter without remounting the editor, clearing unfinished
+policy settings or losing pending-command recovery. Clearing focus and manually
+filtering remain independent; opening a same-company exact link resets the filter.
+
+Collection retry/cancel buttons also previously stayed enabled after status refresh
+failed or the Mac snapshot became stale. Retained requests remain visible with an
+unverified-state notice, but those request actions wait for a successful fresh read.
+This does not change the existing ability to queue policy commands for an offline
+Mac, create a new worker or send commands while navigating.
+
+Validation: all 1850 safe backend and 295 frontend tests, Python compilation and
+production build pass. New tracked synthetic component-browser checks at 390/1280
+cover CVS→ABT→CVS routing, same-company links after manual filters, preserved policy
+edits, failed/stale reads and restored controls, with only fixture GETs. Existing
+command recovery browser checks pass for lost responses, reload, 503 retention,
+exact recovery outside the recent list and corrupt local storage. These checks do
+not certify live collection or research delivery; no real command was sent.
+
+Next: verify hosted T375. The genuine completed collection, frozen source selection,
+request-specific processing authorization and saved-output/investor-review chain
+remains open. Use the existing Operations worker and preserve its pending export;
+no duplicate collector or shared-dashboard expansion was introduced.
+
 ## T374 — Show real collection blockers in the originating assignment
 
 A read-only CVS inspection found a genuine visibility defect: the Mac reported
