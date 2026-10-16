@@ -9,7 +9,7 @@ with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  for width in [390,1280]:
   page=b.new_page(viewport={'width':width,'height':1000},service_workers='block');page.add_init_script("localStorage.setItem('charlie_auth_token','synthetic')")
-  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok';library_mode='ok';download_mode='good';downloads=[]
+  revision=1;mismatch=True;writes=[];completed=False;inventory_reads=[];proposals=[];read_mode='ok';collection_mode='ok';library_mode='ok';download_mode='good';downloads=[];collection_snapshot=None
   page.on('download',lambda d:downloads.append(d.suggested_filename))
   def api(route):
    u=route.request.url;d={};code=200
@@ -73,6 +73,8 @@ with sync_playwright() as p:
    elif '/api/analyses' in u:d=[]
    elif '/api/agent/health' in u:d={'status':'ok','staleSeconds':1}
    else:code=404
+   if '/api/research/assignments' in u and 'assignments' in d and collection_snapshot:
+    row=d['assignments'][0];row['status']='running';row['result']={'step':'Waiting for browser collection worker','refreshRequestId':NOTE,'macReportedAt':'2020-01-01T00:00:00Z','collection':collection_snapshot}
    route.fulfill(status=code,content_type='application/json',body=json.dumps(d))
   # Keep synthetic layout checks independent of remote font availability.
   page.route('https://fonts.googleapis.com/**',lambda route:route.abort())
@@ -310,5 +312,22 @@ with sync_playwright() as p:
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
   print(width,'revision restores intent, preserves other purpose, confirms target replacement, saves new pending identity without reapproval: passed',flush=True)
   print(width,'supplemental library, exclusions, filtering, pagination, collapse retention, local draft reload/discard, lost-save reconciliation, saved coverage, failed/mismatched status guards and mock approval passed',flush=True)
+  collection_snapshot={'status':'queued','issue':'Another company has an unfinished original export. Preserve it before starting this request.','sourceProgress':{'documents':{'staged':2,'handed_off':1},'tasks':[{'kind':'broker-report','status':'pending','expected':None}]}}
+  before=len(writes)
+  page.reload(wait_until='domcontentloaded')
+  page.locator('div.fixed.inset-0').filter(has=page.locator('img')).first.wait_for(state='hidden')
+  page.get_by_role('button',name='Open coordinated assignment controls').click()
+  collection=page.get_by_role('region',name='Assignment collection status',exact=True)
+  expect(collection.get_by_text('Queued for browser collection',exact=True)).to_be_visible()
+  expect(collection.get_by_text('Another company has an unfinished original export.',exact=False)).to_be_visible()
+  expect(collection.get_by_text('Report is stale or its time is unavailable.',exact=False)).to_be_visible()
+  expect(collection.get_by_text('0 verified originals recorded by this assignment.',exact=False)).to_be_visible()
+  expect(collection.get_by_role('link',name='Open this collection in Operations',exact=True)).to_have_attribute('href',re.compile('ticker=ABT.*section=collection.*work=collection%3A'+NOTE))
+  collection.get_by_text('Reported searches and handoffs',exact=True).click()
+  expect(collection.get_by_text('Staged originals: 2',exact=True)).to_be_visible()
+  expect(collection.get_by_text('Handed off to iCloud: 1',exact=True)).to_be_visible()
+  assert len(writes)==before and page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+  collection.scroll_into_view_if_needed();page.screenshot(path='/tmp/charlie-T374-'+str(width)+'-collection.png')
+  print(width,'queued collection blocker, stale report, unverified handoff counts and exact Operations link visible without writes: passed',flush=True)
   page.close()
  b.close()

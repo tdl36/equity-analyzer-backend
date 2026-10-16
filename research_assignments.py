@@ -100,7 +100,7 @@ class Coordinator:
                         state['macReportedAt']=(stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp).isoformat()
                     if collection['status'] in ('attention','needs_auth','cancelled'):raise ValueError(collection.get('issue') or 'Collection '+collection['status']+'. Resolve it in Collection and recovery controls, then resume this assignment.')
                     if collection['status']!='complete':
-                        state['step']='Collecting and verifying originals';self.store(ident,state,'running');return
+                        state['step']={'queued':'Waiting for browser collection worker','collecting':'Collecting and verifying originals','running':'Collecting and verifying originals'}.get(collection['status'],'Waiting for verified collection progress');self.store(ident,state,'running');return
                     pack=obj(collection.get('result')).get('assignmentSources',[])
                 if p.get('collectionOnly'):
                     if not isinstance(pack,list) or any(not isinstance(s,dict)

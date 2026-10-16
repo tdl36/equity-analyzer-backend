@@ -379,6 +379,20 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(self.submits,{})
         self.collected();r=self.advance();self.assertEqual(r['status'],'complete');self.assertNotIn('delayWarning',r['result'])
         self.assertEqual(len(self.submits),1)
+    def test_queued_collection_reports_waiting_and_preserves_issue_without_research(self):
+        self.start();self.collected()
+        for status,step in [('queued','Waiting for browser collection worker'),('collecting','Collecting and verifying originals'),('unexpected','Waiting for verified collection progress')]:
+            with self.subTest(status=status):
+                collection={'id':self.ident,'status':status,'issue':'Another original export must finish first.','sourceProgress':{'documents':{},'tasks':[]}}
+                with self.db(True) as (_,cur):
+                    cur.execute("UPDATE app_settings SET value=%s,updated_at=NOW() WHERE key='collection_control_snapshot'",(json.dumps({'requests':[collection]}),))
+                row=self.advance()
+                self.assertEqual(row['status'],'running');self.assertEqual(row['result']['step'],step)
+                public=self.co.public(row)
+                self.assertEqual(public['result']['collection']['issue'],collection['issue'])
+                self.assertEqual(public['result']['collection']['status'],status)
+                self.assertFalse(row['result'].get('sources'));self.assertFalse(self.submits)
+
     def test_stale_collection_snapshot_visible_without_paid_dispatch(self):
         self.start();self.collected()
         with self.db(True) as (_,cur):

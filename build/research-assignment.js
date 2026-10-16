@@ -1,3 +1,4 @@
+import { AssignmentCollection } from './assignment-collection';
 import { originalArtifactUrl } from './assignment-review-model.mjs';
 import { ProcessingProposals } from './processing-proposals';
 import { labAssignmentDelivery } from './lab-assignment-delivery.mjs';
@@ -327,7 +328,9 @@ export function ResearchAssignment({
     key: row.key
   }, /*#__PURE__*/React.createElement("strong", null, row.label, ": ", row.status), row.error && /*#__PURE__*/React.createElement("p", null, row.error)))), j.result.labNoteId && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("a", {
     href: routeHash('pipelinelab', ticker, '', 'labnote:' + j.result.labNoteId)
-  }, "Open full Lab note & recovery")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved drafts remain available in Sources, progress & history below, even if another stage needs attention. Saved does not mean investor-approved. Missing receipts are not proof of delivery.")))), j.status === 'complete' && j.input.collectionOnly && j.result.sources?.length > 0 && /*#__PURE__*/React.createElement(ProcessingProposals, {
+  }, "Open full Lab note & recovery")), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("small", null, "Saved drafts remain available in Sources, progress & history below, even if another stage needs attention. Saved does not mean investor-approved. Missing receipts are not proof of delivery.")))), /*#__PURE__*/React.createElement(AssignmentCollection, {
+    job: j
+  }), j.status === 'complete' && j.input.collectionOnly && j.result.sources?.length > 0 && /*#__PURE__*/React.createElement(ProcessingProposals, {
     api: api,
     job: j
   }), /*#__PURE__*/React.createElement("details", {

@@ -2,6 +2,37 @@
 
 Updated: October 14, 2026
 
+## T374 — Show real collection blockers in the originating assignment
+
+A read-only CVS inspection found a genuine visibility defect: the Mac reported
+queued/unstarted because a prior company's original export occupied the browser,
+but the coordinator labelled every unfinished collection Collecting and verifying
+originals and the assignment view omitted collection.issue/sourceProgress entirely.
+No Operations worker or pending export was changed by this engineering task.
+
+Queued snapshots now retain Waiting for browser collection worker; collecting and
+running snapshots keep the active collection label; unknown states do not imply
+progress. The originating assignment displays the reported state/issue, report time
+and stale/unavailable-time warning, reported search tasks/handoff counts, separately
+recorded verified originals and an exact company/request Operations link. Staged,
+iCloud handed-off and duplicate-copy counts explicitly do not certify cloud imports,
+coverage, completed research or evidence incorporated in the accepted thesis.
+Frozen Lab selections/processing proposals do not acquire a browser-collection panel.
+Mac/agent/Codex/browser/authentication dependencies remain visible; no new worker,
+retry, paid processing, backfill synthesis or approval action was added.
+
+Validation: 2 focused disposable-DB tests, 3 focused frontend tests, all 1850 safe
+backend and 295 frontend tests, Python compilation and production build pass.
+Synthetic full-app 390/1280 checks show the queued blocker, stale report, separate
+handoff/verified counts and exact Operations destination without additional writes;
+existing source/proposal/recovery checks pass. Phone screenshot inspected for layout.
+This fixes actual status visibility but does not prove collection or research delivery.
+
+Next: verify hosted T374 and read the current CVS snapshot. Existing Operations
+must finish its pending original export before this request can collect. Genuine
+completed receipts → selected proposal → explicit processing authorization → saved
+drafts → investor review remains open, as do the eight acceptance certifications.
+
 ## T373 — Verify proposal recovery before submission and after receipt
 
 Processing-proposal submission previously trusted sessionStorage writes/removals
