@@ -572,6 +572,86 @@ class AssignmentPostgresTests(unittest.TestCase):
         self.assertEqual(row['status'],'complete');self.assertEqual(calls[0],calls[-1]);self.assertEqual(len(self.submits),1)
         self.assertNotIn('labNotePlan',self.co.public(row)['input'])
 
+    def full_note_with_meeting(self, dispatch):
+        self.co.lab_note_defaults=lambda:{'modelKey':'fixture','promptTemplate':'Frozen fixture'}
+        self.co.lab_note_dispatch=dispatch
+        body={**P,'ticker':self.ticker,'requestId':self.ident,'outputs':['visual','meeting_prep'],
+              'meeting':{'date':'2026-10-20','type':'management'},'labFullNote':{'allowPdfText':False}}
+        self.assertEqual(self.client.post('/api/research/assignments',json=body).status_code,202)
+        self.collected()
+
+    def test_meeting_failure_still_delivers_requested_full_note(self):
+        calls=[]
+        def dispatch(ident,p,pack):
+            calls.append((ident,copy.deepcopy(p['labNotePlan']),copy.deepcopy(pack)))
+            return {'noteId':child(ident,'full-lab-note'),'status':'draft','revision':1}
+        self.full_note_with_meeting(dispatch)
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing supported questions')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention')
+        self.assertEqual(row['result']['labNoteStatus'],'draft')
+        self.assertEqual(row['result']['labNoteId'],child(self.ident,'full-lab-note'))
+        self.assertIn('visual',row['result']['artifacts'])
+        self.assertEqual(row['result']['outputErrors'],{'meeting_prep':'Missing supported questions'})
+        self.assertEqual(len(calls),1)
+
+    def test_pending_note_with_failed_derivative_waits_for_explicit_resume(self):
+        calls=[];status={'status':'queued'}
+        def dispatch(ident,p,pack):
+            calls.append((ident,copy.deepcopy(p),copy.deepcopy(pack)))
+            return {'noteId':child(ident,'full-lab-note'),**status}
+        self.full_note_with_meeting(dispatch)
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing questions')):
+            row=self.advance();self.advance()
+        self.assertEqual(row['status'],'attention');self.assertIn('still in progress',row['result']['step'])
+        self.assertEqual(len(calls),1)
+        status['status']='draft';original=self.co.invoke
+        def invoke(endpoint,method,body,params):
+            if endpoint=='research_meeting_handoff.handoff':return {'meetingId':31,'questionSetId':41},200
+            return original(endpoint,method,body,params)
+        self.assertEqual(self.client.post('/api/research/assignments/'+self.ident+'/resume',json={}).status_code,200)
+        with patch('research_assignment_meeting.selection',return_value={'frozen':'selection'}),patch.object(self.co,'invoke',side_effect=invoke):
+            row=self.advance()
+        self.assertEqual(row['status'],'complete',row['error'])
+        self.assertEqual(row['result']['outputErrors'],{})
+        self.assertEqual(calls[0],calls[1]);self.assertEqual(len(self.submits),1)
+
+    def test_note_and_meeting_failures_remain_individually_visible(self):
+        self.full_note_with_meeting(lambda *a:{'noteId':child(self.ident,'full-lab-note'),'status':'attention','reason':'provider_outcome_unknown'})
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing questions')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention')
+        self.assertEqual(set(row['result']['outputErrors']),{'meeting_prep','lab_note'})
+        self.assertIn('provider_outcome_unknown',row['result']['outputErrors']['lab_note'])
+        self.assertIn('visual',row['result']['artifacts'])
+        self.assertEqual(row['result']['labNoteStatus'],'attention')
+
+    def test_thesis_failure_keeps_repair_gate_and_independent_note_receipt(self):
+        self.full_note_with_meeting(lambda *a:{'noteId':child(self.ident,'full-lab-note'),'status':'draft'})
+        with self.db(True) as (_,cur):
+            cur.execute("UPDATE mp_jobs SET input=jsonb_set(input,'{outputs}',%s::jsonb) WHERE id=%s",(json.dumps(['visual','thesis','meeting_prep']),self.ident))
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing questions')),patch('research_assignment_outputs.thesis',side_effect=ValueError('No supported thesis statements: fixture')):
+            row=self.advance()
+        self.assertEqual(row['status'],'attention');self.assertTrue(row['error'].startswith('No supported thesis statements'))
+        self.assertEqual(row['result']['labNoteStatus'],'draft')
+        self.assertEqual(set(row['result']['outputErrors']),{'meeting_prep','thesis'})
+
+    def test_full_note_unavailable_retains_derivative_error_and_no_false_receipt(self):
+        self.full_note_with_meeting(None)
+        with patch('research_assignment_meeting.selection',side_effect=ValueError('Missing questions')):
+            row=self.advance()
+        self.assertEqual(set(row['result']['outputErrors']),{'meeting_prep','lab_note'})
+        self.assertNotIn('labNoteId',row['result']);self.assertEqual(row['status'],'attention')
+        self.assertIn('unavailable',row['result']['outputErrors']['lab_note'])
+
+    def test_invalid_original_still_blocks_full_note_before_any_dispatch(self):
+        def forbidden(*a):raise AssertionError('Unverified originals must not dispatch')
+        self.full_note_with_meeting(forbidden)
+        with self.db(True) as (_,cur):
+            cur.execute('UPDATE document_files SET file_data=%s WHERE ticker=%s',(base64.b64encode(b'changed').decode(),self.ticker))
+        row=self.advance();self.assertEqual(row['status'],'attention')
+        self.assertIn('hashes',row['error']);self.assertNotIn('labNoteId',row['result']);self.assertFalse(self.submits)
+
     def test_shared_meeting_output_recovers_lost_receipt_without_new_research(self):
         original_report=self.report
         def report():

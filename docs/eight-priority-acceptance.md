@@ -4,6 +4,11 @@ Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.
 
+T342 lets an independently requested full note proceed despite meeting/thesis
+derivative failure, retaining separate errors, saved drafts and explicit recovery.
+Synthetic tests cover frozen replay and source gates; no live processing approval
+or investor acceptance occurred.
+
 T341 isolates the existing collection-control sync from slow file/job work in the
 Mac agent. Synthetic scheduling/recovery tests pass; live browser collection and
 processing approval remain unproven. No second collector or approval changes.

@@ -10,6 +10,6 @@ export function labAssignmentDelivery(job) {
   const error=typeof result.outputErrors?.[key]==='string'?result.outputErrors[key]:'';
   return {key,label,saved,error};
  });
- if(input.labFullNote)rows.push({key:'lab_note',label:'Full Lab note',saved:!!result.labNoteId&&result.labNoteStatus==='draft',error:result.labNoteStatus==='attention'?'Open the full Lab note and reconcile saved progress before resuming the assignment.':''});
+ if(input.labFullNote)rows.push({key:'lab_note',label:'Full Lab note',saved:!!result.labNoteId&&result.labNoteStatus==='draft',error:typeof result.outputErrors?.lab_note==='string'?result.outputErrors.lab_note:result.labNoteStatus==='attention'?'Open the full Lab note and reconcile saved progress before resuming the assignment.':''});
  return rows.map(row=>({...row,status:row.error?(row.saved?'Saved · needs attention':'Needs attention'):row.saved?'Draft saved':job.status==='complete'?'Receipt missing':['cancelled','stopped'].includes(job.status)?'Stopped before delivery':'Not yet saved'}));
 }

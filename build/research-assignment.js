@@ -342,7 +342,7 @@ export function ResearchAssignment({
     "aria-label": "Output recovery"
   }, /*#__PURE__*/React.createElement("h5", null, "Outputs needing attention"), Object.entries(j.result.outputErrors).map(([kind, reason]) => /*#__PURE__*/React.createElement("p", {
     key: kind
-  }, /*#__PURE__*/React.createElement("strong", null, outputs.find(x => x[0] === kind)?.[1] || kind, ":"), " ", reason)), /*#__PURE__*/React.createElement("p", null, "Completed outputs remain available below. An output failure does not mean the whole source pack or research report failed.")), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("strong", null, outputs.find(x => x[0] === kind)?.[1] || (kind === 'lab_note' ? 'Full Lab note' : kind), ":"), " ", reason)), /*#__PURE__*/React.createElement("p", null, "Completed outputs remain available below. An output failure does not mean the whole source pack or research report failed.")), j.result.visualFundamentals?.gaps?.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "status"
   }, "Public-data gaps: ", j.result.visualFundamentals.gaps.join('; '), ". Retrying retrieves public data only; it does not rerun research. Your previous snapshot stays available if retrieval fails."), /*#__PURE__*/React.createElement("div", {
     className: "sa-actions"

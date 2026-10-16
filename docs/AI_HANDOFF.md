@@ -2,6 +2,44 @@
 
 Updated: October 14, 2026
 
+## T342 — Independently requested full notes survive derivative failures
+
+Critical-path source-to-output repair: a meeting-prep or thesis-derivative ValueError
+previously stopped the coordinator before an explicitly requested full Lab note was
+enqueued. The note uses the verified originals and frozen note plan independently;
+it now reaches the existing deterministic note service even when those derivatives
+need attention. No additional output is selected or authorized. Collection-only,
+original-hash/source-preparation checks and shared-report completion still gate
+processing. Event/thesis scope and accepted research are unchanged.
+
+Meeting, thesis and full-note errors remain separate in outputErrors. Thesis errors
+remain first for the existing bounded repair path. A queued note with another failed
+output leaves the parent in attention and points to its exact saved job for current
+status; it does not auto-retry failed derivatives. Explicit resume reconciles the
+same note identity/plan and retains completed outputs. Full-note service failures
+without a child receipt are visible in delivery/recovery UI, never shown as saved.
+Existing deterministic enqueue and ambiguous-provider fences remain in force.
+No live generation, approval or backfill-synthesis setting was changed for QA.
+
+Validation: 47 focused assignment tests, 1,747 full safe backend tests, 254 frontend
+tests, Python compilation and production build pass. New fixtures cover independent
+note delivery, queued-note/parent-attention behavior, explicit recovery with frozen
+inputs, combined failures, thesis repair ordering, unavailable note service and
+original-hash rejection before dispatch. Actual component fixtures at 390/1280px
+verify saved-note links, missing-receipt errors and no overflow; screenshots checked.
+The first browser assertion used “Meeting prep” instead of the existing “Meeting
+questions” label; corrected the fixture and all four final cases pass. Synthetic
+providers/isolated PostgreSQL only; no live approval or end-to-end proof.
+Logs: /tmp/charlie-T342-{focused,backend,frontend,build,ui,deploy,verify}.log.
+
+Next: verify exact deployment, inspect genuine collection/import and processing
+readiness without creating a second collector or approving generation. Further
+independent delivery audit: visual-fundamentals retrieval and HTML derivative errors
+still precede other outputs; distinguish shared-input failures from output-local
+failures before changing their recovery. Preserve existing saved drafts and explicit
+retry. Historical-reference schema and all eight acceptance certifications remain
+open. Agent unchanged; no restart required. Original Pipeline remains unchanged.
+
 ## T341 — Collection controls stay responsive during slow file and job work
 
 Critical-path collection reliability: the existing Mac collection-control sync ran

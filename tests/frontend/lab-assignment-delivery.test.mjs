@@ -18,3 +18,12 @@ test('saved receipts never hide recorded output errors or imply approval',()=>{
  assert.equal(rows[0].status,'Saved · needs attention');assert.equal(rows[0].error,'Review baseline');
  assert.equal(delivery({status:'cancelled',input:{outputs:['visual']}})[0].status,'Stopped before delivery');
 });
+test('full note planning failure is visible even without a child receipt',()=>{
+ const row=delivery({status:'attention',input:{outputs:['visual'],labFullNote:{}},result:{artifacts:[{kind:'visual',url:'/saved'}],outputErrors:{lab_note:'Original preparation changed'}}}).find(r=>r.key==='lab_note');
+ assert.equal(row.status,'Needs attention');assert.equal(row.error,'Original preparation changed');assert.equal(row.saved,false);
+});
+test('independent note draft stays saved while meeting questions need attention',()=>{
+ const rows=delivery({status:'attention',input:{outputs:['meeting_prep'],labFullNote:{}},result:{labNoteId:'note',labNoteStatus:'draft',outputErrors:{meeting_prep:'Missing questions'}}});
+ assert.equal(rows.find(r=>r.key==='lab_note').status,'Draft saved');
+ assert.equal(rows.find(r=>r.key==='meeting_prep').status,'Needs attention');
+});

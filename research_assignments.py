@@ -201,18 +201,30 @@ class Coordinator:
                     except ValueError as exc:
                         output_errors['thesis']=str(exc)[:900]
                         self.store(ident,state,'running')
+                # Full-note generation is independently requested and uses the
+                # verified originals, not the meeting/thesis derivative. A failure
+                # in either derivative must not silently suppress that output.
+                note_pending=False
+                if p.get('labFullNote'):
+                    try:
+                        if not self.lab_note_dispatch:raise ValueError('Full Lab note worker is unavailable; saved outputs are retained.')
+                        receipt=self.lab_note_dispatch(ident,p,pack)
+                        state['labNoteId']=receipt['noteId'];state['labNoteStatus']=receipt['status']
+                        if receipt['status']=='attention':
+                            raise ValueError('Full Lab note needs attention: '+str(receipt.get('reason'))+'. Reconcile it in Pipeline Lab, then resume this assignment. Other saved outputs remain available.')
+                        note_pending=receipt['status']!='draft'
+                    except ValueError as exc:
+                        output_errors['lab_note']=str(exc)[:900]
                 if output_errors:
                     state['step']='Some outputs need attention; completed drafts are retained'
+                    if note_pending:
+                        state['step']+='; full Lab note is still in progress — open its saved job for current status'
                     # Keep thesis errors first for the existing bounded repair gate.
-                    raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep') if k in output_errors))
-                if p.get('labFullNote'):
-                    if not self.lab_note_dispatch:raise ValueError('Full Lab note worker is unavailable; saved outputs are retained.')
-                    receipt=self.lab_note_dispatch(ident,p,pack)
-                    state['labNoteId']=receipt['noteId'];state['labNoteStatus']=receipt['status']
-                    if receipt['status']=='attention':
-                        raise ValueError('Full Lab note needs attention: '+str(receipt.get('reason'))+'. Reconcile it in Pipeline Lab, then resume this assignment. Other saved outputs remain available.')
-                    if receipt['status']!='draft':
-                        state['step']='Writing full Lab note from the shared originals';self.store(ident,state,'running');return
+                    # Attention requires explicit resume; it must not repeatedly
+                    # retry failed derivatives while the note worker continues.
+                    raise ValueError(' · '.join(output_errors[k] for k in ('thesis','meeting_prep','lab_note') if k in output_errors))
+                if note_pending:
+                    state['step']='Writing full Lab note from the shared originals';self.store(ident,state,'running');return
                 state['step']='Ready for investor review';self.store(ident,state,'complete')
             except ValueError as exc:
                 self.store(ident,state,'attention',str(exc)[:900])
