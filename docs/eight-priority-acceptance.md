@@ -1,5 +1,14 @@
 # Eight-priority acceptance ledger
 
+October 17 T388 implementation checkpoint: single-section AI revisions include frozen
+read-only package context; authorization and stale-result checks cover that context.
+Unsaved package preview supports comparing thesis/summary and one-pager wording
+before version save. Source-coverage disclosure includes unknown metadata and
+extraction limitations. Synthetic tests cover these review/recovery behaviors;
+this is progress on priorities 2/4 and recovery, not analytical or investor acceptance.
+No paid processing or genuine unattended journey was performed for this release.
+
+
 Evidence checked October 15, 2026. This ledger separates implementation, test
 coverage and investor/live acceptance. Release count is not a completion metric.
 None of the eight priorities is certified complete merely by this audit.

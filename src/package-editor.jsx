@@ -1,3 +1,4 @@
+import {PackageDraftPreview} from './package-draft-preview';
 import {PackageRewrite} from './package-rewrite';
 import * as React from 'react';
 import {thesisFields,setText,revisionPackage,correctionBody,packageFields,applyPackageAlternative} from './package-editor-model.mjs';
@@ -7,6 +8,7 @@ export function PackageEditor({job,api}) {
  const packageRef=job.result.reviewPackage,base=`/api/research/assignments/${job.id}`;
  const key=`charlie-package-editor:${api}:${job.id}:${packageRef.requestId}`;
  const [open,setOpen]=React.useState(false),[data,setData]=React.useState(null),[analysis,setAnalysis]=React.useState(null),[words,setWords]=React.useState({}),[tab,setTab]=React.useState('thesis'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState(''),[prefs,setPrefs]=React.useState(null),[rule,setRule]=React.useState(''),[ack,setAck]=React.useState(false),[decisionAck,setDecisionAck]=React.useState(false);
+ const [previewOpen,setPreviewOpen]=React.useState(false);
  const attempt=React.useRef(null),locked=React.useRef(false),live=React.useRef(true);
  const dirty=!!data&&(JSON.stringify(analysis)!==JSON.stringify(data.draft.package.analysis)||Object.entries(words).some(([id,v])=>v!==data.edition.record.claims.find(c=>c.correctionId===id)?.proposal.statement));
  React.useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
@@ -62,6 +64,8 @@ export function PackageEditor({job,api}) {
  fields={packageFields(analysis,data.edition.record.claims,words)}
  onKeep={values=>{const next=applyPackageAlternative(analysis,words,values);change(next.analysis,next.words);setNotice('Package alternative kept in your draft. Review both documents and their evidence before saving.');}}/>
 
+ <button aria-expanded={previewOpen} onClick={()=>setPreviewOpen(!previewOpen)}>{previewOpen?'Hide draft preview':'Preview draft before saving'}</button>
+ {previewOpen&&<PackageDraftPreview analysis={analysis} original={data.draft.package.analysis} claims={data.edition.record.claims} words={words}/>}
  <fieldset disabled={busy||!!attempt.current||data?.draft.status!=='pending'||data?.draft.stale||data?.edition.decision||data?.edition.stale}>
  {tab==='thesis'?thesisFields(analysis).map(f=><label key={JSON.stringify(f.path)}>{f.label}<textarea rows={f.path.at(-1)==='summary'?8:3} maxLength={40000} value={f.value} onChange={e=>change(setText(analysis,f.path,e.target.value),words)}/></label>):data.edition.record.claims.map(c=><article key={c.correctionId}><label>{claimLabel(c.proposal.path)}<textarea rows={3} maxLength={1600} value={words[c.correctionId]} onChange={e=>change(analysis,{...words,[c.correctionId]:e.target.value})}/></label><small>{words[c.correctionId].length}/1600 characters</small><details><summary>Original wording & evidence</summary><p>{c.proposal.statement}</p>{[c.proposal,...(c.proposal.additionalEvidence||[])].map((e,i)=><div key={i}><p>{e.locator}</p><blockquote>{e.excerpt}</blockquote></div>)}</details></article>)}
  </fieldset>

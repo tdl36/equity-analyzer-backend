@@ -2,6 +2,33 @@
 
 Updated: October 14, 2026
 
+## T388 — Context-aware revisions and unsaved package preview
+
+Package section rewrites now freeze the rest of the package as read-only context.
+Context participates in the cost estimate, authorization fingerprint and server
+replay identity. Only requested field IDs can be returned. The client blocks stale
+quotes/Keep if either requested wording or related context changed; legacy stored
+requests without context retain their original recovery behavior.
+
+The editor now has a consolidated unsaved wording preview of thesis/summary and
+one-pager, changed-section markers, saved-wording comparison and attached brief
+evidence. It makes no API/model calls and explicitly does not establish acceptance,
+evidence revalidation or final print layout. Existing separate save/decision steps
+and original preservation remain.
+
+Rewrite cost review exposes source-by-source omitted text, returned extraction and
+unknown coverage, including textExtraction limitations even without a freeform
+coverage warning. Returned extraction is not full PDF/chart/visual review.
+
+Validation: focused context/fingerprint/return-scope tests, frontend model tests,
+synthetic 390/1280 preview and interrupted-rewrite recovery checks. All 1875 safe backend tests and 306 frontend tests pass; build and
+390/1280 preview/recovery/stale-context browser checks pass. Exact deployment
+verification follows. No paid research, source
+reprocessing, ABT text changes or investor decisions. Priorities advanced: output
+quality, coherent review workspace and interrupted-work recovery. Live generation
+quality, source-complete analysis, permitted historical valuation, investor acceptance
+and genuine unattended collection-to-approved-output proof remain open.
+
 ## T387 — Connected investment writing and whole-package revision
 
 New Stock Analysis requests freeze `writingPolicy=synthesis-v1`. Existing requests

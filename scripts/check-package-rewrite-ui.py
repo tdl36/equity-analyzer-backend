@@ -13,7 +13,8 @@ window.fetch=async(url,opts={})=>{const body=opts.body?JSON.parse(opts.body):nul
  else if(url.endsWith('/start')){if(window.fail){window.fail=false;throw Error('Synthetic connection interrupted');}value={id:body.requestId};}
  else value={status:'complete',state:{rewrite:{summary:'Alternative wording'}}};
  return new Response(JSON.stringify(value));};
-createRoot(document.getElementById('root')).render(<PackageRewrite runId="r1" api="/fixture" storageKey="synthetic" fields={[{id:'summary',label:'Company view',text:'Original wording',limit:300}]} onKeep={x=>{window.kept=x;}}/>);
+function Fixture(){const [changed,setChanged]=React.useState(false);return <><button onClick={()=>setChanged(!changed)}>Change related thesis</button><PackageRewrite runId="r1" api="/fixture" storageKey="synthetic" fields={[{id:'summary',label:'Company view',text:'Original wording',limit:300},{id:'case',label:'Related thesis',text:changed?'Changed case':'Original case',limit:40000}]} onKeep={x=>{window.kept=x;}}/></>;}
+createRoot(document.getElementById('root')).render(<Fixture/>);
 '''
 with tempfile.TemporaryDirectory(prefix='charlie-rewrite-') as folder:
  p=Path(folder);(p/'fixture.jsx').write_text(fixture.replace('__ROOT__',str(ROOT)))
@@ -23,14 +24,20 @@ with tempfile.TemporaryDirectory(prefix='charlie-rewrite-') as folder:
   browser=pw.chromium.launch(channel='chrome',headless=True)
   for width in (390,1280):
    context=browser.new_context(viewport={'width':width,'height':900});page=context.new_page();page.goto((p/'index.html').as_uri())
-   page.get_by_role('button',name='Revise with AI',exact=True).click();page.get_by_label('Instructions',exact=True).fill('Make specific')
+   page.get_by_role('button',name='Revise with AI',exact=True).click();page.get_by_role('combobox').select_option('summary');page.get_by_label('Instructions',exact=True).fill('Make specific')
    page.get_by_role('button',name='Review scope & cost').click();expect(page.get_by_text('Synthetic estimate',exact=True)).to_be_visible()
+   assert page.evaluate('window.calls')[0]['body']['contextFields'][0]['id']=='case'
    assert not any(c['url'].endswith('/start') for c in page.evaluate('window.calls'))
    page.get_by_role('button',name='Authorize cost & generate alternative').click();expect(page.get_by_role('alert')).to_have_text('Synthetic connection interrupted')
    first=page.evaluate('window.calls').copy();page.reload()
    page.get_by_role('button',name='Check saved result').click();expect(page.get_by_text('Alternative wording',exact=True)).to_be_visible()
    assert not any(c['body'] for c in page.evaluate('window.calls'))
    assert page.evaluate('window.kept') is None
+   page.get_by_role('button',name='Change related thesis',exact=True).click()
+   page.get_by_role('button',name='Keep alternative in my draft').click()
+   expect(page.get_by_role('alert')).to_contain_text('package wording or context changed')
+   assert page.evaluate('window.kept') is None
+   page.get_by_role('button',name='Change related thesis',exact=True).click()
    page.get_by_role('button',name='Keep alternative in my draft').click()
    assert page.evaluate('window.kept')=={'summary':'Alternative wording'}
    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')

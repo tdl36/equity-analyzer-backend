@@ -1,3 +1,4 @@
+import { PackageDraftPreview } from './package-draft-preview';
 import { PackageRewrite } from './package-rewrite';
 import * as React from 'react';
 import { thesisFields, setText, revisionPackage, correctionBody, packageFields, applyPackageAlternative } from './package-editor-model.mjs';
@@ -21,6 +22,7 @@ export function PackageEditor({
     [rule, setRule] = React.useState(''),
     [ack, setAck] = React.useState(false),
     [decisionAck, setDecisionAck] = React.useState(false);
+  var [previewOpen, setPreviewOpen] = React.useState(false);
   var attempt = React.useRef(null),
     locked = React.useRef(false),
     live = React.useRef(true);
@@ -261,6 +263,14 @@ export function PackageEditor({
       change(next.analysis, next.words);
       setNotice('Package alternative kept in your draft. Review both documents and their evidence before saving.');
     }
+  }), /*#__PURE__*/React.createElement("button", {
+    "aria-expanded": previewOpen,
+    onClick: () => setPreviewOpen(!previewOpen)
+  }, previewOpen ? 'Hide draft preview' : 'Preview draft before saving'), previewOpen && /*#__PURE__*/React.createElement(PackageDraftPreview, {
+    analysis: analysis,
+    original: data.draft.package.analysis,
+    claims: data.edition.record.claims,
+    words: words
   }), /*#__PURE__*/React.createElement("fieldset", {
     disabled: busy || !!attempt.current || data?.draft.status !== 'pending' || data?.draft.stale || data?.edition.decision || data?.edition.stale
   }, tab === 'thesis' ? thesisFields(analysis).map(f => /*#__PURE__*/React.createElement("label", {

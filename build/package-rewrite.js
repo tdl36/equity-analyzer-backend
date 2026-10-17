@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { rewriteScope, rewriteStillMatches } from './package-rewrite-model.mjs';
 export function PackageRewrite({
   runId,
   storageKey,
@@ -67,7 +68,7 @@ export function PackageRewrite({
       requestId: crypto.randomUUID(),
       writingPolicy: 'synthesis-v1',
       instructions,
-      fields: scope === '*' ? fields : fields.filter(f => f.id === scope)
+      ...rewriteScope(fields, scope)
     };
     var quote = await call(`/api/research/stock-analysis-run/${runId}/rewrite/prepare`, body);
     setPlan({
@@ -118,8 +119,7 @@ export function PackageRewrite({
     setPlan(null);
   }
   function keep() {
-    var frozen = pending.body.fields;
-    if (frozen.some(f => fields.find(x => x.id === f.id)?.text !== f.text)) throw Error('Your wording changed after generation. Copy the alternative you want to retain, or restore the original wording before keeping this version.');
+    if (!rewriteStillMatches(pending.body, fields)) throw Error('Your package wording or context changed after generation. Copy the alternative you want to retain, or restore the original wording before keeping this version.');
     onKeep(job.state.rewrite);
     clear();
     setShow(false);
@@ -157,10 +157,14 @@ export function PackageRewrite({
   })), /*#__PURE__*/React.createElement("button", {
     disabled: disabled || busy || !instructions.trim(),
     onClick: () => act(prepare)
-  }, "Review scope & cost"), plan && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, plan.quote.fieldCount, " fields \xB7 ", plan.quote.sourceCount, " saved sources \xB7 ", plan.quote.calls, " model call \xB7 estimated $", plan.quote.estimatedUsd.toFixed(3), " USD"), /*#__PURE__*/React.createElement("p", null, plan.quote.notice), plan.quote.sourceLimitations?.length > 0 && /*#__PURE__*/React.createElement("p", {
+  }, "Review scope & cost"), plan && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, plan.quote.fieldCount, " fields \xB7 ", plan.quote.sourceCount, " saved sources \xB7 ", plan.quote.calls, " model call \xB7 estimated $", plan.quote.estimatedUsd.toFixed(3), " USD"), /*#__PURE__*/React.createElement("p", null, plan.quote.notice), plan.quote.contextFieldCount > 0 && /*#__PURE__*/React.createElement("p", null, plan.quote.contextFieldCount, " other sections are included as context only and will not be rewritten."), plan.quote.sourceLimitations?.length > 0 && /*#__PURE__*/React.createElement("p", {
     role: "status"
-  }, "Source coverage is incomplete: ", Array.from(new Set(plan.quote.sourceLimitations)).join(" "), " This revision cannot recover omitted evidence."), /*#__PURE__*/React.createElement("p", null, "Model: ", plan.quote.model, ". Your saved writing preferences are included."), /*#__PURE__*/React.createElement("button", {
-    disabled: disabled || busy || JSON.stringify(plan.body.fields) !== JSON.stringify(scope === '*' ? fields : fields.filter(f => f.id === scope)),
+  }, "Saved source limitations: ", Array.from(new Set(plan.quote.sourceLimitations)).join(" "), " This revision cannot recover omitted evidence."), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Source coverage for this revision"), /*#__PURE__*/React.createElement("p", null, "Extracted text is not proof of complete visual, table or chart review. A rewrite cannot retrieve omitted evidence."), plan.quote.sourceCoverage?.map((s, i) => /*#__PURE__*/React.createElement("div", {
+    key: s.id || i
+  }, /*#__PURE__*/React.createElement("strong", null, s.filename), /*#__PURE__*/React.createElement("p", null, s.status === 'omitted_text' ? 'Text omitted' : s.status === 'recorded_extraction' ? 'Returned text extraction recorded' : 'Coverage unknown'), s.warnings.map((w, j) => /*#__PURE__*/React.createElement("p", {
+    key: j
+  }, w))))), /*#__PURE__*/React.createElement("p", null, "Model: ", plan.quote.model, ". Your saved writing preferences are included."), /*#__PURE__*/React.createElement("button", {
+    disabled: disabled || busy || !rewriteStillMatches(plan.body, fields),
     onClick: () => act(start)
   }, "Authorize cost & generate alternative"))), pending && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Saved rewrite request: ", pending.body.requestId, ". ", job?.status || 'Submission awaiting confirmation'), /*#__PURE__*/React.createElement("button", {
     disabled: busy,

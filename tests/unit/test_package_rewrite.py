@@ -69,16 +69,19 @@ class RewriteRouteTests(unittest.TestCase):
         @contextlib.contextmanager
         def db(**kwargs):yield None,Cursor()
         app=Flask(__name__);app.register_blueprint(create_blueprint(db,lambda *a:None,lambda k:'key',lambda:model,studio=True))
-        client=app.test_client();body={**self.make_spec(),'requestId':str(uuid.uuid4())}
+        client=app.test_client();body={**self.make_spec(),'requestId':str(uuid.uuid4()),'contextFields':[{'id':'case','label':'Case','text':'Related thesis','limit':40000}]}
         with patch('research_preferences.read',return_value={'rules':[]}),patch('company_research.threading.Thread') as thread:
             quote=client.post('/api/research/stock-analysis-run/parent/rewrite/prepare',json=body)
             self.assertEqual(quote.status_code,200);thread.assert_not_called()
             body['fingerprint']=quote.json['fingerprint']
             self.assertEqual(client.post('/api/research/stock-analysis-run/parent/rewrite/start',json=body).status_code,409)
             body['confirmed']=True
+            changed_context={**body,'contextFields':[{**body['contextFields'][0],'text':'Changed thesis'}]}
+            self.assertEqual(client.post('/api/research/stock-analysis-run/parent/rewrite/start',json=changed_context).status_code,409)
             changed={**body,'instructions':'different'}
             self.assertEqual(client.post('/api/research/stock-analysis-run/parent/rewrite/start',json=changed).status_code,409)
             self.assertEqual(client.post('/api/research/stock-analysis-run/parent/rewrite/start',json=body).status_code,202)
+            self.assertEqual(next(iter(runs.values()))['input']['packageRewrite']['contextFields'],body['contextFields'])
             self.assertEqual(thread.call_count,1)
             self.assertEqual(client.post('/api/research/stock-analysis-run/parent/rewrite/start',json=body).status_code,200)
             self.assertEqual(thread.call_count,1)
