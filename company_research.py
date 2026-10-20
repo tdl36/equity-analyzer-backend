@@ -262,8 +262,8 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     from research_source_context import attach
                     sources=attach(sources,row['input'].get('sourceEvidence'),row['input'].get('expectedOriginals'))
                     if studio:
-                        from research_source_budget import fit_sources
-                        sources=fit_sources(sources)
+                        from research_source_budget import fit_sources, complete_sources
+                        sources=(complete_sources(sources) if row['input'].get('writingPolicy') == 'synthesis-v2' else fit_sources(sources))
                     with get_db(commit=True) as (_,cur):
                         cur.execute(f'UPDATE {table} SET sources=%s::jsonb,updated_at=NOW() WHERE id=%s AND owner=%s RETURNING id',(json.dumps(sources),ident,owner))
                         if not cur.fetchone():raise Stopped()
@@ -411,7 +411,20 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             prefs = preferences(cur)
             model = model_identity()
             try:
-                plan = preview(spec, parent['sources'], prefs, model, parent_id)
+                rewrite_evidence = parent['sources']
+                if spec.get('writingPolicy') == 'synthesis-v2':
+                    import notegen
+                    from research_source_budget import rewrite_sources
+                    cur.execute('SELECT filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)', (parent['ticker'], [s['filename'] for s in parent['sources']]))
+                    documents=list(cur.fetchall())
+                    if any(not eligible(d.get('metadata') or {}) for d in documents):
+                        raise ValueError('An original is restricted for AI research.')
+                    def extract_original(doc):
+                        return notegen.extract_pdf_text(doc,max_tokens=40001) if doc['filename'].lower().endswith('.pdf') else notegen.extract_file_text(doc,max_chars=160001)
+                    rewrite_evidence = rewrite_sources(parent,documents,extract_original)
+                plan = preview(spec, rewrite_evidence, prefs, model, parent_id)
+                if spec.get('writingPolicy') == 'synthesis-v2':
+                    plan['notice'] += ' Complete returned text is re-extracted from the same verified originals; PDF images and charts are not certified.'
             except ValueError as exc:
                 return jsonify(error=str(exc)), 400
             if action == 'prepare':
@@ -429,7 +442,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             frozen.update(packageRewrite=spec, writingPreferences=prefs, rewriteParentId=parent_id, rewritePlan=plan, mode='rewrite')
             frozen.pop('prior', None)
             cur.execute(f"INSERT INTO {table}(id,ticker,payload_hash,version,model,status,input,baseline,sources) VALUES(%s,%s,%s,%s,%s,'queued',%s::jsonb,%s::jsonb,%s::jsonb)",
-                        (ident,parent['ticker'],signature,version,model,json.dumps(frozen),json.dumps(parent['baseline']),json.dumps(parent['sources'])))
+                        (ident,parent['ticker'],signature,version,model,json.dumps(frozen),json.dumps(parent['baseline']),json.dumps(rewrite_evidence)))
         start(ident,key)
         return jsonify(id=ident), 202
 

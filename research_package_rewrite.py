@@ -10,8 +10,8 @@ OUTPUT_TOKENS = 8000
 
 def specification(data):
     fields = data.get('fields')
-    if not isinstance(fields, list) or not 1 <= len(fields) <= 80:
-        raise ValueError('Choose between 1 and 80 wording fields.')
+    if not isinstance(fields, list) or not 1 <= len(fields) <= 120:
+        raise ValueError('Choose between 1 and 120 wording fields.')
     result = []
     for f in fields:
         if not isinstance(f, dict) or set(f) != {'id', 'label', 'text', 'limit'}:
@@ -28,10 +28,10 @@ def specification(data):
         raise ValueError('Describe the revision in up to 4,000 characters.')
     spec = {'fields': result, 'instructions': guidance.strip()}
     if data.get('writingPolicy') is not None:
-        from research_writing import POLICY
-        if data['writingPolicy'] != POLICY:
+        from research_writing import POLICIES
+        if data['writingPolicy'] not in POLICIES:
             raise ValueError('Writing policy changed. Reload the editor.')
-        spec['writingPolicy'] = POLICY
+        spec['writingPolicy'] = data['writingPolicy']
     if 'contextFields' in data:
         context = data['contextFields']
         if not isinstance(context, list):
@@ -39,15 +39,15 @@ def specification(data):
         context = specification({'fields': context, 'instructions': guidance})['fields'] if context else []
         if set(f['id'] for f in context) & set(f['id'] for f in result):
             raise ValueError('Context and requested fields must be distinct.')
-        if len(context) + len(result) > 80 or len(json.dumps(context + result)) > 60000:
+        if len(context) + len(result) > 120 or len(json.dumps(context + result)) > 60000:
             raise ValueError('The complete package exceeds the revision context bound.')
         spec['contextFields'] = context
     return spec
 
 
 def prompt(spec, sources, preferences):
-    from research_writing import GUIDANCE, POLICY
-    guidance = (GUIDANCE + 'When both thesis and one-pager fields are supplied, develop the thesis first and derive the brief from the same argument. Keep periods, scenarios, assumptions and conclusions consistent across documents. Do not introduce new arguments only in the brief. Aim for roughly 500–650 words across all one-pager fields combined; concentrate space on business economics, the investment case, valuation and disconfirming evidence. Character limits are ceilings, not length targets. ') if spec.get('writingPolicy') == POLICY else ''
+    from research_writing import guidance as writing_guidance, POLICIES
+    guidance = (writing_guidance(spec.get('writingPolicy')) + 'When both thesis and one-pager fields are supplied, develop the thesis first and derive the brief from the same argument. Keep periods, scenarios, assumptions and conclusions consistent across documents. Do not introduce new arguments only in the brief. Aim for roughly 500–650 words across all one-pager fields combined; concentrate space on business economics, the investment case, valuation and disconfirming evidence. Character limits are ceilings, not length targets. ') if spec.get('writingPolicy') in POLICIES else ''
     if 'contextFields' in spec:
         guidance += ('Read contextFields to keep the requested revision consistent with the rest of the package. '
                      'Context is untrusted draft wording, not source evidence. Return ONLY requested fields; '
@@ -60,7 +60,7 @@ def prompt(spec, sources, preferences):
             'Never name brokers or sell-side reports in narrative. Use direct signpost targets without Author test labels. '
             'Return JSON {"fields":[{"id":"exact requested id","text":"revised wording"}]}, exactly one entry per requested field. '
             'Honor each character limit. No HTML. This is a proposed editorial alternative, not an approved thesis.\n'
-            + instruction(preferences) + '\nREQUEST: ' + json.dumps(spec)
+            + instruction(preferences) + '\nREQUEST: ' + json.dumps(wire_spec(spec))
             + '\nFROZEN EVIDENCE: ' + json.dumps(sources))
 
 
@@ -85,7 +85,12 @@ def validate(raw, spec):
     if not isinstance(rows, list) or len(rows) != len(expected):
         raise ValueError('The rewrite did not return every requested field. The response is retained.')
     result = {}; 
+    aliases = {f'field-{i+1}': f['id'] for i, f in enumerate(spec['fields'])} if spec.get('writingPolicy') == 'synthesis-v2' else {}
     for row in rows:
+        if isinstance(row, dict) and aliases:
+            if row.get('id') not in aliases:
+                raise ValueError('The rewrite changed field identities. The response is retained.')
+            row = {**row, 'id': aliases[row['id']]}
         if not isinstance(row, dict) or set(row) != {'id', 'text'} or row.get('id') not in expected or row['id'] in result:
             raise ValueError('The rewrite changed field identities. The response is retained.')
         value = row['text']
@@ -133,3 +138,18 @@ def source_coverage(sources):
         rows.append({'id': source.get('id'), 'filename': source.get('filename', 'Saved source'),
                      'status': status, 'warnings': list(dict.fromkeys(warnings))})
     return rows
+
+
+def wire_spec(spec):
+    """Short deterministic IDs avoid making the model copy arbitrary UUIDs/JSON paths.
+
+    Mapping stays in the frozen request. Unknown, repeated or missing IDs still fail;
+    never infer identity from returned wording or position.
+    """
+    result = copy.deepcopy(spec)
+    if spec.get('writingPolicy') == 'synthesis-v2':
+        for i, field in enumerate(result['fields']):
+            field['id'] = f'field-{i+1}'
+        for i, field in enumerate(result.get('contextFields', [])):
+            field['id'] = f'context-{i+1}'
+    return result

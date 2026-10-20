@@ -35,3 +35,41 @@ def fit_sources(sources, limit=LIMIT):
         s['text']=text[:head]+MARKER+text[-tail:]
         s['extractionHash']=hashlib.sha256(s['text'].encode()).hexdigest()
     return result
+
+
+FULL_TEXT_BYTE_LIMIT = 480000
+
+
+def complete_sources(sources):
+    """New-policy packs preserve every returned character or stop before a paid call.
+
+    This is a UTF-8 input budget, not a claim of PDF/visual completeness. Legacy
+    frozen packs keep their exact representations; this never repairs them in place.
+    """
+    from research_extraction import has_omissions
+    if not sources or any(not isinstance(s.get('text'), str) or not s['text'].strip() for s in sources):
+        raise ValueError('A selected original has no readable text.')
+    if has_omissions(sources):
+        raise ValueError('This pack contains omitted source text. Prepare a new selection from the originals; no paid research has started.')
+    if sum(len(s['text'].encode('utf-8')) for s in sources) > FULL_TEXT_BYTE_LIMIT:
+        raise ValueError('Complete extracted source text exceeds the 480,000-byte research budget. Choose a smaller task-specific pack; originals are retained and no paid research has started. Sources will not be silently clipped.')
+    return copy.deepcopy(sources)
+
+
+
+def rewrite_sources(parent, documents, extract_text):
+    """Re-extract the same verified originals for a newly priced rewrite only."""
+    from research_originals import verified_original
+    from research_extraction import frozen_source
+    result=[]
+    for old in parent['sources']:
+        matches=[d for d in documents if d['filename']==old['filename']]
+        if len(matches)!=1:
+            raise ValueError('A frozen original is missing or ambiguous. No rewrite started.')
+        doc=copy.deepcopy(matches[0])
+        verified_original(old,doc,parent['input'].get('hashes',{}).get(old['filename']))
+        fresh=frozen_source(doc,old['originalHash'],extract_text(doc),old['id'])
+        if old.get('selectionContext') is not None:
+            fresh['selectionContext']=copy.deepcopy(old['selectionContext'])
+        result.append(fresh)
+    return complete_sources(result)

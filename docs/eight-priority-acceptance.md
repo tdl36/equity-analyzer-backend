@@ -1,5 +1,10 @@
 # Eight-priority acceptance ledger
 
+October 19: investor rejected ABT analytical quality after October 17 regeneration.
+That paid response also required manual identifier reconciliation. T389 repairs
+source-text omission and rewrite bounds/identities and adds an analytical benchmark.
+See `research-quality-benchmark.md`. Real quality and end-to-end acceptance remain open.
+
 October 17 T388 implementation checkpoint: single-section AI revisions include frozen
 read-only package context; authorization and stale-result checks cover that context.
 Unsaved package preview supports comparing thesis/summary and one-pager wording

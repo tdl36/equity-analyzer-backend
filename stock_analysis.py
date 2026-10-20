@@ -109,8 +109,8 @@ def generate(state,sources,baseline,ask,save,check,inputs):
     writing_preferences=preference_instruction(inputs.get('writingPreferences',{}))
     from research_source_context import GUIDANCE
     source_guidance=GUIDANCE if inputs.get('sourceEvidence') is not None else ''
-    from research_writing import POLICY, drafting_context, synthesis_rules
-    synthesis = inputs.get("writingPolicy") == POLICY
+    from research_writing import POLICIES, drafting_context, synthesis_rules
+    synthesis = inputs.get("writingPolicy") in POLICIES
     # Stable stage IDs preserve receipts and retry semantics; no extra paid calls.
     order = [1, 2, 3, 4, 5, 0] if synthesis else range(len(GROUPS))
     for i in order:
@@ -148,7 +148,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
             if synthesis:
                 start = instruction.index('EVIDENCE FIRST:')
                 end = instruction.index('Retain required object keys', start)
-                instruction = instruction[:start] + synthesis_rules() + instruction[end:]
+                instruction = instruction[:start] + synthesis_rules(inputs.get("writingPolicy")) + instruction[end:]
                 instruction += drafting_context(state)
             if i==0 and state.get('qualityRevisions'):
                 previous=state['qualityRevisions'][-1]

@@ -1,5 +1,23 @@
 # Charlie AI engineering handoff
 
+## T389 — Evidence fidelity and investment-judgment repair
+
+October 19: traced ABT quality loss to clipped source text and a fragmented drafting
+contract. New synthesis-v2 research keeps complete returned extraction within a
+480,000-byte pack bound or stops before paid work. New v2 rewrites re-extract the
+same verified originals, bind that evidence to the quote/start fingerprint and
+freeze it separately; old reports and pending requests retain their representations.
+Whole-package revision supports 120 fields and short deterministic model-facing IDs.
+New analytical requirements address earnings/cash bridges, supported expectations,
+scenario rationale and the invalid base-upside/bear-downside expected-return inference.
+
+See research-quality-benchmark.md for the observed ABT failures, pipeline comparison,
+acceptance rubric and remaining proof. User rejected October 17 output quality;
+manual delivery and synthetic checks do not certify any acceptance priority.
+Next: verify deployment and prepare a real ABT revision with restored text; assess
+actual evidence and output before claiming quality improvement. No investor approval.
+
+
 Updated: October 14, 2026
 
 ## T388 — Context-aware revisions and unsaved package preview
