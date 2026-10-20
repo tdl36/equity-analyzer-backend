@@ -59,3 +59,13 @@ avoid mistaking input differences for model quality. Preserve outputs and scores
 Next: prepare a real authorized ABT revision with the restored text, inspect evidence
 and rendered output, and compare against this rubric. Do not mark the stock journey
 or any of the eight priorities complete from code/tests or a delivered draft alone.
+
+
+## T390 live failure and correction
+
+The October 19 full-text ABT revision reached the 8,000-output-token limit and
+stopped with a retained response; no package was replaced. This exposed an output
+budget mismatch after increasing field capacity. New v2 quotes now include a
+16,000-token allowance in price and fingerprint; dispatch uses the frozen allowance.
+Requests already saved without that field retain 8,000. No automatic retry was added.
+The failed job is not analytical acceptance or a successful complete journey.

@@ -65,3 +65,23 @@ class QualityContractTests(unittest.TestCase):
         self.assertEqual(parent,before)
         with self.assertRaises(ValueError):
             rewrite_sources(parent,[{**document,'file_data':base64.b64encode(b'changed').decode()}],lambda d:self.fail('Extracted unverified source'))
+
+    def test_output_budget_is_quoted_and_frozen_on_worker(self):
+        from research_package_rewrite import preview, generate
+        from model_registry import MODELS
+        model=next(k for k,v in MODELS.items() if 'input' in v and 'output' in v)
+        spec=specification({'writingPolicy':'synthesis-v2','instructions':'Revise',
+                            'fields':[{'id':'original','label':'Summary','text':'Original','limit':1600}]})
+        plan=preview(spec,[],{},model,'parent')
+        self.assertEqual(plan['outputTokens'],16000)
+        calls=[]
+        def ask(p,t,k):
+            calls.append(t)
+            return {'fields':[{'id':'field-1','text':'Revised'}]}
+        result=generate({},[],ask,lambda s:None,lambda:None,
+                        {'packageRewrite':spec,'writingPreferences':{},'rewritePlan':plan})
+        self.assertEqual(calls,[16000])
+        self.assertEqual(result['rewrite'],{'original':'Revised'})
+        calls.clear()
+        generate({},[],ask,lambda s:None,lambda:None,{'packageRewrite':spec,'writingPreferences':{}})
+        self.assertEqual(calls,[8000])

@@ -67,10 +67,14 @@ def prompt(spec, sources, preferences):
 def preview(spec, sources, preferences, model, parent):
     text = prompt(spec, sources, preferences)
     # Character-based planning allowance; not a tokenizer or a billing guarantee.
-    cost = estimate(model, {'input_tokens': len(text.encode('utf-8')), 'output_tokens': OUTPUT_TOKENS})
+    output_tokens = 16000 if spec.get('writingPolicy') == 'synthesis-v2' else OUTPUT_TOKENS
+    cost = estimate(model, {'input_tokens': len(text.encode('utf-8')), 'output_tokens': output_tokens})
     if cost is None:
         raise ValueError('A price estimate is unavailable for the configured model.')
-    return {'fingerprint': digest([spec, sources, preferences, model, parent]),
+    identity = [spec, sources, preferences, model, parent]
+    if spec.get('writingPolicy') == 'synthesis-v2':
+        identity.append({'outputTokens': output_tokens})
+    return {**({'outputTokens': output_tokens} if spec.get('writingPolicy') == 'synthesis-v2' else {}), 'fingerprint': digest(identity),
             'estimatedUsd': cost, 'model': model, 'sourceCount': len(sources),
             'fieldCount': len(spec['fields']), 'calls': 1,
             'contextFieldCount': len(spec.get('contextFields', [])),
@@ -110,7 +114,10 @@ def generate(state, sources, ask, save, check, inputs):
     raw = state.get('rewriteResponse')
     if raw is None:
         state['inFlight'] = 'package-rewrite'; save(state)
-        raw = ask(prompt(inputs['packageRewrite'], sources, inputs['writingPreferences']), OUTPUT_TOKENS, 'package-rewrite')
+        output_tokens = (inputs.get('rewritePlan') or {}).get('outputTokens', OUTPUT_TOKENS)
+        if type(output_tokens) is not int or output_tokens not in (OUTPUT_TOKENS, 16000):
+            raise ValueError('Invalid frozen rewrite output allowance.')
+        raw = ask(prompt(inputs['packageRewrite'], sources, inputs['writingPreferences']), output_tokens, 'package-rewrite')
         state['rewriteResponse'] = raw
         state.pop('inFlight', None); save(state)
     state['rewrite'] = validate(raw, inputs['packageRewrite'])
