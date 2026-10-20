@@ -1,6 +1,6 @@
 """Shared analytical writing contract; evidence review remains a separate step."""
-POLICY = 'synthesis-v2'
-POLICIES = ('synthesis-v1', POLICY)
+POLICY = 'synthesis-v3'
+POLICIES = ('synthesis-v1', 'synthesis-v2', POLICY)
 GUIDANCE = '''
 ANALYTICAL WRITING:
 Build a connected investment argument, not a catalogue of quoted facts. Explain how
@@ -64,4 +64,60 @@ The short summary must retain the central mechanism and judgment, not list produ
 
 
 def guidance(policy):
-    return GUIDANCE + (UNDERWRITING if policy == POLICY else '')
+    return (GUIDANCE + (UNDERWRITING if policy in ('synthesis-v2', POLICY) else '')
+            + (FINANCIAL_SERVICES if policy == POLICY else ''))
+
+
+# Charlie adaptation of pinned Apache-2.0 Anthropic financial-services workflows.
+# See vendor/anthropics-financial-services/manifest.json and docs/financial-services-integration.md.
+# Versioned with the request; never append these instructions to a legacy request.
+FINANCIAL_SERVICES = """
+FINANCIAL SERVICES RESEARCH WORKFLOW v1:
+Apply this method using ONLY the authorized frozen evidence and existing output schema.
+1. Reconcile before drafting: identify the period, publication date, currency, units,
+   GAAP/adjusted basis and actual/estimate status of each material number. Distinguish
+   prior estimates from revised estimates, including old/new columns within the SAME
+   document. Never turn old and new forecasts into a range. Explain revisions and
+   their reasons; unresolved conflicts must remain explicit, not silently averaged.
+2. Underwrite the business: connect segment revenue and margins to group earnings,
+   then cash conversion, capex, working capital, debt and diluted share count. Separate
+   recurring operating performance from acquisitions, FX and non-recurring items.
+   Missing bridge inputs are diligence gaps, not permission to invent a model.
+3. Test the thesis: for each material pillar state the original expectation, dated
+   evidence for and against it, current status and an observable falsifier. Explain
+   what has changed versus the prior draft without treating that draft as evidence.
+   A list of attractive products is not an investment thesis. Do not infer or change
+   investor conviction, positions or approvals.
+4. Ground expectations: beat/miss requires a comparable, dated pre-event benchmark.
+   Identify management guidance separately from individual forecasts and consensus.
+   Without the benchmark, say comparison unavailable. PEG or a relative multiple
+   discount does not by itself prove underpricing or a variant view.
+5. Derive valuation: state the earnings period, security/share basis, currency,
+   enterprise-to-equity bridge where relevant and rationale for scenario multiples.
+   Connect scenario assumptions to operating drivers and catalysts. Preserve missing
+   inputs; do not manufacture targets, probabilities, peer data or live prices.
+6. Cross-check before returning: reconcile summary, thesis, financials, signposts and
+   one-pager to the SAME current estimates, dates and scenario assumptions. Check
+   arithmetic and evidence references. State material unresolved contradictions and
+   what evidence would resolve them in the appropriate existing fields. This is a
+   drafting checklist, NOT a claim that independent validation has passed.
+Keep event debriefs scoped to the identified event and contextual history; event-to-
+thesis changes require a separately authorized proposal. Discovery dates do not
+truncate longitudinal analytical context. No automatic trading or thesis acceptance.
+Use Charlie's requested length, citation schema and investor writing preferences.
+Do not impose upstream page/chart counts, ratings, broker names in prose or new tools.
+"""
+
+
+FINANCIAL_SERVICES_REVIEW = """
+FINANCIAL SERVICES INDEPENDENT REVIEW v1:
+Check the original document context beyond the cited passage for old/new estimate
+columns, superseded guidance and incompatible periods or accounting definitions.
+A matching excerpt does not make a superseded forecast current. Mark affected fields
+needs_review and explain the conflict. Check segment-to-group inference, cash versus
+profit, dilution and valuation assumptions. A PEG or multiple discount alone cannot
+support a mispricing conclusion. Unsupported consensus, causal certainty, scenario
+probabilities or expected-return claims need review even if individual numbers match.
+Preserve the existing findings schema and review every supplied claim; do not rewrite
+or approve a thesis. Missing evidence remains a stated gap.
+"""

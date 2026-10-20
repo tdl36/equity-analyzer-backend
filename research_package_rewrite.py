@@ -67,14 +67,14 @@ def prompt(spec, sources, preferences):
 def preview(spec, sources, preferences, model, parent):
     text = prompt(spec, sources, preferences)
     # Character-based planning allowance; not a tokenizer or a billing guarantee.
-    output_tokens = 16000 if spec.get('writingPolicy') == 'synthesis-v2' else OUTPUT_TOKENS
+    output_tokens = 16000 if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3') else OUTPUT_TOKENS
     cost = estimate(model, {'input_tokens': len(text.encode('utf-8')), 'output_tokens': output_tokens})
     if cost is None:
         raise ValueError('A price estimate is unavailable for the configured model.')
     identity = [spec, sources, preferences, model, parent]
-    if spec.get('writingPolicy') == 'synthesis-v2':
+    if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3'):
         identity.append({'outputTokens': output_tokens})
-    return {**({'outputTokens': output_tokens} if spec.get('writingPolicy') == 'synthesis-v2' else {}), 'fingerprint': digest(identity),
+    return {**({'outputTokens': output_tokens} if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3') else {}), 'fingerprint': digest(identity),
             'estimatedUsd': cost, 'model': model, 'sourceCount': len(sources),
             'fieldCount': len(spec['fields']), 'calls': 1,
             'contextFieldCount': len(spec.get('contextFields', [])),
@@ -89,7 +89,7 @@ def validate(raw, spec):
     if not isinstance(rows, list) or len(rows) != len(expected):
         raise ValueError('The rewrite did not return every requested field. The response is retained.')
     result = {}; 
-    aliases = {f'field-{i+1}': f['id'] for i, f in enumerate(spec['fields'])} if spec.get('writingPolicy') == 'synthesis-v2' else {}
+    aliases = {f'field-{i+1}': f['id'] for i, f in enumerate(spec['fields'])} if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3') else {}
     for row in rows:
         if isinstance(row, dict) and aliases:
             if row.get('id') not in aliases:
@@ -154,7 +154,7 @@ def wire_spec(spec):
     never infer identity from returned wording or position.
     """
     result = copy.deepcopy(spec)
-    if spec.get('writingPolicy') == 'synthesis-v2':
+    if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3'):
         for i, field in enumerate(result['fields']):
             field['id'] = f'field-{i+1}'
         for i, field in enumerate(result.get('contextFields', [])):

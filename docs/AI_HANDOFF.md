@@ -1,5 +1,24 @@
 # Charlie AI engineering handoff
 
+## T391 — Anthropic financial-services methodology integration
+
+Downloaded the complete public repository to ~/Projects/charlie-vendor/financial-services-20261020.
+Pinned revision 574ed3624aebd0418c7e96cd101262f30210ab26; selected upstream
+instructions, Apache-2.0 license and hashes are vendored. New synthesis-v3 Stock
+Analysis and package rewrites use Charlie-adapted estimate reconciliation, thesis
+tracking, financial-driver, expectations and cross-document checks. Stock Analysis's
+existing evidence-review call now also examines superseded estimates and unsupported
+valuation inference. No extra calls, external connectors, orchestrator or approvals.
+v1/v2 prompt text remains byte-identical. Existing ABT content remains unchanged.
+See financial-services-integration.md for scope and limits. This is method integration,
+not demonstrated analytical acceptance, a financial model or an independent verifier.
+Next: evaluate with an explicitly authorized real revision; do not claim that prompt
+instructions alone close ABT's observed estimate-reconciliation/quality failures.
+Validation: 1,885 safe backend tests, 306 frontend tests, focused real-dispatch
+synthetic checks, compile and production build pass. No active audio or processing
+pipeline jobs observed before release. Exact deployment verification follows.
+
+
 ## T389 — Evidence fidelity and investment-judgment repair
 
 October 19: traced ABT quality loss to clipped source text and a fragmented drafting

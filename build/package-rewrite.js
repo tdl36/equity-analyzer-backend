@@ -66,7 +66,7 @@ export function PackageRewrite({
   async function prepare() {
     var body = {
       requestId: crypto.randomUUID(),
-      writingPolicy: 'synthesis-v2',
+      writingPolicy: 'synthesis-v3',
       instructions,
       ...rewriteScope(fields, scope)
     };

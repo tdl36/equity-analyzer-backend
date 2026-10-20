@@ -109,7 +109,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
     writing_preferences=preference_instruction(inputs.get('writingPreferences',{}))
     from research_source_context import GUIDANCE
     source_guidance=GUIDANCE if inputs.get('sourceEvidence') is not None else ''
-    from research_writing import POLICIES, drafting_context, synthesis_rules
+    from research_writing import POLICIES, drafting_context, synthesis_rules, FINANCIAL_SERVICES_REVIEW
     synthesis = inputs.get("writingPolicy") in POLICIES
     # Stable stage IDs preserve receipts and retry semantics; no extra paid calls.
     order = [1, 2, 3, 4, 5, 0] if synthesis else range(len(GROUPS))
@@ -182,7 +182,7 @@ def generate(state,sources,baseline,ask,save,check,inputs):
                     'the field. Distinguish assumptions from reported facts. Flag unsupported arithmetic, consensus, peers '
                     'and any claim that a thesis breaker is triggered without evidence. Do not rewrite. '
                     'Return {"findings":[{"claimId":"exact field path","status":"supported|needs_review","reason":"specific reason"}]} '
-                    'with exactly one finding per field. Keep each reason under 180 characters.' + (' Multiple passages may jointly support premises of a clearly labeled interpretation; assess the inference as well as each premise.' if synthesis else '') + '\nFIELDS: '+json.dumps(subset)+('\n'+source_guidance if source_guidance else '')+'\nORIGINALS: '+json.dumps(sources),7000,key)
+                    'with exactly one finding per field. Keep each reason under 180 characters.' + (' Multiple passages may jointly support premises of a clearly labeled interpretation; assess the inference as well as each premise.' if synthesis else '') + (FINANCIAL_SERVICES_REVIEW if inputs.get('writingPolicy') == 'synthesis-v3' else '') + '\nFIELDS: '+json.dumps(subset)+('\n'+source_guidance if source_guidance else '')+'\nORIGINALS: '+json.dumps(sources),7000,key)
                 state.setdefault('responses',{})[key]=review;state.pop('inFlight',None);save(state)
                 reviewed=apply_review([{'id':'fields','claims':subset}],review)[0]['claims']
                 state['citations'].update({c['id']:c for c in reviewed})

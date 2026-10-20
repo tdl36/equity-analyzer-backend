@@ -263,7 +263,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                     sources=attach(sources,row['input'].get('sourceEvidence'),row['input'].get('expectedOriginals'))
                     if studio:
                         from research_source_budget import fit_sources, complete_sources
-                        sources=(complete_sources(sources) if row['input'].get('writingPolicy') == 'synthesis-v2' else fit_sources(sources))
+                        sources=(complete_sources(sources) if row['input'].get('writingPolicy') in ('synthesis-v2', 'synthesis-v3') else fit_sources(sources))
                     with get_db(commit=True) as (_,cur):
                         cur.execute(f'UPDATE {table} SET sources=%s::jsonb,updated_at=NOW() WHERE id=%s AND owner=%s RETURNING id',(json.dumps(sources),ident,owner))
                         if not cur.fetchone():raise Stopped()
@@ -412,7 +412,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
             model = model_identity()
             try:
                 rewrite_evidence = parent['sources']
-                if spec.get('writingPolicy') == 'synthesis-v2':
+                if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3'):
                     import notegen
                     from research_source_budget import rewrite_sources
                     cur.execute('SELECT filename,file_data,file_type,metadata FROM document_files WHERE ticker=%s AND filename=ANY(%s)', (parent['ticker'], [s['filename'] for s in parent['sources']]))
@@ -423,7 +423,7 @@ def create_blueprint(get_db,ask_model,get_key,model_identity,budget_check=lambda
                         return notegen.extract_pdf_text(doc,max_tokens=40001) if doc['filename'].lower().endswith('.pdf') else notegen.extract_file_text(doc,max_chars=160001)
                     rewrite_evidence = rewrite_sources(parent,documents,extract_original)
                 plan = preview(spec, rewrite_evidence, prefs, model, parent_id)
-                if spec.get('writingPolicy') == 'synthesis-v2':
+                if spec.get('writingPolicy') in ('synthesis-v2', 'synthesis-v3'):
                     plan['notice'] += ' Complete returned text is re-extracted from the same verified originals; PDF images and charts are not certified.'
             except ValueError as exc:
                 return jsonify(error=str(exc)), 400

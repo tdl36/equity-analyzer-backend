@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/anthropics/financial-services",
+  "revision": "574ed3624aebd0418c7e96cd101262f30210ab26",
+  "license": "Apache-2.0",
+  "files": {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "plugins/vertical-plugins/equity-research/skills/thesis-tracker/SKILL.md": "6b4ce2967c5e01c6b42f5c140fa1e94dee2713b5d2de3eb71957ff5a5c11469b",
+    "plugins/vertical-plugins/equity-research/skills/model-update/SKILL.md": "62b2256bf3b52ac3759cb446a10aaa3066a51b4909e09bae0e3b98b741a37fb5",
+    "plugins/vertical-plugins/equity-research/skills/earnings-analysis/references/best-practices.md": "a688e6b53d408fcfc36cb5490e9e2a75b82789f876f14ba22119bf19db655d09",
+    "plugins/vertical-plugins/equity-research/skills/initiating-coverage/assets/quality-checklist.md": "1bb73c5420e56b3e01109a883ee22ae5b3bacff40722697f4c3fbb070feff913"
+  }
+}
