@@ -38,6 +38,7 @@ import requests
 import anthropic
 import catalyst_delivery
 import audio_intake_receipts
+import audio_issue_notifications
 from catalyst_sources import inventory as catalyst_inventory, fingerprint as catalyst_fingerprint, read_sources as read_catalyst_sources, SOURCE_EXTS as CATALYST_SOURCE_EXTS
 
 # ---------------------------------------------------------------------------
@@ -2674,11 +2675,43 @@ AUDIO_EXTS = {'.mp3', '.mp4', '.m4a', '.wav', '.webm', '.ogg', '.flac'}
 TEXT_EXTS = {'.pdf', '.docx', '.doc', '.txt', '.md'}
 SUMMARIES_EXTS = AUDIO_EXTS | TEXT_EXTS
 
+def _deliver_audio_issues():
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    def send(message):
+        # Plain text prevents filenames containing **, underscores or brackets
+        # from breaking Telegram Markdown and silently losing the alert.
+        response=requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id":TELEGRAM_CHAT_ID,"text":message}, timeout=10)
+        response.raise_for_status()
+        return response.json().get('ok') is True
+    try:
+        audio_issue_notifications.deliver(send)
+    except Exception:
+        log.warning('Processing issue notification pending locally; will retry delivery')
+
+
+def _queue_audio_issue(filename, reason, job_id=''):
+    try:
+        audio_issue_notifications.enqueue(filename,reason,job_id)
+        _deliver_audio_issues()
+    except Exception:
+        log.warning('Unable to persist processing issue notification locally')
+
+
 def _hold_audio_intake(receipt, filename, reason):
+    # Telegram delivery is independent of the cloud alert reservation/DB health.
+    if receipt and receipt.get('status')=='complete':return
+    if not receipt:_queue_audio_issue(filename,reason)
     if receipt:
         try:
             current=audio_intake_receipts.update(receipt['id'],'attention',reason=reason)
             if current['status']=='complete':return
+            # Do not backfill obsolete held-job alerts on the first upgraded
+            # startup. Failed delivery retries live in the separate durable queue.
+            if not (receipt.get('status')=='attention' and receipt.get('alerted')):
+                _queue_audio_issue(filename,reason,current.get('job_id',''))
             if audio_intake_receipts.reserve_alert(receipt['id']):
                 response=requests.post(CHARLIE_API+'/api/alerts',headers=_agent_headers(),timeout=15,
                     json={'alertType':'audio_recovery','ticker':'','title':'Processing needs review: '+filename,
@@ -2746,6 +2779,7 @@ def _wait_for_audio_job_and_move(fname: str, fpath: Path, job_id: str, receipt=N
                             log.info(f"Audio complete: {fname} (job {job_id})")
                     except Exception as e:
                         log.warning(f"Move to Processed/ failed for {fname}: {e}")
+                        _queue_audio_issue(fname,"Summary saved, but the original could not be moved to Processed. Do not reprocess it.",job_id)
                     if receipt:audio_intake_receipts.update(receipt['id'],'complete')
                     # Notify Telegram on completion (mirrors the earnings recap
                     # start/complete pattern). Visible in user's chat as soon as
@@ -2793,6 +2827,7 @@ _synthesis_in_flight = set()  # job IDs currently being synthesized
 def check_for_new_audio():
     """Scan SUMMARIES/ folder for new audio files, auto-process them."""
     global _known_audio_files, _audio_initialized, _audio_in_flight, _audio_failed_attempts
+    _deliver_audio_issues()
     if not SUMMARIES_DIR.exists():
         return
     try:
@@ -2950,6 +2985,7 @@ def check_for_new_audio():
                             # History/storage failed before POST. A later read may recover;
                             # the durable reservation still fences any earlier POST.
                             log.warning('Automatic intake blocked before upload: history or receipt storage unavailable')
+                            _queue_audio_issue(fn,'Processing could not start because saved history or local receipt storage is unavailable.')
                             _known_audio_files.discard(fn)
                     finally:
                         _audio_in_flight.discard(fn)
@@ -2977,6 +3013,7 @@ def check_for_new_audio():
                     _audio_failed_attempts[fname] = _audio_failed_attempts.get(fname, 0) + 1
                     if _audio_failed_attempts[fname] >= 5:
                         log.error(f"AUDIO GIVE UP: {fname} failed {_audio_failed_attempts[fname]} times. Investigate manually.")
+                        _queue_audio_issue(fname,"The original could not be read after five attempts. Processing has stopped; check iCloud and file access.")
                 # Drop from known-files so the next tick retries instead of
                 # silently giving up forever (until the giveup cap above).
                 try: _known_audio_files.discard(fname)

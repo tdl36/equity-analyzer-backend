@@ -1,5 +1,31 @@
 # Charlie AI engineering handoff
 
+## October 26 — live Mac audio issue notifications
+
+Added audio_issue_notifications.py: durable local Telegram outbox, separate from
+cloud alert reservation, acknowledged sends, five-minute retry lease and confirmed-
+delivery deduplication. Plain text prevents Markdown failures on filenames.
+Folder intake queues issue notices for failed/interrupted/missing jobs, uncertain
+uploads, exhausted polling, unreadable originals after five attempts, and failed
+Processed moves. Existing in-app alerts remain. Old already-alerted attention rows
+are not backfilled on upgrade; pending outbox delivery resumes after agent restart.
+Telegram cannot guarantee exactly-once delivery after an ambiguous network outcome.
+
+User-authorized audio retries: UNH 072ba438 and AlphaSummit 29d2b8c8 were linked
+to their existing local intake rows after byte-hash checks; prior receipts archived
+privately in ~/.charlie-workspaces/audio-restart-20261026. No duplicate uploads.
+AlphaSummit completed with summary e414c961-a12b-43f5-93d3-be05aa5208a7; UNH
+still generating sections at validation. Joanna/ABT completed work not repeated.
+
+Validation: 23 focused and 1,889 full safe backend tests passed; 306 frontend
+tests and unchanged frontend build passed. Agent compiled, restarted via launchctl,
+and a clearly labeled Telegram test was acknowledged. Local-agent change is active.
+Source commit held locally: do NOT push/deploy Render while UNH audio generation
+is active. No backend/frontend behavior changed and release markers remain T391.
+Next release: after all active paid jobs safely finish, follow synchronized markers,
+build, push/deploy and exact revision verification. Preserve unrelated dirty files.
+
+
 ## T391 — Anthropic financial-services methodology integration
 
 Downloaded the complete public repository to ~/Projects/charlie-vendor/financial-services-20261020.

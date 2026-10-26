@@ -132,7 +132,7 @@ class AgentRecoveryTests(unittest.TestCase):
         http.get.return_value.json.return_value = {'filename': 'source.mp3', 'history': [], 'truncated': False}
         scope = {'audio_intake_receipts': api, 'requests': http, 'CHARLIE_API': 'https://invalid.test',
                  '_agent_headers': lambda: {}, 'get_secret': lambda _: '', 'log': Mock(),
-                 'notify': Mock(), '_known_audio_files': {'source.mp3'}, '_audio_in_flight': {'source.mp3'},
+                 '_queue_audio_issue': Mock(), 'notify': Mock(), '_known_audio_files': {'source.mp3'}, '_audio_in_flight': {'source.mp3'},
                  '_audio_started_notified': set(), '_audio_startup_files': set(), '_audio_failed_attempts': {}, 'TEXT_EXTS': {'.txt'},
                  'Path': Path, 'SUMMARIES_DIR': Path(self.temp.name)}
         load(AGENT, '_hold_audio_intake', scope)
