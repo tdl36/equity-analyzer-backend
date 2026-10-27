@@ -1,5 +1,18 @@
 # Charlie AI engineering handoff
 
+## October 27 — T397 full Executive Brief also uses bullets
+
+User clarified that the full Lab Executive Brief should also be easier to scan.
+It now requests a short central takeaway, descriptive topic headings and substantive
+complete-sentence bullets carrying evidence, mechanism and conditions (400–650 words
+when justified). The separate 120–200-word bullet brief remains the quick-read option;
+Meeting Notes remains detailed shorthand. No existing outputs or sources rewritten.
+
+T396 validation: 1,906 backend tests ran; only the stale v6 version expectation failed.
+Updated that expectation and all 30 affected tests passed; 306 frontend tests and
+build passed. T397 reruns focused Lab tests and build for the wording-only follow-up.
+Exact final deployment verification follows. No paid generation used for QA.
+
 ## October 27 — T396 distinct Lab Meeting Notes and bullet brief
 
 Corrected the polished Lab override that made Meeting Notes resemble Meeting Summary.
