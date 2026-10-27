@@ -1,8 +1,9 @@
+import { WorkingQA } from './working-qa';
 import React, { useEffect, useRef, useState } from 'react';
 import { documentHtml, sourceMarkers, emailDocument, labFanoutPlan, labProgressSummary, youtubeLanguagePayload } from './summary-lab-format.mjs';
 var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['notes', 'Meeting Notes', 'meeting_notes'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
 var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정리', 'korean_takeaways'];
-var sectionsForMode = mode => mode === 'korean_only' ? [KOREAN_SECTION, ['notes', 'Meeting Notes · 미팅 노트', 'meeting_notes']] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
+var sectionsForMode = mode => mode === 'working_qa' ? [['working_qa', 'Q&A · Working Notes', 'working_qa']] : mode === 'korean_only' ? [KOREAN_SECTION, ['notes', 'Meeting Notes · 미팅 노트', 'meeting_notes']] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
 var INTAKES = [['saved', 'Saved Summary'], ['document', 'Document'], ['audio', 'Audio'], ['youtube', 'YouTube'], ['paste', 'Paste text']];
 var PENDING_KEY = 'charlie_summary_lab_pending_intake';
 var statusOf = r => r.status === 'complete' ? ['Ready to review', 'ok'] : r.status === 'cancelled' ? ['Stopped', 'off'] : r.status === 'failed' ? ['Failed', 'bad'] : r.status === 'queued' ? ['Queued', 'live'] : ['Running', 'live'];
@@ -1160,6 +1161,12 @@ export function SummaryLab({
         __html: sourceMarkers(documentHtml(value || 'This section will appear after source review and generation.', renderHtml))
       }
     })))));
+  }), row.output_mode !== 'working_qa' && /*#__PURE__*/React.createElement(WorkingQA, {
+    key: row.id,
+    api: api,
+    kind: "lab",
+    parentId: row.id,
+    renderHtml: renderHtml
   }), /*#__PURE__*/React.createElement("details", {
     className: "audit"
   }, /*#__PURE__*/React.createElement("summary", null, "Private review appendix \xB7 unresolved issues and limitations"), /*#__PURE__*/React.createElement("p", {

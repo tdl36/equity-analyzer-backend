@@ -12,6 +12,7 @@ from recovery_credentials import anthropic_recovery_key
 from flask import Blueprint, jsonify, request
 import research_doctrine
 import meeting_notes
+import working_qa
 from summary_comparison import split_text
 
 VERSION = 'source-reviewed-lab-v6'
@@ -100,11 +101,12 @@ interpretation. Do not add market facts, consensus claims, investment ratings or
 Use concise Markdown headings and restrained bullets. Preserve source IDs [P1], [P2], etc. for material
 claims. Korean prose may retain company names, financial terms and abbreviations in English where that
 is clearer. Do not narrate the generation process.'''
-OUTPUT_MODES = {'english', 'korean_bilingual', 'korean_only'}
+OUTPUT_MODES = {'english', 'korean_bilingual', 'korean_only', 'working_qa'}
 
 
 def sections_for_mode(mode):
     """Return the visible experiment sections for a validated output mode."""
+    if mode == 'working_qa': return {'working_qa': working_qa.INSTRUCTION}
     selected = mode if mode in OUTPUT_MODES else 'english'
     sections = {'notes': SECTIONS['notes'] + '\nWrite Meeting Notes in Korean, retaining familiar financial abbreviations.'} if selected == 'korean_only' else dict(SECTIONS)
     if selected in ('korean_bilingual', 'korean_only'):
@@ -319,14 +321,16 @@ SOURCE PART P{i+1}:\n{body}'''
     polished = state.get('editorialPolicy') == editorial.POLICY
     drafting_rules = editorial.RULES if polished else RULES
     if polished:
-        section_plan = {key: editorial.SECTIONS[key] + (' Write in Korean.' if output_mode=='korean_only' else '') for key in section_plan}
+        section_plan = {key: (working_qa.INSTRUCTION if key=='working_qa' else editorial.SECTIONS[key]) + (' Write in Korean.' if output_mode=='korean_only' else '') for key in section_plan}
+    if output_mode=='working_qa' and state.get('qaLanguage')=='korean':
+        section_plan['working_qa'] += '\nWrite in Korean, retaining familiar financial abbreviations.'
     state['outputMode'] = output_mode if output_mode in OUTPUT_MODES else 'english'
     for section, instruction in section_plan.items():
         if section in state.setdefault('completedSections', []):
             continue
         checkpoint('Drafting '+section)
         if section not in state['sections']:
-            state['sections'][section] = ask(drafting_rules, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
+            state['sections'][section] = ask(drafting_rules, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes','working_qa') else TOKENS_SECTION)
             save(state)
         # Compare each section to every ORIGINAL source part. No source part is silently dropped.
         findings = []
@@ -354,7 +358,7 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not d
         state['checks'][section] = '\n\n'.join(findings)
         # Keep original draft and review visible. One revision; final independent check below.
         state.setdefault('drafts', {})[section] = state['sections'][section]
-        state['sections'][section] = ask(drafting_rules, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
+        state['sections'][section] = ask(drafting_rules, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes','working_qa') else TOKENS_SECTION)
         if polished:
             state.setdefault('editorialFlags', {})[section] = editorial.review_flags(state['sections'][section])
         state['completedSections'].append(section)
@@ -371,11 +375,11 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not d
 # The Word exporter reads one fixed schema. An experiment keeps its sections in
 # state, under its own keys, so project it the way summary_comparison does
 # rather than teaching the exporter a second shape.
-LAB_EXPORT_LABELS = {'notes': 'Meeting Notes', 'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
+LAB_EXPORT_LABELS = {'working_qa': 'Q&A Working Notes', 'notes': 'Meeting Notes', 'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
                      'meeting': 'Meeting Summary', 'questions': 'Follow-up Questions',
                      'assessment': 'Overall Assessment', 'korean': 'Korean Interpretation',
                      'all': 'Summary Lab'}
-LAB_EXPORT_COLUMNS = {'notes': 'meeting_notes', 'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
+LAB_EXPORT_COLUMNS = {'working_qa': 'working_qa', 'notes': 'meeting_notes', 'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
                       'questions': 'questions', 'assessment': 'assessment',
                       'korean': 'korean_takeaways'}
 
@@ -399,8 +403,11 @@ def export_row(row, section='all'):
     for key in wanted:
         # Model text is untrusted; keep it literal instead of interpreting HTML.
         body = values.get(key) or ''
-        if key == 'notes':
+        if key in ('notes', 'working_qa'):
             import markdown
+            if key=='working_qa':
+                import re
+                body=re.sub(r'(\*\*A:\*\*)\n(?=[-*] )', r'\1\n\n', body)
             result[LAB_EXPORT_COLUMNS[key]] = markdown.markdown(escape(body), extensions=['sane_lists'])
             continue
         result[LAB_EXPORT_COLUMNS[key]] = ''.join(
@@ -614,6 +621,50 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
             raise ValueError('That model is not offered. Choose one from the list.')
         return value
 
+    @bp.route('/api/summary-lab/working-qa/<kind>/<parent_id>', methods=['GET','POST'])
+    def working_qa_section(kind, parent_id):
+        # Reuse the Lab worker, checkpoint store, source checks and exports. One
+        # branch per frozen source makes repeated clicks and lost replies safe.
+        if kind not in ('summary','lab'): return jsonify(error='Unknown source type.'),400
+        ensure()
+        with get_db(commit=True) as (_,cur):
+            if kind=='summary':
+                cur.execute('SELECT title,raw_notes,source_meta FROM meeting_summaries WHERE id=%s',(parent_id,))
+            else:
+                cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(parent_id,))
+            parent=cur.fetchone()
+            if not parent: return jsonify(error='Saved source not found.'),404
+            source=(parent.get('raw_notes') if kind=='summary' else parent.get('source')) or ''
+            if not source.strip(): return jsonify(error='No saved source is available.'),400
+            jid,digest=working_qa.identity(kind,parent_id,source)
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('working-qa:'+jid,))
+            cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(jid,))
+            existing=cur.fetchone()
+            if existing or request.method=='GET': return jsonify(experiment=dict(existing) if existing else None)
+            if kind=='lab' and parent.get('status') in ('queued','running'):
+                return jsonify(error='Wait for the current Lab run to finish before adding Working Notes.'),409
+            key=provider_credentials.get('anthropic')
+            if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
+            state={'outputMode':'working_qa','originKind':kind,'originId':parent_id}
+            if kind=='lab':
+                original=parent.get('state') or {}
+                if original.get('documents'):
+                    state['documents']=original['documents']
+                    state['documentProcessingVersion']=original.get('documentProcessingVersion',1)
+                if parent.get('output_mode')=='korean_only': state['qaLanguage']='korean'
+            else:
+                meta=parent.get('source_meta') or {}
+                if isinstance(meta,str): meta=json.loads(meta)
+                if meta.get('koreanOnly'): state['qaLanguage']='korean'
+            cur.execute("""INSERT INTO summary_lab_experiments
+                (id,title,source,source_hash,baseline,focus,version,model,state,summary_id,output_mode,document_ids)
+                VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s,%s,%s::jsonb)""",
+                (jid,(parent.get('title') or 'Meeting')+' · Q&A Working Notes',source,digest,'{}','',VERSION,
+                 parent.get('model') or MODEL,json.dumps(state),parent_id if kind=='summary' else parent.get('summary_id'),
+                 'working_qa',json.dumps(parent.get('document_ids') or [])))
+        threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
+        return jsonify(experiment={'id':jid,'status':'queued','state':state}),202
+
     @bp.get('/api/summary-lab/sources')
     def sources():
         with get_db() as (_,cur):
@@ -823,6 +874,23 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                     ('Stopped at your request. No run was in progress; completed stages are saved.', jid))
             return jsonify(stopping=True, stopped=True)
         return jsonify(stopping=True, stopped=False)
+
+    @bp.get('/api/summary-lab/<jid>/working-qa.docx')
+    def download_working_qa(jid):
+        if not render_docx: return jsonify(error='Word export unavailable.'),503
+        ensure()
+        with get_db() as (_,cur):
+            cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(jid,))
+            row=cur.fetchone()
+        if not row: return jsonify(error='Experiment not found.'),404
+        if row.get('status')!='complete': return jsonify(error='Wait for source review to finish.'),409
+        try: projected=export_row(dict(row),'working_qa')
+        except ValueError as exc: return jsonify(error=str(exc)),409
+        from flask import send_file
+        import io
+        return send_file(io.BytesIO(render_docx(projected,sections=['working_qa'])),
+                         mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                         as_attachment=True,download_name='Q&A Working Notes.docx',max_age=0)
 
     @bp.post('/api/summary-lab/<jid>/save-to-icloud')
     def save_to_icloud(jid):

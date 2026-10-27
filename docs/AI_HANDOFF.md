@@ -1,5 +1,34 @@
 # Charlie AI engineering handoff
 
+## October 27 — T393 additive Q&A Working Notes
+
+Added Q&A · Working Notes to saved Summary and Summary Lab detail screens. User
+explicitly requested a separate shorthand Q&A presentation alongside complete notes.
+Generate button is an explicit paid opt-in; no existing output is rewritten or
+backfilled. Style preserves question order, substantive answers/figures/hedges,
+uses shortened questions and compact answer bullets, and avoids fabricated Q&A,
+slang, gratuitous quotations and transcript commentary. Private review remains apart.
+
+Implementation reuses the Lab worker, original-source checks, checkpoint store,
+usage ledger and existing recovery controls. Dedicated working_qa output mode emits
+one section plus private review. Deterministic source-bound branch identity plus
+transaction advisory lock make duplicate clicks/lost responses reopen one run.
+Original documents and Korean-only setting carry over. Active parent Lab runs cannot
+start an additional branch. Failed/stopped branches are retained; no automatic retry
+is launched by the new controls. Existing v5/v6 standard sections are unchanged.
+Copy, Word download and iCloud queue are available after completion. Word uses black
+Calibri. Section available on historical saved sources via the same opt-in button.
+
+Validation: 25 focused tests, 1,899 full safe backend tests, 306 frontend tests,
+Python compile and production build passed. Synthetic browser rendering at 1280 and
+390 pixels passed without overflow or browser errors; no real generation for QA.
+No new paid runs, no investor approvals and no email sends. ABT refreshed Lab 6dd918e7
+completed. UNH a3754530 still reports running but has no progress since Oct27 01:32 UTC;
+likely interrupted, not restarted. Other old stale Lab rows preserved. Audio and
+Research Pipeline had no active jobs before release. Release markers T393 synchronized;
+exact deployment verification follows. Next: user generates Q&A for selected source,
+then assess compression/fidelity against their examples; do not overwrite full notes.
+
 ## October 26 — T392 Summary Lab investor-note editorial contract
 
 New experiments use source-reviewed-lab-v6 and investor-notes-v1. Drafting and

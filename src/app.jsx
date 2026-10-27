@@ -13,6 +13,7 @@ import {createApiReadScheduler,researchReadUrl} from './api-read-scheduler.mjs';
 import {CatalystComparison} from './catalyst-comparison';
 import {PortfolioHeatmap} from './portfolio-heatmap';
 import {SummaryLab} from './summary-lab';
+import {WorkingQA} from './working-qa';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
 import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
@@ -101,7 +102,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-26T392';
+        const BUILD_VERSION = '2026-10-27T393';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -19500,6 +19501,8 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                     {meetingNotesExpanded && !currentSummary.meetingNotes && <div className="p-4"><p>Meeting Notes have not been generated for this summary. Generate this section from the saved source; this uses your model.</p><button disabled={meetingNotesBusy} onClick={generateMeetingNotes}>{meetingNotesBusy?'Generating…':'Generate Meeting Notes'}</button></div>}
                                                     {meetingNotesExpanded && currentSummary.meetingNotes && <div className="p-6 summary-content meeting-notes bg-white text-black" style={{fontFamily:'Calibri, Carlito, Arial, sans-serif'}} dangerouslySetInnerHTML={{__html:sanitizeHtml(currentSummary.meetingNotes)}} />}
                                                 </div>)}
+
+                                                {currentSummary.id&&<WorkingQA key={currentSummary.id} api={API_URL} kind="summary" parentId={currentSummary.id} renderHtml={sanitizeHtml}/>}
 
                                                 {/* FOLLOW-UP QUESTIONS Section - Collapsible */}
                                                 <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
