@@ -1162,7 +1162,13 @@ export function SummaryLab({
     })))));
   }), /*#__PURE__*/React.createElement("details", {
     className: "audit"
-  }, /*#__PURE__*/React.createElement("summary", null, "Reviewer notes and limitations"), /*#__PURE__*/React.createElement("pre", null, state.finalReview || 'Final cross-section review has not finished.'), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("summary", null, "Private review appendix \xB7 unresolved issues and limitations"), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "Kept separate from copied, emailed and exported notes. Review uncertain dates, figures, source corrections and publication restrictions here."), Object.entries(state.editorialFlags || {}).filter(([, flags]) => flags.length).map(([key, flags]) => /*#__PURE__*/React.createElement("div", {
+    key: key
+  }, /*#__PURE__*/React.createElement("strong", null, sectionLabel(key), " \xB7 editorial review needed"), /*#__PURE__*/React.createElement("ul", null, flags.map((flag, i) => /*#__PURE__*/React.createElement("li", {
+    key: i
+  }, flag))))), /*#__PURE__*/React.createElement("pre", null, state.finalReview || 'Final cross-section review has not finished.'), /*#__PURE__*/React.createElement("p", {
     className: "muted"
   }, "Model review is not independent factual verification. Exact supporting passages are checked against saved source text."), state.hierarchicalSynthesis && /*#__PURE__*/React.createElement("p", null, "Long-source synthesis used consolidated records; complete part records remain below.")), /*#__PURE__*/React.createElement("details", {
     className: "audit"

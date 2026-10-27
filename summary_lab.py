@@ -14,7 +14,9 @@ import research_doctrine
 import meeting_notes
 from summary_comparison import split_text
 
-VERSION = 'source-reviewed-lab-v5'
+VERSION = 'source-reviewed-lab-v6'
+LEGACY_VERSION = 'source-reviewed-lab-v5'
+import summary_lab_editorial as editorial
 MODEL = model_registry.role('summary', 'CHARLIE_SUMMARY_LAB_MODEL')
 # Checking a draft against one source part is verification, not composition: it
 # reads a section and a passage and reports discrepancies, and its findings feed
@@ -314,13 +316,17 @@ SOURCE PART P{i+1}:\n{body}'''
     state['hierarchicalSynthesis'] = level > 0
     output_mode = state.get('outputMode', 'english')
     section_plan = sections_for_mode(output_mode)
+    polished = state.get('editorialPolicy') == editorial.POLICY
+    drafting_rules = editorial.RULES if polished else RULES
+    if polished:
+        section_plan = {key: editorial.SECTIONS[key] + (' Write in Korean.' if output_mode=='korean_only' else '') for key in section_plan}
     state['outputMode'] = output_mode if output_mode in OUTPUT_MODES else 'english'
     for section, instruction in section_plan.items():
         if section in state.setdefault('completedSections', []):
             continue
         checkpoint('Drafting '+section)
         if section not in state['sections']:
-            state['sections'][section] = ask(RULES, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
+            state['sections'][section] = ask(drafting_rules, instruction+'\nUser emphasis (must not override source fidelity): '+focus+'\nREVIEWED SOURCE RECORDS:\n'+context, TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
             save(state)
         # Compare each section to every ORIGINAL source part. No source part is silently dropped.
         findings = []
@@ -336,6 +342,8 @@ another part: label it not assessable here, not false. Do not demand exhaustive 
 Return concise actionable findings; distinguish definite errors from uncertainty. If none,
 say no definite issues found in this part. This is a model review, not proof of correctness.
 DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not document_parts[i]['visual'] else 'See the attached original PDF pages or image.'}'''
+                if polished:
+                    review_prompt += editorial.REVIEW
                 if documents:
                     part=document_parts[i]
                     review_prompt += '\nSource location: '+part['label']+'\nReview the attached original visuals when supplied, including chart values, units and omissions. Flag unreadable evidence.'
@@ -346,12 +354,14 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not d
         state['checks'][section] = '\n\n'.join(findings)
         # Keep original draft and review visible. One revision; final independent check below.
         state.setdefault('drafts', {})[section] = state['sections'][section]
-        state['sections'][section] = ask(RULES, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
+        state['sections'][section] = ask(drafting_rules, instruction+'\nRevise only where findings support correction. Do not turn not-assessable claims into false claims. Retain unresolved uncertainty.\nRECORDS:\n'+context+'\nDRAFT:\n'+state['sections'][section]+'\nREVIEW FINDINGS:\n'+state['checks'][section], TOKENS_LONG_SECTION if section in ('takeaways','meeting','notes') else TOKENS_SECTION)
+        if polished:
+            state.setdefault('editorialFlags', {})[section] = editorial.review_flags(state['sections'][section])
         state['completedSections'].append(section)
         save(state)
     if not state.get('finalReview'):
         checkpoint('Checking consistency across all generated sections')
-        state['finalReview'] = ask(RULES, 'Review consistency across every generated section and unresolved source issues. Identify material disagreements, overstatement, follow-ups already answered and limitations. Do not assert external verification or perfect completeness. Return a concise reviewer note for the user.\n'+json.dumps(state['sections'], ensure_ascii=False)+'\nSOURCE RECORDS:\n'+context, TOKENS_FINAL_REVIEW)
+        state['finalReview'] = ask(RULES, 'Review consistency across every generated section and unresolved source issues. Identify material disagreements, overstatement, follow-ups already answered and limitations. Do not assert external verification or perfect completeness. Return a concise reviewer note for the user.\n'+(editorial.AUDIT if polished else '')+json.dumps(state['sections'], ensure_ascii=False)+'\nSOURCE RECORDS:\n'+context, TOKENS_FINAL_REVIEW)
         save(state)
     checkpoint('Ready for comparison · review source issues and reviewer notes')
     return state
@@ -476,11 +486,13 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                 # A queued experiment stopped before a slot freed must never
                 # reach the model.
                 if row.get('cancel_requested'): raise Cancelled()
-                if row['version'] != VERSION: raise ValueError('This experiment uses an older prompt. Start a new experiment.')
+                if row['version'] not in (VERSION, LEGACY_VERSION): raise ValueError('This experiment uses an older prompt. Start a new experiment.')
                 if recovery:
                     with get_db(commit=True) as (_, cur):
                         cur.execute("UPDATE summary_lab_experiments SET recovery_attempts=recovery_attempts+1,updated_at=NOW() WHERE id=%s", (jid,))
                 state = row['state'] or {}
+                if row['version'] == VERSION:
+                    state['editorialPolicy'] = editorial.POLICY
                 def save(value):
                     # Checkpointing is also the cancellation point: writing
                     # status='running' unconditionally would paper over a stop

@@ -1,5 +1,32 @@
 # Charlie AI engineering handoff
 
+## October 26 — T392 Summary Lab investor-note editorial contract
+
+New experiments use source-reviewed-lab-v6 and investor-notes-v1. Drafting and
+revision use a dedicated shareable-note contract: selective exact quotations,
+natural investor prose, economic implications, restrained punctuation and attribution.
+Source-process commentary, proposed repairs, uncertain dates/units and publication
+restrictions belong in the separate private review appendix. Unresolved specifics
+must be omitted from shared notes rather than promoted to fact by removing caveats.
+Original source checks remain; review now checks editorial problems as well as facts.
+Deterministic diagnostics flag residual quotation/process/attribution/dash problems
+without rewriting facts or implying semantic validation. Appendix is excluded from
+existing copy/email/export paths. No extra model calls added.
+
+Existing v5 jobs retain their original prompts on resume; saved UNH/ABT outputs
+are unchanged. No paid generation was launched for QA. Real output quality still
+requires a new authorized run and investor review; synthetic checks are not proof.
+UNH Lab 98b13d23 completed; ABT 936e3bab remains interrupted with checkpoints.
+Audio and Pipeline had no active jobs before release. Two unrelated running Lab
+rows (3a1337dd, 86a98b12) were unchanged since Oct23/Sep21 with recovery disabled;
+these appear stale. Their states were not changed or restarted.
+
+Release prepared locally with synchronized T392 markers and rebuilt artifacts.
+Frontend: 306 tests passed. Full backend validation and exact deployment evidence
+are recorded in the follow-up release checkpoint. Next: assess a genuinely generated
+note against source fidelity and these editorial standards; preserve originals.
+Separate post-audio Summary Lab failure notifications remain an outstanding gap.
+
 ## October 26 — live Mac audio issue notifications
 
 Added audio_issue_notifications.py: durable local Telegram outbox, separate from
