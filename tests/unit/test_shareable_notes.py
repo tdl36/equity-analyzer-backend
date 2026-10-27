@@ -7,7 +7,7 @@ import summary_lab_editorial
 class ShareableNotesTests(unittest.TestCase):
     def test_known_roles_and_separate_issues_are_preserved(self):
         policy=shareable_notes.RULES
-        for phrase in ['CEO, CFO, IR','Never guess','Key Unresolved Items / Next Checks','raw transcript/source itself is preserved verbatim','Do not remove genuine business uncertainty']:
+        for phrase in ['CEO, CFO, IR','Never guess','Do not rename, suppress or sanitize the Transcript Corrections Log','Key Unresolved Items / Next Checks','raw transcript/source itself is preserved verbatim','Do not remove genuine business uncertainty']:
             self.assertIn(phrase,policy)
         self.assertIn(policy,summary_lab_editorial.RULES)
         self.assertIn('else RULES + shareable_notes.RULES',Path('summary_lab.py').read_text())

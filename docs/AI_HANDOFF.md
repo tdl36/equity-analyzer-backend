@@ -1,5 +1,17 @@
 # Charlie AI engineering handoff
 
+## October 27 — T395 preserve Transcript Corrections Log
+
+User clarified that Transcript Corrections Log is not shareable narrative. Restored
+its original heading and purpose; the shared editorial rule explicitly exempts it
+from renaming, suppression and sanitization. Raw source and separate unresolved
+items/private review remain exempt. Finished narrative and both Q&A forms retain
+the professional voice rule. Existing saved notes/logs are unchanged; no paid run.
+
+Validation: 50 focused backend tests, 306 frontend tests and production build pass.
+The preceding T394 full safe backend suite passed all 1,903 tests. Deployment
+verification follows this commit; do not claim live generated quality from tests.
+
 ## October 27 — T394 reader-facing voice and explicit review exception
 
 User clarified: no recording/transcription provenance or placeholder identities in

@@ -8586,7 +8586,7 @@ YOU MUST:
 4. Use the thesis ONLY for ONE specific purpose: a NEW dedicated section
    added at the END titled "Thesis Check" (described below).
 
-NEW SECTION (added to the output structure, AFTER Key Unresolved Items / Next Checks):
+NEW SECTION (added to the output structure, AFTER Transcript Corrections Log):
 
 <h1>Thesis Check</h1>
 <p style="font-size:0.85em;color:#888;font-style:italic">Mapping of transcript content to user's pre-registered {audio_ticker} thesis. The user's thesis is NOT presented as fact — only the mapping below references it; everything in Key Takeaways and Q&amp;A Log above is purely transcript content.</p>
@@ -8687,7 +8687,7 @@ Issues management raised but didn't fully resolve — where the next meeting or 
 <h2>Tone / Posture Notes</h2>
 Include only items textually evidenced by a direct quote. Legitimate: Management used "hopeful" rather than "confident" on margin durability — "we're hopeful that we deliver a little better than 100%." Illegitimate: vague "optimism" or "caution" with no quoted basis. If nothing meets this bar, write: "No material posture signals beyond hedges already noted in Takeaways."
 
-<h1>Key Unresolved Items / Next Checks</h1>
+<h1>Transcript Corrections Log</h1>
 Every Bucket A and Bucket B correction you actually made. Format:
 <p>"transcript term" → CorrectedTerm — [one-sentence rationale grounded in domain context].</p>
 Log ONLY terms whose wording you changed. Never log a term you left as it was; never log a term that does not appear in the source; never write an entry whose left and right sides are the same word. An entry that ends "rendered correctly" is a glossary entry, not a correction — delete it. This section is not a place to define or expand acronyms.
@@ -8732,7 +8732,7 @@ SELF-CHECK BEFORE RETURNING (run silently, then output)
 5. Did every notable number / dated claim carry either quotation marks around the source's exact phrase OR the source's exact wording in the analyst's voice? Did I avoid all "(verbatim: ...)" / "(source: ...)" meta-tags?
 6. Did I keep clarifying follow-up Q&amp;As as separate entries?
 7. Is every Q one sentence and every A its single corresponding answer?
-8. Did I keep any necessary source corrections or unresolved issues in the separate Key Unresolved Items / Next Checks section, never in the main note?
+8. Did I produce a Transcript Corrections Log (even if empty)?
 9. Are Tone/Posture notes anchored to verbatim quotes, or did I drift into mood music?
 
 OUTPUT FORMAT
