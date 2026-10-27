@@ -1,7 +1,7 @@
 import { WorkingQA } from './working-qa';
 import React, { useEffect, useRef, useState } from 'react';
 import { documentHtml, sourceMarkers, emailDocument, labFanoutPlan, labProgressSummary, youtubeLanguagePayload } from './summary-lab-format.mjs';
-var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['notes', 'Meeting Notes', 'meeting_notes'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
+var ENGLISH_SECTIONS = [['brief', 'Executive Brief', 'brief'], ['bullet_brief', 'Executive Brief · Bullets', 'bullet_brief'], ['takeaways', 'Key Takeaways', 'summary'], ['meeting', 'Meeting Summary', 'meeting_summary'], ['notes', 'Meeting Notes', 'meeting_notes'], ['questions', 'Follow-up Questions', 'questions'], ['assessment', 'Overall Assessment', 'assessment']];
 var KOREAN_SECTION = ['korean', 'Korean Interpretation · 한국어 핵심 정리', 'korean_takeaways'];
 var sectionsForMode = mode => mode === 'working_qa' ? [['working_qa', 'Q&A · Working Notes', 'working_qa']] : mode === 'korean_only' ? [KOREAN_SECTION, ['notes', 'Meeting Notes · 미팅 노트', 'meeting_notes']] : mode === 'korean_bilingual' ? [...ENGLISH_SECTIONS, KOREAN_SECTION] : ENGLISH_SECTIONS;
 var INTAKES = [['saved', 'Saved Summary'], ['document', 'Document'], ['audio', 'Audio'], ['youtube', 'YouTube'], ['paste', 'Paste text']];
@@ -84,7 +84,7 @@ export function SummaryLab({
   // While reading, a 654px form should not compete with the note.
   var reading = !!(row || id),
     showComposer = !reading || composerOpen;
-  var visibleSections = sectionsForMode(row?.state?.outputMode || 'english').filter(([key]) => key !== 'notes' || !row || row.version === 'source-reviewed-lab-v5' || row.state?.sections?.notes);
+  var visibleSections = sectionsForMode(row?.state?.outputMode || 'english').filter(([key]) => key === 'bullet_brief' ? !row || row.version === 'source-reviewed-lab-v7' || !!row.state?.sections?.bullet_brief : key !== 'notes' || !row || ['source-reviewed-lab-v5', 'source-reviewed-lab-v7'].includes(row.version) || row.state?.sections?.notes);
   async function req(path = '', body) {
     var r = await fetch(`${api}/api/summary-lab${path}`, {
       ...(body ? {
@@ -682,7 +682,7 @@ export function SummaryLab({
     className: "eyebrow"
   }, "Charlie / Research experiments"), /*#__PURE__*/React.createElement("h1", null, "Summary Lab"), /*#__PURE__*/React.createElement("p", null, "Read thoroughly. Preserve what was said. Separate what it means."), /*#__PURE__*/React.createElement("p", {
     className: "muted"
-  }, "An independent trial with six sections, including shorthand Meeting Notes, and optional Korean interpretation. Original summaries and automatic workflows remain unchanged."), error && /*#__PURE__*/React.createElement("div", {
+  }, "An independent trial with seven sections, including a concise bullet brief and detailed shorthand Meeting Notes, and optional Korean interpretation. Original summaries and automatic workflows remain unchanged."), error && /*#__PURE__*/React.createElement("div", {
     role: "alert",
     className: "status"
   }, error, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
@@ -904,7 +904,7 @@ export function SummaryLab({
     className: "primary",
     disabled: busy || importing || !canGenerate,
     onClick: start
-  }, busy ? 'Starting…' : 'Generate all six sections')), reading && row?.state?.documents && /*#__PURE__*/React.createElement("section", {
+  }, busy ? 'Starting…' : 'Generate all sections')), reading && row?.state?.documents && /*#__PURE__*/React.createElement("section", {
     className: "panel"
   }, /*#__PURE__*/React.createElement("h2", null, "Original source coverage"), (row.state.sourceParts || []).map(p => /*#__PURE__*/React.createElement("p", {
     key: p.id

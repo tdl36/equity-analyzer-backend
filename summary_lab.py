@@ -16,7 +16,8 @@ import working_qa
 import shareable_notes
 from summary_comparison import split_text
 
-VERSION = 'source-reviewed-lab-v6'
+VERSION = 'source-reviewed-lab-v7'
+PREVIOUS_VERSION = 'source-reviewed-lab-v6'
 LEGACY_VERSION = 'source-reviewed-lab-v5'
 import summary_lab_editorial as editorial
 MODEL = model_registry.role('summary', 'CHARLIE_SUMMARY_LAB_MODEL')
@@ -321,6 +322,13 @@ SOURCE PART P{i+1}:\n{body}'''
     section_plan = sections_for_mode(output_mode)
     polished = state.get('editorialPolicy') == editorial.POLICY
     drafting_rules = editorial.RULES if polished else RULES + shareable_notes.RULES
+    if state.get('conciseBrief') and output_mode in ('english', 'korean_bilingual'):
+        expanded_plan = {}
+        for key, instruction in section_plan.items():
+            expanded_plan[key] = instruction
+            if key == 'brief':
+                expanded_plan['bullet_brief'] = editorial.SECTIONS['bullet_brief']
+        section_plan = expanded_plan
     if polished:
         section_plan = {key: (working_qa.INSTRUCTION if key=='working_qa' else editorial.SECTIONS[key]) + (' Write in Korean.' if output_mode=='korean_only' else '') for key in section_plan}
     if output_mode=='working_qa' and state.get('qaLanguage')=='korean':
@@ -376,11 +384,11 @@ DRAFT:\n{state['sections'][section]}\nORIGINAL:\n{body if not documents or not d
 # The Word exporter reads one fixed schema. An experiment keeps its sections in
 # state, under its own keys, so project it the way summary_comparison does
 # rather than teaching the exporter a second shape.
-LAB_EXPORT_LABELS = {'working_qa': 'Q&A Working Notes', 'notes': 'Meeting Notes', 'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
+LAB_EXPORT_LABELS = {'bullet_brief': 'Executive Brief · Bullets', 'working_qa': 'Q&A Working Notes', 'notes': 'Meeting Notes', 'brief': 'Executive Brief', 'takeaways': 'Key Takeaways',
                      'meeting': 'Meeting Summary', 'questions': 'Follow-up Questions',
                      'assessment': 'Overall Assessment', 'korean': 'Korean Interpretation',
                      'all': 'Summary Lab'}
-LAB_EXPORT_COLUMNS = {'working_qa': 'working_qa', 'notes': 'meeting_notes', 'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
+LAB_EXPORT_COLUMNS = {'bullet_brief': 'bullet_brief', 'working_qa': 'working_qa', 'notes': 'meeting_notes', 'brief': 'brief', 'takeaways': 'summary', 'meeting': 'meeting_summary',
                       'questions': 'questions', 'assessment': 'assessment',
                       'korean': 'korean_takeaways'}
 
@@ -404,7 +412,7 @@ def export_row(row, section='all'):
     for key in wanted:
         # Model text is untrusted; keep it literal instead of interpreting HTML.
         body = values.get(key) or ''
-        if key in ('notes', 'working_qa'):
+        if key in ('notes', 'working_qa', 'bullet_brief'):
             import markdown
             if key=='working_qa':
                 import re
@@ -494,12 +502,14 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                 # A queued experiment stopped before a slot freed must never
                 # reach the model.
                 if row.get('cancel_requested'): raise Cancelled()
-                if row['version'] not in (VERSION, LEGACY_VERSION): raise ValueError('This experiment uses an older prompt. Start a new experiment.')
+                if row['version'] not in (VERSION, PREVIOUS_VERSION, LEGACY_VERSION): raise ValueError('This experiment uses an older prompt. Start a new experiment.')
                 if recovery:
                     with get_db(commit=True) as (_, cur):
                         cur.execute("UPDATE summary_lab_experiments SET recovery_attempts=recovery_attempts+1,updated_at=NOW() WHERE id=%s", (jid,))
                 state = row['state'] or {}
                 if row['version'] == VERSION:
+                    state['conciseBrief'] = True
+                if row['version'] in (VERSION, PREVIOUS_VERSION):
                     state['editorialPolicy'] = editorial.POLICY
                 def save(value):
                     # Checkpointing is also the cancellation point: writing

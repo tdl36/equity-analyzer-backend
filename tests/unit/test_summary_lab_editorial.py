@@ -41,3 +41,42 @@ class EditorialTests(unittest.TestCase):
         state={};generate('Growth may improve.',state,ask,lambda s:None)
         self.assertNotIn(editorial.RULES,systems)
         self.assertNotIn('editorialFlags',state)
+
+
+class SectionDistinctionTests(unittest.TestCase):
+    def test_new_plan_checks_bullet_brief_and_resumes_without_new_calls(self):
+        calls=[]
+        def ask(system,prompt,tokens):
+            calls.append(prompt)
+            if 'Return JSON only:' in prompt:
+                return json.dumps({'record':'Margin may improve.','passages':['Margin may improve.'],'issues':[]})
+            return '- Margin may improve if execution holds.'
+        state={'editorialPolicy':editorial.POLICY,'conciseBrief':True}
+        generate('Margin may improve.',state,ask,lambda s:None)
+        self.assertEqual(len(state['completedSections']),7)
+        self.assertIn('bullet_brief',state['checks'])
+        self.assertIn('bullet_brief',state['editorialFlags'])
+        note_prompts=[p for p in calls if 'Write detailed Meeting Notes' in p]
+        self.assertEqual(len(note_prompts),2)
+        self.assertTrue(all('Compress syntax, not meaning' in p for p in note_prompts))
+        self.assertTrue(any('Write Executive Brief · Bullets' in p for p in calls))
+        before=len(calls)
+        generate('Margin may improve.',state,ask,lambda s:None)
+        self.assertEqual(len(calls),before)
+
+    def test_korean_only_does_not_add_english_brief(self):
+        def ask(system,prompt,tokens):
+            if 'Return JSON only:' in prompt:
+                return json.dumps({'record':'Margin may improve.','passages':['Margin may improve.'],'issues':[]})
+            return '마진 개선 가능'
+        state={'editorialPolicy':editorial.POLICY,'conciseBrief':True,'outputMode':'korean_only'}
+        generate('Margin may improve.',state,ask,lambda s:None)
+        self.assertEqual(set(state['sections']),{'notes','korean'})
+
+    def test_bullet_export_preserves_list_and_excludes_private_review(self):
+        from summary_lab import export_row
+        row={'state':{'sections':{'bullet_brief':'- Margin may improve.\n- EPS < 5.'},'finalReview':'PRIVATE'}}
+        result=export_row(row,'bullet_brief')
+        self.assertIn('<ul>',result['bullet_brief'])
+        self.assertIn('&lt;',result['bullet_brief'])
+        self.assertNotIn('PRIVATE',str(result))

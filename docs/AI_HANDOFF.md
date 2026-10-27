@@ -1,5 +1,22 @@
 # Charlie AI engineering handoff
 
+## October 27 — T396 distinct Lab Meeting Notes and bullet brief
+
+Corrected the polished Lab override that made Meeting Notes resemble Meeting Summary.
+Meeting Notes now requires comprehensive topic-based shorthand bullets/fragments,
+preserving material questions, answers, details and qualifications. Meeting Summary
+remains narrative; Q&A Working Notes remains the separate compressed Q&A option.
+Summaries generation is unchanged.
+
+New v7 Lab runs add Executive Brief · Bullets (120–200 words, 5–7 bullets) alongside
+the original brief, using the same source checks, revision and final audit. Wired
+reader/copy/email/iCloud/Word paths; exports preserve bullet lists. v5/v6 runs remain
+resumable without adding paid sections; saved outputs are not rewritten. Korean-only
+and standalone Q&A modes retain their existing section sets. No paid generation for QA.
+
+Validation and exact deployment checkpoint to follow. Next: inspect a user-authorized
+new run for actual editorial quality; synthetic checks do not prove writing quality.
+
 ## October 27 — T395 preserve Transcript Corrections Log
 
 User clarified that Transcript Corrections Log is not shareable narrative. Restored

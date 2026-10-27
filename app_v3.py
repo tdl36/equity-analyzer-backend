@@ -9285,6 +9285,13 @@ def _generate_summary_docx_bytes(row, sections=None):
             run.font.color.rgb = RGBColor(0, 0, 0)
         _html_to_docx_elements(doc, row['meeting_notes'])
 
+    if row.get('bullet_brief') and (include_all or 'bullet_brief' in sect_set):
+        heading = doc.add_heading('Executive Brief · Bullets', level=2)
+        for run in heading.runs:
+            run.font.name = 'Calibri'
+            run.font.color.rgb = RGBColor(0, 0, 0)
+        _html_to_docx_elements(doc, row['bullet_brief'])
+
     if row.get('working_qa') and (include_all or 'working_qa' in sect_set):
         heading = doc.add_heading('Q&A Working Notes', level=2)
         for run in heading.runs:
