@@ -1,4 +1,6 @@
 """Versioned reader-facing style; audit evidence remains in separate Lab records."""
+import shareable_notes
+
 POLICY = 'investor-notes-v1'
 RULES = '''Write finished meeting notes for a senior institutional investor to share with colleagues.
 The reader wants the business substance, the investment implications and what to watch.
@@ -46,10 +48,11 @@ hyphenated terms and numerical ranges intact. No decorative separators or formul
 Use the requested language, including Korean when selected. No HTML or code fences.
 A useful note is specific and analytically coherent, not longer or more polished than its evidence.
 '''
+RULES += shareable_notes.RULES
 REVIEW = '''
 EDITORIAL REVIEW: In addition to factual checks, flag unnecessary quotation fragments,
 repeated attribution, dash-heavy prose, and source/process commentary inside the finished note.
-A faithful paraphrase needs no quotation marks. Do not demand that the revision add transcript
+Flag placeholder speaker identities (speaker 1, lead exec, unidentified speaker) and recording-origin commentary. Retain supported roles such as CEO/CFO; never invent identities. A faithful paraphrase needs no quotation marks. Do not demand that the revision add transcript
 references, source-part labels or verification parentheticals to the note. Put uncertain
 numbers/dates/units and proposed corrections in this private review; recommend omission from
 the note if unresolved. Check that removing a caveat has not made a claim falsely certain.
@@ -79,7 +82,7 @@ def review_flags(text):
     """Visible diagnostics, never silently rewrite facts or strip quotations."""
     import re
     flags=[]
-    if re.search(r'\b(transcript|transcription|OCR)\b|\bP\d+\b|inferred from|verify against',text,re.I):
+    if re.search(r'\b(transcript|transcription|OCR|recording)\b|\bP\d+\b|inferred from|verify against|\bspeaker\s*\d+\b|\blead exec(?:utive)?\b|\b(?:unidentified|unknown) speaker\b|\bsecond executive\b',text,re.I):
         flags.append('Source/process commentary remains in the note; move it to the private appendix and omit unresolved specifics.')
     quotes=re.findall(r'["“]([^"“”\n]+)["”]',text)
     if any(len(q.split())<=3 for q in quotes):

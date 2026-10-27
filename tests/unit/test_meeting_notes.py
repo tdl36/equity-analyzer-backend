@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 import meeting_notes
+import shareable_notes
 import summary_lab
 from summary_bulk import sections_html
 from tests.unit.test_summary_bulk import ns
@@ -13,13 +14,14 @@ TREE = ast.parse(Path('app_v3.py').read_text())
 
 class MeetingNotesTests(unittest.TestCase):
     def test_original_uses_source_and_rejects_empty_generation(self):
-        scope={'meeting_notes':meeting_notes, '_call_llm_stream_with_retry':Mock(return_value={'text':'<ul><li>~5%, not committed</li></ul>'})}
+        scope={'meeting_notes':meeting_notes, 'shareable_notes':shareable_notes, '_call_llm_stream_with_retry':Mock(return_value={'text':'<ul><li>~5%, not committed</li></ul>'})}
         node=next(n for n in TREE.body if isinstance(n,ast.FunctionDef) and n.name=='_meeting_notes_html')
         exec(compile(ast.Module(body=[node],type_ignores=[]),'fixture','exec'),scope)
         self.assertIn('~5%',scope['_meeting_notes_html']('SOURCE TAIL: might fall', 'fake', korean=True))
         args=scope['_call_llm_stream_with_retry'].call_args.kwargs
         self.assertIn('SOURCE TAIL: might fall',args['messages'][0]['content'])
         self.assertIn('Write in Korean',args['messages'][0]['content'])
+        self.assertIn(shareable_notes.RULES,args['system'])
         scope['_call_llm_stream_with_retry'].return_value={'text':''}
         with self.assertRaises(ValueError):scope['_meeting_notes_html']('x')
 

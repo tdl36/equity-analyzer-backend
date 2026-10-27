@@ -1,5 +1,28 @@
 # Charlie AI engineering handoff
 
+## October 27 — T394 reader-facing voice and explicit review exception
+
+User clarified: no recording/transcription provenance or placeholder identities in
+finished Summary/Summary Lab prose; supported CEO/CFO/IR/name attribution is fine.
+Explicit exception: raw source stays verbatim; source ambiguities/corrections may
+appear under a separate Key Unresolved Items / Next Checks section or private appendix.
+Never erase business uncertainty, guess a role, or hide an unsupported numerical claim.
+
+One shared JSON policy feeds 20 backend Summary writing call sites (manual, audio,
+text, podcast, Korean), both standard webhook input paths, Lab drafting/revision
+including legacy resumes, and comparison-note output stages. Source-reading records
+are not rewritten. Lab reviewer diagnostics now flag placeholder identities as well
+as process commentary. Removed conflicting inline segment-unclear instruction and
+renamed the old corrections-log output heading to the distinct unresolved section.
+Existing saved outputs are not rewritten and no paid generation is started by upgrade.
+
+T393 additive Working Notes release verified at backend c2848243c960e77e73eb9b2bdfd433d83f8fb4c0;
+Cloudflare 99537da0-277c-4baf-ba69-76c8c2fd4cfe; hosted bundle/SW bytes matched.
+T394 markers synchronized and build passed. Focused policy/generation tests passed;
+full safe suite and deployment evidence recorded in the subsequent local checkpoint.
+Next: evaluate a real user-authorized generation, including its separately labeled
+review material. Never treat prompt-routing tests as evidence of perfect output quality.
+
 ## October 27 — T393 additive Q&A Working Notes
 
 Added Q&A · Working Notes to saved Summary and Summary Lab detail screens. User

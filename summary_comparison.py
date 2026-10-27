@@ -1,5 +1,6 @@
 """Automatic, checkpointed full-transcript alternative notes. Never updates meeting_summaries."""
 import provider_credentials
+import shareable_notes
 import model_registry
 import hashlib
 import json
@@ -243,7 +244,7 @@ SOURCE:\n{body}''', 12000)
                 continue
             state['progress'] = f'Reading exchanges in source part {i+1} of {len(parts)}'
             save(state)
-            state['qaParts'][key] = ask(RULES, QA_PART.format(number=i+1, total=len(parts), body=body), 6500)
+            state['qaParts'][key] = ask(RULES + shareable_notes.RULES, QA_PART.format(number=i+1, total=len(parts), body=body), 6500)
             save(state)
         captured = [state['qaParts'][str(i)] for i in range(len(parts))
                     if 'NO EXCHANGES IN THIS PART' not in state['qaParts'][str(i)]]
@@ -259,7 +260,7 @@ SOURCE:\n{body}''', 12000)
         save(state)
         _basis, material = synthesis_basis(source, context)
         prompt = instruction+'\nWrite from the following; it is not external verification:\n'+material
-        draft = ask(RULES, prompt, 6500)
+        draft = ask(RULES + shareable_notes.RULES, prompt, 6500)
         if key == 'qa':
             finding = qa_findings(draft, source)
         elif key == 'assessment':
@@ -272,7 +273,7 @@ SOURCE:\n{body}''', 12000)
             # so the ceiling lives here and the draft is compared against it.
             state['progress'] = 'Revising ' + key
             save(state)
-            repaired = ask(RULES, instruction+'\nYour previous draft has a defect: '+finding+
+            repaired = ask(RULES + shareable_notes.RULES, instruction+'\nYour previous draft has a defect: '+finding+
                 '. Rewrite it keeping every fact, number, qualification, attribution and exchange, '
                 'changing only the form. Do not drop content, do not shorten, and do not refer the '
                 'reader to another section.'

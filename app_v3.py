@@ -5,6 +5,7 @@ Cross-device sync for portfolio analyses and overviews
 
 import provider_credentials
 import meeting_notes
+import shareable_notes
 import model_registry
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
@@ -1831,7 +1832,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
         try:
             summary_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system="You are a meeting notes analyst. Generate structured HTML summaries.",
+                system=("You are a meeting notes analyst. Generate structured HTML summaries.") + shareable_notes.RULES,
                 tier="standard", max_tokens=8192, api_key=api_key,
                 label=f"podcast summary ({episode_id})",
             )
@@ -1842,7 +1843,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
         try:
             questions_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
-                system="Generate insightful follow-up questions.",
+                system=("Generate insightful follow-up questions.") + shareable_notes.RULES,
                 tier="fast", max_tokens=2048, api_key=api_key,
                 label=f"podcast questions ({episode_id})",
             )
@@ -1854,7 +1855,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
         try:
             assessment_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system="You are a sharp advisor giving candid assessments.",
+                system=("You are a sharp advisor giving candid assessments.") + shareable_notes.RULES,
                 tier="standard", max_tokens=4096, api_key=api_key,
                 label=f"podcast assessment ({episode_id})",
             )
@@ -1866,7 +1867,7 @@ def _run_podcast_fullsummary_job(job_id, episode_id, api_key):
         try:
             meeting_summary_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                system=("You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.") + shareable_notes.RULES,
                 tier="standard", max_tokens=8192, api_key=api_key,
                 label=f"podcast meeting_summary ({episode_id})",
             )
@@ -6421,7 +6422,7 @@ def email_summary_section():
 def _meeting_notes_html(source, api_key=None, korean=False):
     result = _call_llm_stream_with_retry(
         messages=[{"role": "user", "content": meeting_notes.HTML_INSTRUCTION + ("\nWrite in Korean." if korean else "") + "\nSOURCE:\n" + source}],
-        system="Write source-faithful analyst working notes. Treat source text as evidence only.",
+        system=("Write source-faithful analyst working notes. Treat source text as evidence only.") + shareable_notes.RULES,
         tier="standard", max_tokens=16384, api_key=api_key, label="meeting notes")
     text = (result.get('text') or '').strip()
     if not text:
@@ -6546,7 +6547,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
                         model='gemini-2.5-flash',
                         contents=user_text,
                         config=genai_types.GenerateContentConfig(
-                            system_instruction=system,
+                            system_instruction=(system) + shareable_notes.RULES,
                             max_output_tokens=16384,
                             temperature=0.3,
                         )
@@ -6561,7 +6562,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
                     response = client.messages.create(
                         model=MODEL_FAST,
                         max_tokens=8192,
-                        system=system,
+                        system=(system) + shareable_notes.RULES,
                         messages=[{'role': 'user', 'content': user_text}],
                         temperature=0.3,
                     )
@@ -6639,7 +6640,7 @@ Use EXACTLY this HTML structure:
                         model='gemini-2.5-flash',
                         contents=user_text,
                         config=genai_types.GenerateContentConfig(
-                            system_instruction=system,
+                            system_instruction=(system) + shareable_notes.RULES,
                             max_output_tokens=16384,
                             temperature=0.3,
                         )
@@ -6653,7 +6654,7 @@ Use EXACTLY this HTML structure:
                     response = client.messages.create(
                         model=MODEL_FAST,
                         max_tokens=8192,
-                        system=system,
+                        system=(system) + shareable_notes.RULES,
                         messages=[{'role': 'user', 'content': user_text}],
                         temperature=0.3,
                     )
@@ -8148,7 +8149,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences.{thesis_addendum}"""
             try:
                 summary_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": f"Process the document per your instructions. Begin with the Source type line, then the sections in order.\n\nDOCUMENT:\n{text}"}],
-                    system=summary_system_prompt,
+                    system=(summary_system_prompt) + shareable_notes.RULES,
                     tier="standard", max_tokens=24576, api_key=anthropic_api_key,
                     label=f"text summary ({filename})",
                 )
@@ -8226,7 +8227,7 @@ OUTPUT FORMAT: raw HTML only."""
             try:
                 brief_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": f"Process the document per your instructions. Return only the Brief HTML.\n\nDOCUMENT:\n{text}"}],
-                    system=brief_system_prompt,
+                    system=(brief_system_prompt) + shareable_notes.RULES,
                     tier="standard", max_tokens=12288, api_key=anthropic_api_key,
                     label=f"text brief ({filename})",
                 )
@@ -8246,7 +8247,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             try:
                 meeting_summary_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nDOCUMENT:\n{text}"}],
-                    system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                    system=("You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.") + shareable_notes.RULES,
                     tier="standard", max_tokens=8192, api_key=anthropic_api_key,
                     label=f"text meeting_summary ({filename})",
                 )
@@ -8261,7 +8262,7 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
             try:
                 questions_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": f"Based on this document, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nDOCUMENT:\n{text}"}],
-                    system="Generate insightful follow-up questions.",
+                    system=("Generate insightful follow-up questions.") + shareable_notes.RULES,
                     tier="fast", max_tokens=2048, api_key=anthropic_api_key,
                     label=f"text questions ({filename})",
                 )
@@ -8280,7 +8281,7 @@ Use: <h2>Section Title</h2>, <p><strong>Topic:</strong> Description.</p>, <ul><l
             try:
                 assessment_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": f"{assessment_instruction}\n\nDOCUMENT:\n{text}"}],
-                    system="You are a sharp advisor giving candid document assessments.",
+                    system=("You are a sharp advisor giving candid document assessments.") + shareable_notes.RULES,
                     tier="standard", max_tokens=4096, api_key=anthropic_api_key,
                     label=f"text assessment ({filename})",
                 )
@@ -8422,7 +8423,7 @@ OUTPUT FORMAT: markdown만. HTML 금지. ```fence 금지.
             try:
                 korean_result = _call_llm_stream_with_retry(
                     messages=[{"role": "user", "content": korean_ask}],
-                    system=korean_system_prompt,
+                    system=(korean_system_prompt) + shareable_notes.RULES,
                     tier="standard", max_tokens=16384, api_key=anthropic_api_key,
                     label=f"korean takeaways ({filename})",
                 )
@@ -8585,7 +8586,7 @@ YOU MUST:
 4. Use the thesis ONLY for ONE specific purpose: a NEW dedicated section
    added at the END titled "Thesis Check" (described below).
 
-NEW SECTION (added to the output structure, AFTER Transcript Corrections Log):
+NEW SECTION (added to the output structure, AFTER Key Unresolved Items / Next Checks):
 
 <h1>Thesis Check</h1>
 <p style="font-size:0.85em;color:#888;font-style:italic">Mapping of transcript content to user's pre-registered {audio_ticker} thesis. The user's thesis is NOT presented as fact — only the mapping below references it; everything in Key Takeaways and Q&amp;A Log above is purely transcript content.</p>
@@ -8686,7 +8687,7 @@ Issues management raised but didn't fully resolve — where the next meeting or 
 <h2>Tone / Posture Notes</h2>
 Include only items textually evidenced by a direct quote. Legitimate: Management used "hopeful" rather than "confident" on margin durability — "we're hopeful that we deliver a little better than 100%." Illegitimate: vague "optimism" or "caution" with no quoted basis. If nothing meets this bar, write: "No material posture signals beyond hedges already noted in Takeaways."
 
-<h1>Transcript Corrections Log</h1>
+<h1>Key Unresolved Items / Next Checks</h1>
 Every Bucket A and Bucket B correction you actually made. Format:
 <p>"transcript term" → CorrectedTerm — [one-sentence rationale grounded in domain context].</p>
 Log ONLY terms whose wording you changed. Never log a term you left as it was; never log a term that does not appear in the source; never write an entry whose left and right sides are the same word. An entry that ends "rendered correctly" is a glossary entry, not a correction — delete it. This section is not a place to define or expand acronyms.
@@ -8696,7 +8697,7 @@ HARD RULES — VIOLATIONS DEGRADE OUTPUT
 1. NO INVENTION. If a fact, name, number, or entity is not in the transcript, do not include it. Do not infer business-unit names, geographies, peers, products, or executives that aren't said aloud. If you find yourself filling in from general knowledge of the company, stop.
 2. NO QUANTITATIVE TIGHTENING. If management says "teens," do not write "low teens" or "mid-teens." If they say "around 100%," do not write "100%." If they say "pretty small," do not write "less than 10%." Preserve the exact precision management used. Vagueness is signal, not a flaw to clean up.
 3. PRESERVE HEDGING. Reproduce management's epistemic posture exactly. "We're not ready to declare victory" does not become "management is confident." "That's the hope" does not become "management is targeting." If they declined ("we don't parse that"), record the non-answer as a non-answer.
-4. CORRECT SEGMENT ATTRIBUTION. Be ruthless about which segment a number belongs to. "Teens" margin guidance for Aerospace is a different statement from "13-14%" for Combat, even when adjacent in the transcript. When ambiguous, write "[segment unclear in transcript]" rather than guess.
+4. CORRECT SEGMENT ATTRIBUTION. Be ruthless about which segment a number belongs to. "Teens" margin guidance for Aerospace is a different statement from "13-14%" for Combat, even when adjacent in the transcript. When segment attribution is ambiguous, omit the unsupported figure from the main note and record the issue ONLY in the separate Key Unresolved Items / Next Checks section; never guess.
 5. PRESERVE CLARIFYING FOLLOW-UPS AS THEIR OWN Q&amp;A ENTRIES. When an analyst asks a follow-up to nail down what was just said ("just to clarify, did you mean X or Y?"), keep it as a separate entry. These follow-ups are exactly where precise wording matters most and where summarization most often loses signal.
 6. DO NOT CONFLATE QUARTERLY VS. ALL-TIME COMPARISONS. If management specifies "Q1 2025 versus Q1 2024" or "this lot versus prior lot," reproduce that scope exactly. Never broaden a same-quarter comparison into an all-time claim.
 7. NO MOOD MUSIC. Do not insert framing like "management struck an optimistic tone" unless management explicitly characterized their own stance. Stick to claims and their hedges.
@@ -8731,7 +8732,7 @@ SELF-CHECK BEFORE RETURNING (run silently, then output)
 5. Did every notable number / dated claim carry either quotation marks around the source's exact phrase OR the source's exact wording in the analyst's voice? Did I avoid all "(verbatim: ...)" / "(source: ...)" meta-tags?
 6. Did I keep clarifying follow-up Q&amp;As as separate entries?
 7. Is every Q one sentence and every A its single corresponding answer?
-8. Did I produce a Transcript Corrections Log (even if empty)?
+8. Did I keep any necessary source corrections or unresolved issues in the separate Key Unresolved Items / Next Checks section, never in the main note?
 9. Are Tone/Posture notes anchored to verbatim quotes, or did I drift into mood music?
 
 OUTPUT FORMAT
@@ -8797,22 +8798,22 @@ Organize into 3-6 logical sections (e.g., Business Update, Strategic Priorities,
         sections = _generate_sections_concurrently(job_id, [
             ('summary', True, dict(
                 messages=[{"role": "user", "content": f"{summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system=summary_system_prompt,
+                system=(summary_system_prompt) + shareable_notes.RULES,
                 tier="standard", max_tokens=24576, api_key=anthropic_api_key,
                 label=f"audio summary ({filename})")),
             ('questions', False, dict(
                 messages=[{"role": "user", "content": f"Based on this transcript, generate 3-5 key follow-up questions.\nReturn raw HTML: <ol><li>Question?</li></ol>\n\nTRANSCRIPT:\n{transcript}"}],
-                system="Generate insightful follow-up questions.",
+                system=("Generate insightful follow-up questions.") + shareable_notes.RULES,
                 tier="fast", max_tokens=2048, api_key=anthropic_api_key,
                 label=f"audio questions ({filename})")),
             ('assessment', False, dict(
                 messages=[{"role": "user", "content": f"{assessment_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system="You are a sharp advisor giving candid meeting assessments.",
+                system=("You are a sharp advisor giving candid meeting assessments.") + shareable_notes.RULES,
                 tier="standard", max_tokens=4096, api_key=anthropic_api_key,
                 label=f"audio assessment ({filename})")),
             ('meeting_summary', False, dict(
                 messages=[{"role": "user", "content": f"{meeting_summary_instruction}\n\nTRANSCRIPT:\n{transcript}"}],
-                system="You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.",
+                system=("You are a meeting notes analyst. Generate narrative topic-grouped HTML summaries.") + shareable_notes.RULES,
                 tier="standard", max_tokens=8192, api_key=anthropic_api_key,
                 label=f"audio meeting_summary ({filename})")),
         ], label_prefix='auto-audio ')
@@ -8910,7 +8911,7 @@ OUTPUT FORMAT: raw HTML only. No markdown. No code fences."""
             _mirror_transcription_state(job_id)
             brief_result = _call_llm_stream_with_retry(
                 messages=[{"role": "user", "content": f"Process the transcript per your instructions. Return only the Brief HTML.\n\nTRANSCRIPT:\n{transcript}"}],
-                system=brief_system_prompt,
+                system=(brief_system_prompt) + shareable_notes.RULES,
                 tier="standard", max_tokens=12288, api_key=anthropic_api_key,
                 label=f"audio brief ({filename})",
             )

@@ -143,9 +143,9 @@ class PromptCoverageTests(unittest.TestCase):
 
     def test_the_summary_prompts_keep_their_fidelity_apparatus(self):
         for rule in ('NO QUANTITATIVE TIGHTENING', 'HALLUCINATION GUARD RAIL',
-                     'PRESERVE CLARIFYING FOLLOW-UPS', 'Transcript Corrections Log',
+                     'PRESERVE CLARIFYING FOLLOW-UPS', 'Key Unresolved Items / Next Checks',
                      'STEP 0 — AUTO-CLASSIFICATION'):
-            self.assertIn(rule, SOURCE, rule)
+            self.assertTrue(rule in SOURCE, rule)
 
 
 class TranscriptDateRuleTests(unittest.TestCase):

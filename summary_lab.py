@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request
 import research_doctrine
 import meeting_notes
 import working_qa
+import shareable_notes
 from summary_comparison import split_text
 
 VERSION = 'source-reviewed-lab-v6'
@@ -319,7 +320,7 @@ SOURCE PART P{i+1}:\n{body}'''
     output_mode = state.get('outputMode', 'english')
     section_plan = sections_for_mode(output_mode)
     polished = state.get('editorialPolicy') == editorial.POLICY
-    drafting_rules = editorial.RULES if polished else RULES
+    drafting_rules = editorial.RULES if polished else RULES + shareable_notes.RULES
     if polished:
         section_plan = {key: (working_qa.INSTRUCTION if key=='working_qa' else editorial.SECTIONS[key]) + (' Write in Korean.' if output_mode=='korean_only' else '') for key in section_plan}
     if output_mode=='working_qa' and state.get('qaLanguage')=='korean':

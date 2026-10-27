@@ -14,6 +14,7 @@ import {CatalystComparison} from './catalyst-comparison';
 import {PortfolioHeatmap} from './portfolio-heatmap';
 import {SummaryLab} from './summary-lab';
 import {WorkingQA} from './working-qa';
+import {prepareShareableNotesInput} from './shareable-notes.mjs';
 import {SummaryComparison} from './summary-comparison';
 import {MeetingSession} from './meeting-session';
 import {readMeetingPreferences,saveMeetingPreferences,meetingJobTiming} from './meeting-preferences.mjs';
@@ -102,7 +103,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-27T393';
+        const BUILD_VERSION = '2026-10-27T394';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -3617,7 +3618,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                     const res = await fetch(SUMMARY_WEBHOOK_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ notes: text })
+                        body: JSON.stringify({ notes: prepareShareableNotesInput(text) })
                     });
                     if (!res.ok) throw new Error(await getResError(res, 'Webhook request failed'));
                     data = await res.json();
@@ -4976,7 +4977,7 @@ Regulatory, execution, or macro risks that could derail the thesis:
                         const webhookResponse = await fetch(SUMMARY_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ notes: transcriptText })
+                            body: JSON.stringify({ notes: prepareShareableNotesInput(transcriptText) })
                         });
                         const webhookText = await webhookResponse.text();
                         try { data = JSON.parse(webhookText); } catch (e) {
