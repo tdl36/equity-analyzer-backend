@@ -96,13 +96,13 @@ export function WorkingQA({
     }
   }
   return /*#__PURE__*/React.createElement("details", {
-    className: "rounded-xl border border-white/10 overflow-hidden",
+    className: "working-qa rounded-xl border border-white/10 overflow-hidden",
     style: {
       margin: '16px 0',
       padding: 16
     },
     open: true
-  }, /*#__PURE__*/React.createElement("summary", {
+  }, /*#__PURE__*/React.createElement("style", null, `.working-qa button{min-height:44px;padding:8px 12px;border:1px solid #777;border-radius:6px;font:inherit;background:transparent;color:inherit;cursor:pointer}.working-qa button:disabled{opacity:.5;cursor:default}.working-qa button:focus-visible,.working-qa summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}`), /*#__PURE__*/React.createElement("summary", {
     style: {
       cursor: 'pointer',
       fontWeight: 600
