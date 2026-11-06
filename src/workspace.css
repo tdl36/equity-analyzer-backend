@@ -272,3 +272,7 @@
 .workspace-thesis-actions button { min-height:44px;justify-content:center;font-size:12px;white-space:normal; }
 
 .collection-checks label{display:flex;align-items:center;gap:8px;flex:0 1 auto}.collection-checks input[type=checkbox]{width:16px;height:16px;padding:0;accent-color:var(--accent)}@media(max-width:600px){.collection-controls .desk-filter>label{flex-basis:100%}.collection-controls input,.collection-controls textarea,.research-chat textarea{font-size:16px}}
+
+/* All saved Summary sections share the same readable document surface. */
+.summary-reading .summary-content { background:#fff;color:#000;font-family:Calibri,Carlito,Arial,sans-serif;overflow-wrap:anywhere; }
+.summary-reading .summary-content * { color:#000;font-family:inherit; }

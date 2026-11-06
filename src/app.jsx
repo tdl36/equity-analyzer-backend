@@ -103,7 +103,7 @@ if (typeof window !== 'undefined') {
         // session takes the mismatch branch below: unregister service workers,
         // delete all caches, reload once. That silently disables PWA caching, so
         // bump this together with worker.js and service-worker.js on every deploy.
-        const BUILD_VERSION = '2026-10-27T397';
+        const BUILD_VERSION = '2026-11-06T398';
 
         // Backend API URL — use same-origin proxy in production, direct URL for local dev
         const _isLocalHost = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -19492,12 +19492,17 @@ Regulatory, execution, or macro risks that could derail the thesis:
                                                 )}
 
                                                 {(currentSummary.meetingNotes || currentSummary.rawNotes) && (
-                                                <div className="rounded-xl border border-white/10 overflow-hidden">
-                                                    <div className="px-4 py-3 flex flex-wrap items-center gap-2">
-                                                        <button onClick={() => setMeetingNotesExpanded(!meetingNotesExpanded)} aria-expanded={meetingNotesExpanded} className="flex-1 text-left font-semibold">Meeting Notes <span aria-hidden="true">{meetingNotesExpanded ? '▾' : '▸'}</span></button>
-                                                        <button disabled={!currentSummary.meetingNotes} className="p-2 disabled:opacity-40" onClick={() => navigator.clipboard.writeText(new DOMParser().parseFromString(currentSummary.meetingNotes.replace(/<\/(li|h2|p)>/g, '</$1>\n'), 'text/html').body.textContent || '')}>Copy</button>
-                                                        <button disabled={!currentSummary.meetingNotes} className="p-2 disabled:opacity-40" onClick={() => openSummaryEmailWithOptions('notes')}>Email</button>
-                                                        <button className="p-2" disabled={!currentSummary.meetingNotes || iCloudSavingSection === 'notes'} onClick={() => saveSectionToICloud('notes')}>Save to iCloud</button>
+                                                <div className="bg-white/[0.07] backdrop-blur-lg rounded-xl border border-white/10 overflow-hidden">
+                                                    <div className="bg-sky-500/15 backdrop-blur-lg border-b border-sky-400/20 px-4 py-3 flex flex-wrap items-center gap-2">
+                                                        <button onClick={() => setMeetingNotesExpanded(!meetingNotesExpanded)} aria-expanded={meetingNotesExpanded} className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1 min-w-0">
+                                                            <span className="text-lg flex-shrink-0">📝</span><h3 className="font-semibold text-sky-400">Meeting Notes</h3>
+                                                            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${meetingNotesExpanded ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <button title="Copy Meeting Notes" aria-label="Copy Meeting Notes" disabled={!currentSummary.meetingNotes} className="p-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg disabled:opacity-40" onClick={() => navigator.clipboard.writeText(new DOMParser().parseFromString(currentSummary.meetingNotes.replace(/<\/(li|h2|p)>/g, '</$1>\n'), 'text/html').body.textContent || '')}><Copy className="w-4 h-4" /></button>
+                                                            <button title="Email Meeting Notes" aria-label="Email Meeting Notes" disabled={!currentSummary.meetingNotes} className="p-2 bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-lg disabled:opacity-40" onClick={() => openSummaryEmailWithOptions('notes')}><Mails className="w-4 h-4" /></button>
+                                                            <button title="Save Meeting Notes to iCloud" aria-label="Save Meeting Notes to iCloud" className="p-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg disabled:opacity-40" disabled={!currentSummary.meetingNotes || iCloudSavingSection === 'notes'} onClick={() => saveSectionToICloud('notes')}><Save className="w-4 h-4" /></button>
+                                                        </div>
                                                     </div>
                                                     {meetingNotesExpanded && !currentSummary.meetingNotes && <div className="p-4"><p>Meeting Notes have not been generated for this summary. Generate this section from the saved source; this uses your model.</p><button disabled={meetingNotesBusy} onClick={generateMeetingNotes}>{meetingNotesBusy?'Generating…':'Generate Meeting Notes'}</button></div>}
                                                     {meetingNotesExpanded && currentSummary.meetingNotes && <div className="p-6 summary-content meeting-notes bg-white text-black" style={{fontFamily:'Calibri, Carlito, Arial, sans-serif'}} dangerouslySetInnerHTML={{__html:sanitizeHtml(currentSummary.meetingNotes)}} />}

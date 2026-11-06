@@ -113,7 +113,7 @@ export function WorkingQA({
       opacity: .8,
       margin: '10px 0'
     }
-  }, "Short questions and compact answer bullets, alongside your complete notes."), !row && loaded && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, "Short questions and compact answer bullets, alongside your complete notes. New summaries generate this section automatically."), !row && loaded && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13
     }

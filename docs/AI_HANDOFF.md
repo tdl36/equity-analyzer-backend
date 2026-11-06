@@ -1,5 +1,24 @@
 # Charlie AI engineering handoff
 
+## November 6 — T398 prepared: Summary consistency and automatic Q&A
+
+User requested consistent Meeting Notes UI and automatic Q&A Working Notes alongside
+new Summaries. Meeting Notes now uses the existing tinted header, chevron and icon
+controls; all Summary reading panels share white/black Calibri document styling.
+Q&A generation reuses the source-bound Lab branch via a request-independent enqueue
+helper. Existing new-summary fan-out covers manual saves, text, audio and podcasts;
+reads/ordinary edits do not launch it, and old saved notes are not backfilled. Failed
+or previously queued branches are not retried on duplicate submissions. Queue failures
+create a visible alert without losing the original Summary. No new worker/scheduler.
+
+Validation: 1,908 safe backend tests, 306 frontend tests, compile and production build
+passed. Synthetic desktop/mobile layout checks recorded separately; no paid QA run.
+Release is HELD locally: CVS IR Group Call post 3Q26 110626 Lab job
+2ed44885-204f-5b4a-80cf-f991821ecb32 was actively checking takeaways on November 6.
+Do not push main/deploy while this paid run is active. Next: check it and other live
+jobs, then push/deploy the prepared T398 release and verify exact backend revision
+and hosted bytes. Original jobs/outputs preserved. This is not a shipped release yet.
+
 ## October 27 — T397 full Executive Brief also uses bullets
 
 User clarified that the full Lab Executive Brief should also be easier to scan.

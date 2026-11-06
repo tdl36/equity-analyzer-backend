@@ -50,7 +50,7 @@ class RouteTests(unittest.TestCase):
             def fetchall(self):return []
         @contextmanager
         def db(commit=False):yield None,Cursor()
-        app=Flask(__name__);app.register_blueprint(summary_lab.create_blueprint(db,lambda *a,**k:b'PK-test'))
+        app=Flask(__name__);self.bp=summary_lab.create_blueprint(db,lambda *a,**k:b'PK-test');app.register_blueprint(self.bp)
         self.client=app.test_client();self.path='/api/summary-lab/working-qa/summary/s1'
         self.key=patch('summary_lab.provider_credentials.get',return_value='test-key');self.key.start();self.addCleanup(self.key.stop)
         self.thread=patch('summary_lab.threading.Thread');self.worker=self.thread.start();self.addCleanup(self.thread.stop)
@@ -92,3 +92,16 @@ class RouteTests(unittest.TestCase):
         self.rows['p']['status']='complete'
         r=self.client.get('/api/summary-lab/p/working-qa.docx')
         self.assertEqual(r.status_code,200);self.assertEqual(r.data,b'PK-test')
+
+    def test_automatic_enqueue_needs_no_request_and_never_retries_failed_run(self):
+        first=self.bp.enqueue_working_qa('s1')
+        self.rows[first]['status']='failed'
+        self.assertEqual(self.bp.enqueue_working_qa('s1'),first)
+        self.assertEqual(len(self.inserts),1)
+        self.worker.assert_called_once()
+
+    def test_automatic_enqueue_reports_missing_source_without_worker(self):
+        self.parent['raw_notes']=''
+        with self.assertRaisesRegex(ValueError,'No saved source'):
+            self.bp.enqueue_working_qa('s1')
+        self.worker.assert_not_called()

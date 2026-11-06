@@ -1620,8 +1620,23 @@ def media_scan_status(scan_id):
 # MEDIA TRACKER — EPISODE FULL SUMMARY (Feature 8)
 # ============================================
 
+def _queue_summary_working_qa(summary_id):
+    """New-summary fan-out only, never triggered by reads or ordinary edits."""
+    try:
+        return summary_lab_bp.enqueue_working_qa(summary_id)
+    except Exception as exc:
+        print(f"[working-qa] Queue failed for {summary_id}: {type(exc).__name__}")
+        try:
+            with get_db(commit=True) as (_, cur):
+                cur.execute("INSERT INTO agent_alerts (id,alert_type,ticker,title,detail,status,created_at) VALUES (%s,'summary_lab_error','','Q&A Working Notes could not start',%s,'new',NOW())",
+                    (str(uuid.uuid4()), json.dumps({'summaryId': summary_id, 'action': 'Original notes are saved. Open Q&A Working Notes to inspect or start the missing section.'})))
+        except Exception:
+            pass
+
+
 def _queue_improved_summary(summary_id, api_key=None):
-    """Start the separate version after original save; preserve original on failure."""
+    """Start companion sections after original save; preserve original on failure."""
+    _queue_summary_working_qa(summary_id)
     try:
         summary_comparison_bp.enqueue(summary_id, api_key, automatic=True)
     except Exception as exc:

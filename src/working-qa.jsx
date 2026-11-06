@@ -22,7 +22,7 @@ export function WorkingQA({api,kind,parentId,renderHtml}){
  return <details className="working-qa rounded-xl border border-white/10 overflow-hidden" style={{margin:'16px 0',padding:16}} open>
   <style>{`.working-qa button{min-height:44px;padding:8px 12px;border:1px solid #777;border-radius:6px;font:inherit;background:transparent;color:inherit;cursor:pointer}.working-qa button:disabled{opacity:.5;cursor:default}.working-qa button:focus-visible,.working-qa summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}`}</style>
   <summary style={{cursor:'pointer',fontWeight:600}}>Q&amp;A · Working Notes</summary>
-  <p style={{fontSize:13,opacity:.8,margin:'10px 0'}}>Short questions and compact answer bullets, alongside your complete notes.</p>
+  <p style={{fontSize:13,opacity:.8,margin:'10px 0'}}>Short questions and compact answer bullets, alongside your complete notes. New summaries generate this section automatically.</p>
   {!row&&loaded&&<><p style={{fontSize:13}}>Generate this additional section from the saved original. Uses model credits for source review, drafting and checks; other sections stay unchanged.</p><button disabled={busy} onClick={()=>act('generate')} style={{padding:10}}>{busy?'Starting…':'Generate Q&A Working Notes'}</button></>}
   {!loaded&&!error&&<p role="status">Loading saved Working Notes…</p>}
   {active&&<p role="status">{row.state?.progress||'Queued'} <button disabled={busy} onClick={()=>act('stop')}>Stop</button></p>}

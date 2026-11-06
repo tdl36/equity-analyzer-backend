@@ -632,11 +632,10 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
             raise ValueError('That model is not offered. Choose one from the list.')
         return value
 
-    @bp.route('/api/summary-lab/working-qa/<kind>/<parent_id>', methods=['GET','POST'])
-    def working_qa_section(kind, parent_id):
+    def working_qa_result(kind, parent_id, create=False):
         # Reuse the Lab worker, checkpoint store, source checks and exports. One
         # branch per frozen source makes repeated clicks and lost replies safe.
-        if kind not in ('summary','lab'): return jsonify(error='Unknown source type.'),400
+        if kind not in ('summary','lab'): return dict(error='Unknown source type.'),400
         ensure()
         with get_db(commit=True) as (_,cur):
             if kind=='summary':
@@ -644,18 +643,18 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
             else:
                 cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(parent_id,))
             parent=cur.fetchone()
-            if not parent: return jsonify(error='Saved source not found.'),404
+            if not parent: return dict(error='Saved source not found.'),404
             source=(parent.get('raw_notes') if kind=='summary' else parent.get('source')) or ''
-            if not source.strip(): return jsonify(error='No saved source is available.'),400
+            if not source.strip(): return dict(error='No saved source is available.'),400
             jid,digest=working_qa.identity(kind,parent_id,source)
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('working-qa:'+jid,))
             cur.execute('SELECT * FROM summary_lab_experiments WHERE id=%s',(jid,))
             existing=cur.fetchone()
-            if existing or request.method=='GET': return jsonify(experiment=dict(existing) if existing else None)
+            if existing or not create: return dict(experiment=dict(existing) if existing else None),200
             if kind=='lab' and parent.get('status') in ('queued','running'):
-                return jsonify(error='Wait for the current Lab run to finish before adding Working Notes.'),409
+                return dict(error='Wait for the current Lab run to finish before adding Working Notes.'),409
             key=provider_credentials.get('anthropic')
-            if not isinstance(key,str) or not key.strip(): return jsonify(error='Add a research API key in Settings.'),400
+            if not isinstance(key,str) or not key.strip(): return dict(error='Add a research API key in Settings.'),400
             state={'outputMode':'working_qa','originKind':kind,'originId':parent_id}
             if kind=='lab':
                 original=parent.get('state') or {}
@@ -674,7 +673,19 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
                  parent.get('model') or MODEL,json.dumps(state),parent_id if kind=='summary' else parent.get('summary_id'),
                  'working_qa',json.dumps(parent.get('document_ids') or [])))
         threading.Thread(target=run,args=(jid,key),daemon=True,name='summary-lab-'+jid[:8]).start()
-        return jsonify(experiment={'id':jid,'status':'queued','state':state}),202
+        return dict(experiment={'id':jid,'status':'queued','state':state}),202
+
+    def enqueue_working_qa(summary_id):
+        """One source-bound branch; never retry a failed or ambiguous paid run."""
+        result, status = working_qa_result('summary', summary_id, create=True)
+        if status >= 400:
+            raise ValueError(result['error'])
+        return result['experiment']['id']
+
+    @bp.route('/api/summary-lab/working-qa/<kind>/<parent_id>', methods=['GET','POST'])
+    def working_qa_section(kind, parent_id):
+        result, status = working_qa_result(kind, parent_id, create=request.method=='POST')
+        return jsonify(result), status
 
     @bp.get('/api/summary-lab/sources')
     def sources():
@@ -979,6 +990,7 @@ def create_blueprint(get_db, render_docx=None, safe_filename=None, record_usage=
             cur.execute('UPDATE summary_lab_experiments SET feedback=%s WHERE id=%s RETURNING id',(value,jid))
             if not cur.fetchone(): return jsonify(error='Experiment not found.'),404
         return jsonify(saved=True)
+    bp.enqueue_working_qa = enqueue_working_qa
     bp.enqueue = enqueue
     bp.ensure = ensure
     bp.start_prepared = start_prepared
